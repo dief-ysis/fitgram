@@ -208,6 +208,30 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .scale-lbls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; font-family: var(--font-cd); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .prof-row { display: grid; grid-template-columns: minmax(0,1fr) auto 70px; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
 .prof-row:last-child { border-bottom: 0; }
+/* avance (historial) */
+.delta { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.delta-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.delta-big { font-family: var(--font-cd); font-size: 34px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.delta.up .delta-big { color: var(--good); }
+.delta.down .delta-big { color: var(--bad); }
+.delta.same .delta-big { color: var(--muted); }
+.delta-unit { color: var(--muted); font-size: 14px; }
+.delta-inline { font-family: var(--font-cd); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.delta-inline.up { color: var(--good); }
+.delta-inline.down { color: var(--bad); }
+.delta-inline.same { color: var(--muted); }
+.spark { width: 100%; height: 46px; display: block; overflow: visible; margin: 2px 0; }
+.spark path { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.spark circle { fill: var(--accent); }
+.spark circle.last { fill: var(--mark); }
+.hist-test { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.hist-list { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
+.hist-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; padding: 4px 0; border-bottom: 1px solid var(--line-soft); }
+.hist-list li:last-child { border-bottom: 0; }
+.hist-list .d { color: var(--muted); }
+.hist-list li.cur { font-weight: 600; }
+.due { border: 1px solid var(--line); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.due.now { border-color: var(--accent); }
 .prof-val { font-family: var(--font-cd); font-size: 24px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* Bottom tabs */
@@ -360,6 +384,7 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
       <div class="meter" id="res-meter" aria-hidden="true"></div>
       <div class="small" id="res-detail"></div>
       <div class="small" id="res-next"></div>
+      <div id="res-delta"></div>
     </div>
     <div class="card pad" style="display:flex;flex-direction:column;gap:10px">
       <div class="lbl" id="res-table-lbl"></div>
@@ -398,6 +423,7 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
     </div>
     <div class="card marks pad overall" id="prof-overall"></div>
     <div class="card pad" id="prof-rows"></div>
+    <div class="card pad" id="prof-progress" style="display:flex;flex-direction:column;gap:14px" hidden></div>
     <div class="note small" id="prof-note"></div>
     <div class="card pad" style="display:flex;flex-direction:column;gap:6px">
       <div class="lbl">Fuentes</div>
@@ -2796,6 +2822,205 @@ function createAnalyzer(test, opts) {
 return { EX_CONFIG, createAnalyzer };
 })();
 // ---- app.js ----
+__mods["history"] = (() => {
+/* ====================================================================
+   FitGram v0 — historial de evaluaciones.
+
+   El resto de la app guardaba un solo resultado por prueba y lo
+   sobreescribia al repetirla, asi que no habia con que comparar. Aqui vive
+   la serie: cada prueba es una lista de resultados ordenada por fecha.
+
+   Es logica pura a proposito (no toca el DOM ni localStorage) para poder
+   probarla sin navegador: `node --test test/`.
+
+   Vocabulario:
+     resultado  una corrida guardada: { value, date, invalid, profile, ... }
+     serie      todos los resultados de una prueba, del mas viejo al mas nuevo
+     historial  { pushup: serie, squat: serie, plank: serie }
+     vuelta     la n-esima vez que se hace cada prueba; la vuelta 1 es la
+                primera evaluacion completa, la 2 la de las 4 semanas siguientes
+   ==================================================================== */
+
+const MAX_PER_TEST = 50; // tope por prueba: localStorage ronda los 5 MB
+const CYCLE_DAYS = 28;   // "repitela cada 4 semanas"
+const DAY = 86400000;
+
+const isResult = (r) => !!r && typeof r === 'object'
+  && Number.isFinite(Number(r.value)) && r.value !== null && r.value !== ''
+  && !Number.isNaN(Date.parse(r.date));
+const tOf = (r) => Date.parse(r.date);
+const byDate = (a, b) => tOf(a) - tOf(b);
+
+function emptyHistory(order) {
+  const h = {};
+  for (const t of order) h[t] = [];
+  return h;
+}
+
+/**
+ * Normaliza el historial: descarta entradas invalidas, ordena por fecha, corta
+ * en el tope y deja el log de repeticiones solo en la ultima entrada de cada
+ * prueba (es lo unico que lo usa, y pesa demasiado para guardarlo 50 veces).
+ */
+function trim(history, order, max = MAX_PER_TEST) {
+  const out = {};
+  for (const t of order) {
+    const arr = (history?.[t] || []).filter(isResult).sort(byDate).slice(-max);
+    out[t] = arr.map((r, i) => {
+      if (i === arr.length - 1 || r.log == null) return r;
+      const copy = Object.assign({}, r);
+      delete copy.log;
+      return copy;
+    });
+  }
+  return out;
+}
+
+function latestOf(history, test) {
+  const arr = history?.[test] || [];
+  return arr.length ? arr[arr.length - 1] : null;
+}
+
+/** El ultimo resultado de cada prueba, con la forma que el resto de la app ya espera. */
+function latestMap(history, order) {
+  const out = {};
+  for (const t of order) {
+    const r = latestOf(history, t);
+    if (r) out[t] = r;
+  }
+  return out;
+}
+
+/**
+ * Lee lo guardado en el telefono y devuelve siempre un historial, venga de la
+ * version que guardaba la serie o de la anterior que guardaba un solo resultado.
+ * Nadie pierde su medicion al actualizar la app.
+ */
+function migrateStore(stored, order) {
+  const raw = stored?.history && typeof stored.history === 'object' ? stored.history : null;
+  let history;
+  if (raw) {
+    history = trim(raw, order);
+    // Por si quedo un resultado suelto de la version vieja que no esta en la serie.
+    for (const t of order) {
+      const last = stored?.results?.[t];
+      if (isResult(last) && !history[t].some((r) => r.date === last.date)) {
+        history[t] = trim({ [t]: history[t].concat([last]) }, [t])[t];
+      }
+    }
+  } else {
+    history = emptyHistory(order);
+    for (const t of order) {
+      const last = stored?.results?.[t];
+      if (isResult(last)) history[t] = [last];
+    }
+  }
+  return { history, results: latestMap(history, order) };
+}
+
+/** Agrega un resultado sin tocar el historial que recibe. */
+function pushResult(history, test, result, order, max = MAX_PER_TEST) {
+  const base = {};
+  for (const t of order) base[t] = (history?.[t] || []).slice();
+  base[test] = (base[test] || []).concat([result]);
+  return trim(base, order, max);
+}
+
+function bestOf(history, test) {
+  const arr = history?.[test] || [];
+  return arr.reduce((b, r) => (b == null || Number(r.value) > Number(b.value) ? r : b), null);
+}
+
+/**
+ * Lo que cambio entre la ultima medicion y la anterior.
+ * null cuando es la primera vez: no hay nada que comparar y no se inventa.
+ */
+function deltaOf(history, test) {
+  const arr = history?.[test] || [];
+  if (arr.length < 2) return null;
+  const curr = arr[arr.length - 1];
+  const prev = arr[arr.length - 2];
+  const diff = Number(curr.value) - Number(prev.value);
+  const best = bestOf(history, test);
+  return {
+    test, prev, curr, diff,
+    dir: diff > 0 ? 'up' : diff < 0 ? 'down' : 'same',
+    days: Math.round((tOf(curr) - tOf(prev)) / DAY),
+    count: arr.length,
+    isBest: best == null || Number(curr.value) >= Number(best.value),
+  };
+}
+
+/**
+ * Las evaluaciones agrupadas: la vuelta n toma la n-esima medicion de cada
+ * prueba. Una vuelta sin las tres pruebas se marca incompleta en vez de
+ * rellenarse con la de otra fecha.
+ */
+function roundsOf(history, order) {
+  const n = order.reduce((m, t) => Math.max(m, (history?.[t] || []).length), 0);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const results = {};
+    let date = null;
+    for (const t of order) {
+      const r = (history?.[t] || [])[i];
+      if (!r) continue;
+      results[t] = r;
+      if (date == null || tOf(r) > Date.parse(date)) date = r.date;
+    }
+    out.push({ n: i + 1, date, results, complete: order.every((t) => !!results[t]) });
+  }
+  return out;
+}
+
+/** Cuanto falta (o hace cuanto se paso) para la siguiente evaluacion. */
+function dueInfo(history, order, now = new Date()) {
+  const dates = order.map((t) => latestOf(history, t)).filter(Boolean).map(tOf);
+  if (!dates.length) return { due: false, sinceDays: null, daysLeft: null, date: null, cycleDays: CYCLE_DAYS };
+  const last = Math.max.apply(null, dates);
+  const sinceDays = Math.round((now.getTime() - last) / DAY);
+  return {
+    due: sinceDays >= CYCLE_DAYS,
+    sinceDays,
+    daysLeft: Math.max(0, CYCLE_DAYS - sinceDays),
+    date: new Date(last).toISOString(),
+    cycleDays: CYCLE_DAYS,
+  };
+}
+
+/** Una linea en castellano con el cambio. Sin adjetivos: el numero y los dias. */
+function deltaText(d, test) {
+  if (!d) return '';
+  const secs = test?.unit === 's';
+  const mag = Math.abs(d.diff).toFixed(secs ? 1 : 0).replace('.', ',');
+  const unit = secs ? ' s' : (Math.abs(d.diff) === 1 ? ' repetición' : ' repeticiones');
+  const days = d.days === 0 ? 'hoy mismo' : d.days === 1 ? 'hace 1 día' : `hace ${d.days} días`;
+  if (d.dir === 'same') return `Lo mismo que ${days}.`;
+  const verb = d.dir === 'up' ? 'Subiste' : 'Bajaste';
+  const sign = d.dir === 'up' ? '+' : '-';
+  return `${verb} ${sign}${mag}${unit} respecto a ${days}.`;
+}
+
+/** Puntos para el grafico de una prueba: x repartido parejo, y segun el valor. */
+function sparkPoints(history, test, w, h, pad = 3) {
+  const arr = history?.[test] || [];
+  if (arr.length < 2) return [];
+  const vals = arr.map((r) => Number(r.value));
+  const lo = Math.min.apply(null, vals);
+  const hi = Math.max.apply(null, vals);
+  const span = hi - lo || 1;
+  return arr.map((r, i) => ({
+    x: pad + (i * (w - 2 * pad)) / (arr.length - 1),
+    y: h - pad - ((Number(r.value) - lo) * (h - 2 * pad)) / span,
+    value: Number(r.value),
+    date: r.date,
+  }));
+}
+
+return { MAX_PER_TEST, CYCLE_DAYS, emptyHistory, trim, latestOf, latestMap,
+  migrateStore, pushResult, bestOf, deltaOf, roundsOf, dueInfo, deltaText, sparkPoints };
+})();
+
 __mods["app"] = (() => {
 // FitGram v0 — app shell: screens, camera, MediaPipe Pose Landmarker, test runner, results.
 // Modules are inlined by build.mjs; imports below are rewritten at build time.
@@ -2803,6 +3028,7 @@ const { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } 
 const { createAnalyzer } = __mods["exercises"];
 const { synthSession } = __mods["synth"];
 const { toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } = __mods["skeleton"];
+const Hist = __mods["history"];
 /* ------------------------------------------------------------------ config */
 
 const CFG = (typeof window !== 'undefined' && window.FITGRAM_CONFIG) || {};
@@ -2876,7 +3102,7 @@ function loadStore() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || {}; } catch { return {}; }
 }
 function saveStore() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify({ profile: S.profile, results: S.results, settings: S.settings })); } catch { /* storage unavailable */ }
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ profile: S.profile, results: S.results, history: S.history, settings: S.settings })); } catch { /* storage unavailable */ }
 }
 
 async function fetchBytes(url, onProgress) {
@@ -3048,9 +3274,13 @@ const Engine = {
 /* ------------------------------------------------------------------ state */
 
 const stored = loadStore();
+const restored = Hist.migrateStore(stored, ORDER);
 const S = {
   profile: stored.profile || { age: null, sex: null },
-  results: stored.results || {},
+  // `history` es la fuente: la serie completa de cada prueba.
+  // `results` es solo el ultimo de cada serie, porque las pantallas ya lo usan asi.
+  history: restored.history,
+  results: restored.results,
   settings: Object.assign({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true }, stored.settings || {}),
   screen: null,
   test: null,
@@ -3148,14 +3378,14 @@ function renderHub() {
     b.className = 'card test-card' + (id === next ? ' next' : '');
     b.innerHTML = `<span class="test-n">${t.n}</span>
       <span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="test-name">${esc(t.name)}</span><span class="test-q">${esc(t.measures)}</span></span>
-      <span class="test-status">${r ? `<span class="test-val">${esc(resultText(id, r.value))}</span>${cls ? `<span class="chip cat">${esc(cls.category.label)}</span>` : ''}` : '<span class="test-val muted" style="font-size:18px">Pendiente</span>'}</span>`;
-    b.setAttribute('aria-label', `${t.name}: ${r ? resultText(id, r.value) + (cls ? ', ' + cls.category.label : '') : 'pendiente'}`);
+      <span class="test-status">${r ? `<span class="test-val">${esc(resultText(id, r.value))}</span>${cls ? `<span class="chip cat">${esc(cls.category.label)}</span>` : ''}${deltaChip(id)}` : '<span class="test-val muted" style="font-size:18px">Pendiente</span>'}</span>`;
+    b.setAttribute('aria-label', `${t.name}: ${r ? resultText(id, r.value) + (cls ? ', ' + cls.category.label : '') + deltaAria(id) : 'pendiente'}`);
     b.addEventListener('click', () => openIntro(id));
     list.appendChild(b);
   }
   const done = ORDER.filter((t) => S.results[t]).length;
   $('hub-title').textContent = done === 3 ? 'Evaluación completa' : 'Tu evaluación';
-  $('hub-sub').textContent = `${profileTag()}. ${done === 3 ? 'Puedes repetir cualquier prueba cuando quieras.' : '3 pruebas. Descansa lo que necesites entre una y otra.'}`;
+  $('hub-sub').textContent = `${profileTag()}. ${hasDemoData() ? 'Estás viendo datos de demostración.' : done === 3 ? 'Puedes repetir cualquier prueba cuando quieras.' : '3 pruebas. Descansa lo que necesites entre una y otra.'}`;
   const btn = $('btn-hub');
   btn.textContent = next ? `${done ? 'Continuar' : 'Comenzar'} · ${TESTS[next].short}` : 'Ver mi estado de forma';
   btn.onclick = () => (next ? openIntro(next) : show('profile'));
@@ -3830,7 +4060,11 @@ const Runner = {
     const value = this.test === 'plank' ? Math.round((st.value || 0) * 10) / 10 : (st.value || 0);
     const result = { value, invalid: st.invalid || 0, endReason, mode: this.mode, date: new Date().toISOString(), log: (st.log || []).slice(0, 200),
       profile: { age: S.profile.age, sex: S.profile.sex } };
-    if (this.mode !== 'demo') { S.results[this.test] = result; saveStore(); }
+    if (this.mode !== 'demo') {
+      S.history = Hist.pushResult(S.history, this.test, result, ORDER);
+      S.results = Hist.latestMap(S.history, ORDER);
+      saveStore();
+    }
     S.last = { test: this.test, result, rec: this.rec, demo: this.mode === 'demo' };
     const test = this.test;
     const sid = this.sid;
@@ -3899,6 +4133,8 @@ function renderResult(test) {
     : `${r.invalid} no válidas. Terminó porque ${endTxt}.`;
   $('res-detail').textContent = detail;
   $('res-next').textContent = cls ? (cls.next ? `Te faltan ${t.unit === 's' ? num(cls.next.needed, 0) + ' s' : cls.next.needed + (cls.next.needed === 1 ? ' repetición' : ' repeticiones')} para llegar a «${cls.next.label}».` : 'Estás en la categoría más alta de la tabla.') : '';
+
+  renderDelta($('res-delta'), test, { demo: !!L?.demo });
 
   if (cls) {
     const variant = test === 'pushup' ? (S.profile.sex === 'F' ? ' · con apoyo de rodillas' : ' · desde los pies') : '';
@@ -3970,6 +4206,192 @@ function setupReview(rec) {
   Review = { stop() { playing = false; cancelAnimationFrame(raf); view?.destroy?.(); } };
 }
 
+/* ------------------------------------------------------------------ avance */
+
+const DATE_FMT = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
+const dateLabel = (iso) => { const d = new Date(iso); return isNaN(d.getTime()) ? '—' : DATE_FMT.format(d); };
+const valText = (test, v) => (TESTS[test].unit === 's' ? `${num(v, 1)} s` : `${v} rep`);
+
+/** El cambio de una prueba, en corto: "+9 rep", "-2,5 s", "igual". */
+function deltaShort(test, d) {
+  if (!d) return '';
+  if (d.dir === 'same') return 'igual';
+  const T = TESTS[test];
+  const mag = Math.abs(d.diff).toFixed(T.unit === 's' ? 1 : 0).replace('.', ',');
+  return `${d.dir === 'up' ? '+' : '-'}${mag}${T.unit === 's' ? ' s' : ' rep'}`;
+}
+
+function deltaChip(test) {
+  const d = Hist.deltaOf(S.history, test);
+  if (!d) return '';
+  return `<span class="delta-inline ${d.dir}">${esc(deltaShort(test, d))}</span>`;
+}
+
+function deltaAria(test) {
+  const d = Hist.deltaOf(S.history, test);
+  return d ? `. ${Hist.deltaText(d, TESTS[test])}` : '';
+}
+
+/**
+ * Bloque "qué cambió" de la pantalla de resultado.
+ * Con una sola medición no compara nada: dice que es el punto de partida.
+ */
+function renderDelta(box, test, { demo = false } = {}) {
+  const T = TESTS[test];
+  if (demo) {
+    box.innerHTML = `<div class="delta"><p class="small muted" style="margin:0">La demostración no se guarda, así que no entra en tu historial.</p></div>`;
+    return;
+  }
+  const d = Hist.deltaOf(S.history, test);
+  if (!d) {
+    box.innerHTML = `<div class="delta"><div class="lbl">Tu punto de partida</div>
+      <p class="small" style="margin:0">Es tu primera medición de ${esc(T.short.toLowerCase())}. Repite la prueba en ${Hist.CYCLE_DAYS} días y acá vas a ver cuánto cambió.</p></div>`;
+    return;
+  }
+  let catTxt = '';
+  try {
+    const a = classify(test, d.prev.value, d.prev.profile || S.profile);
+    const b = classify(test, d.curr.value, d.curr.profile || S.profile);
+    if (a && b && a.category.key !== b.category.key) catTxt = `<span class="chip cat">${esc(a.category.label)} → ${esc(b.category.label)}</span>`;
+  } catch (e) { console.warn(e); }
+  const sign = d.dir === 'up' ? '+' : d.dir === 'down' ? '-' : '=';
+  const mag = d.dir === 'same' ? '0' : Math.abs(d.diff).toFixed(T.unit === 's' ? 1 : 0).replace('.', ',');
+  box.innerHTML = `<div class="delta ${d.dir}">
+    <div class="lbl">Qué cambió</div>
+    <div class="delta-row">
+      <span class="delta-big">${sign}${mag}</span>
+      <span class="delta-unit">${T.unit === 's' ? 'segundos' : esc(T.unitLong)}</span>
+      ${catTxt}
+    </div>
+    <p class="small" style="margin:0">${esc(dateLabel(d.prev.date))}: ${esc(valText(test, d.prev.value))}. Ahora: ${esc(valText(test, d.curr.value))}. ${esc(Hist.deltaText(d, T))}</p>
+    ${d.isBest && d.count > 1 ? '<p class="small" style="margin:0">Es tu mejor marca hasta ahora.</p>' : ''}
+    <p class="small muted" style="margin:0">${d.count} ${d.count === 1 ? 'medición' : 'mediciones'} guardadas en este teléfono.</p>
+    ${hasDemoData() ? `<div class="note warn small" style="margin:4px 0 0">${esc(DEMO_WARN)}</div>` : ''}
+  </div>`;
+}
+
+/** El índice FitGram de una vuelta, con las pruebas que tenga. */
+function roundIndex(round) {
+  const parts = {};
+  for (const t of ORDER) {
+    const r = round.results[t];
+    if (!r) { parts[t] = null; continue; }
+    try { parts[t] = classify(t, r.value, r.profile || S.profile); } catch { parts[t] = null; }
+  }
+  try { return fitnessProfile(parts); } catch (e) { console.warn(e); return null; }
+}
+
+/** Gráfico de la serie de una prueba. La lista de abajo es su alternativa en texto. */
+function sparkSVG(test, w = 280, h = 46) {
+  const pts = Hist.sparkPoints(S.history, test, w, h);
+  if (pts.length < 2) return '';
+  const path = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const dots = pts.map((p, i) => {
+    const last = i === pts.length - 1;
+    return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${last ? 3.4 : 2.1}"${last ? ' class="last"' : ''}/>`;
+  }).join('');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${path}"/>${dots}</svg>`;
+}
+
+/* --- datos de demostración -------------------------------------------------
+   El avance solo se ve con varias mediciones separadas en el tiempo, y nadie
+   tiene dos meses para esperar antes de una presentación. Esto siembra tres
+   evaluaciones de ejemplo (hace 8 semanas, hace 4, hoy) para poder mirar y
+   mostrar la pantalla. Queda marcado en pantalla: no se presenta como dato real.
+
+   Se activa con `index.html?demo=historial`, o desde la consola con
+   `FITGRAM.seedDemoHistory()`. Se borra con «Borrar mis datos de este teléfono».
+   --------------------------------------------------------------------------- */
+
+const DEMO_SERIES = { pushup: [18, 24, 29], squat: [26, 33, 41], plank: [38, 52, 61.5] };
+
+function demoHistory(now = Date.now()) {
+  const h = Hist.emptyHistory(ORDER);
+  for (const t of ORDER) {
+    const vals = DEMO_SERIES[t] || [];
+    h[t] = vals.map((v, i) => ({
+      value: v,
+      invalid: t === 'plank' ? 0 : 3 - i,
+      endReason: 'manual',
+      mode: 'demo',
+      demo: true,
+      date: new Date(now - (vals.length - 1 - i) * Hist.CYCLE_DAYS * 86400000).toISOString(),
+      profile: { age: S.profile.age || 20, sex: S.profile.sex || 'M' },
+    }));
+  }
+  return Hist.trim(h, ORDER);
+}
+
+/** True si lo guardado viene del sembrador y no de pruebas reales. */
+function hasDemoData() {
+  return ORDER.some((t) => (S.history?.[t] || []).some((r) => r.demo));
+}
+
+function seedDemoHistory(target = 'profile') {
+  if (!S.profile.age) S.profile.age = 20;
+  if (!S.profile.sex) S.profile.sex = 'M';
+  S.history = demoHistory();
+  S.results = Hist.latestMap(S.history, ORDER);
+  S.last = null;
+  saveStore();
+  if (ORDER.includes(target)) { S.test = target; show('result'); renderResult(target); return; }
+  show(target === 'hub' ? 'hub' : 'profile');
+}
+
+const DEMO_WARN = 'Datos de demostración: tres evaluaciones de ejemplo, no mediciones tuyas. Bórralas con «Borrar mis datos de este teléfono» antes de usar la app en serio.';
+
+/** Tarjeta de avance del perfil: cuándo repetir, índice por evaluación y serie de cada prueba. */
+function renderProgress() {
+  const box = $('prof-progress');
+  const rounds = Hist.roundsOf(S.history, ORDER);
+  if (!rounds.length) { box.hidden = true; return; }
+  box.hidden = false;
+
+  const due = Hist.dueInfo(S.history, ORDER);
+  const dueHtml = !due.date ? '' : `<div class="due${due.due ? ' now' : ''}">
+    <div class="lbl">${due.due ? 'Te toca repetir' : 'Próxima evaluación'}</div>
+    <p class="small" style="margin:0">${due.due
+      ? `Tu última prueba fue el ${esc(dateLabel(due.date))}, hace ${due.sinceDays} días. Repite las tres para ver cuánto cambiaste.`
+      : `Última prueba el ${esc(dateLabel(due.date))}. Te toca repetir las tres el ${esc(dateLabel(new Date(Date.parse(due.date) + due.cycleDays * 86400000).toISOString()))}, en ${due.daysLeft} ${due.daysLeft === 1 ? 'día' : 'días'}.`}</p>
+  </div>`;
+
+  const idx = rounds.map((rd) => ({ rd, prof: roundIndex(rd) })).filter((x) => x.prof && x.prof.position != null);
+  let idxHtml = '';
+  if (idx.length > 1) {
+    idxHtml = `<div>
+      <div class="lbl">Índice FitGram por evaluación</div>
+      <ul class="hist-list">${idx.map((x, i) => {
+        const dp = i ? x.prof.position - idx[i - 1].prof.position : null;
+        const dir = dp == null ? '' : dp > 0 ? 'up' : dp < 0 ? 'down' : 'same';
+        const dtxt = dp == null ? '' : ` <span class="delta-inline ${dir}">${dp > 0 ? '+' : dp < 0 ? '-' : '='}${Math.abs(dp)}</span>`;
+        return `<li class="${i === idx.length - 1 ? 'cur' : ''}"><span>Evaluación ${x.rd.n} <span class="d">· ${esc(dateLabel(x.rd.date))}${x.rd.complete ? '' : ' · incompleta'}</span></span><span>${x.prof.position}/100${dtxt}</span></li>`;
+      }).join('')}</ul>
+      <p class="small muted" style="margin:6px 0 0">La evaluación N junta la N-ésima vez que hiciste cada prueba. Si dejaste una sin hacer, queda marcada como incompleta y el índice usa solo las que hay.</p>
+    </div>`;
+  }
+
+  const tests = ORDER.map((t) => {
+    const serie = S.history[t] || [];
+    if (!serie.length) return '';
+    const T = TESTS[t];
+    const d = Hist.deltaOf(S.history, t);
+    const best = Hist.bestOf(S.history, t);
+    const shown = serie.slice(-6);
+    return `<div class="hist-test">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+        <div class="lbl" style="color:var(--ink)">${esc(T.name)}</div>
+        ${d ? `<span class="delta-inline ${d.dir}">${esc(deltaShort(t, d))}</span>` : '<span class="small muted">una sola medición</span>'}
+      </div>
+      ${sparkSVG(t)}
+      <ul class="hist-list">${shown.map((r, i) => `<li class="${i === shown.length - 1 ? 'cur' : ''}"><span class="d">${esc(dateLabel(r.date))}</span><span>${esc(valText(t, r.value))}${serie.length > 1 && r === best ? ' · tu mejor' : ''}</span></li>`).join('')}</ul>
+      ${serie.length > shown.length ? `<p class="small muted" style="margin:0">${serie.length} mediciones en total; se muestran las ${shown.length} últimas.</p>` : ''}
+    </div>`;
+  }).join('');
+
+  const warn = hasDemoData() ? `<div class="note warn small" style="margin:0">${esc(DEMO_WARN)}</div>` : '';
+  box.innerHTML = `<div class="lbl">Tu avance</div>${warn}${dueHtml}${idxHtml}${tests}`;
+}
+
 /* ------------------------------------------------------------------ profile */
 
 function renderProfile() {
@@ -3999,6 +4421,7 @@ function renderProfile() {
   $('prof-note').textContent = prof?.note || 'Índice exploratorio de FitGram: promedia posiciones de baremos distintos; no es un puntaje validado.';
   const srcs = ORDER.map((t) => sourceOf(t)).filter((s) => s.apa);
   $('prof-src').innerHTML = srcs.map((s) => `<div style="margin-bottom:8px">${esc(s.apa)} ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>` : ''}</div>`).join('');
+  renderProgress();
   $('btn-prof-eval').textContent = nextPending() ? `Seguir · ${TESTS[nextPending()].short}` : 'Repetir una prueba';
   $('btn-prof-eval').onclick = () => (nextPending() ? openIntro(nextPending()) : show('hub'));
 }
@@ -4068,7 +4491,7 @@ function bind() {
   $('btn-reset-no').addEventListener('click', () => { $('reset-confirm').hidden = true; });
   $('btn-reset-yes').addEventListener('click', () => {
     try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
-    S.profile = { age: null, sex: null }; S.results = {}; S.last = null;
+    S.profile = { age: null, sex: null }; S.results = {}; S.history = Hist.emptyHistory(ORDER); S.last = null;
     $('reset-confirm').hidden = true;
     renderOnb(); show('onb');
   });
@@ -4085,8 +4508,12 @@ function boot() {
   Voice.init();
   bind();
   renderOnb();
+  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, seedDemoHistory }; // handy for debugging and automated tests
+  // ?demo=historial abre el perfil; ?demo=pushup|squat|plank abre esa pantalla de resultado.
+  let seed = null;
+  try { seed = new URLSearchParams(location.search).get('demo'); } catch { /* ignore */ }
+  if (seed) { seedDemoHistory(seed === 'historial' ? 'profile' : seed); return; }
   if (S.profile.age && S.profile.sex) show('hub'); else show('onb');
-  window.FITGRAM = { S, Runner, Engine, classify, URLS }; // handy for debugging and automated tests
 }
 
 if (typeof document !== 'undefined') {
