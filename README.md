@@ -47,6 +47,7 @@ Todo vive en `index.html`, en pseudo-módulos dentro de un solo `<script type="m
 | `synth` | Personas sintéticas para probar el pipeline sin cámara. |
 | `exercises` | Máquinas de estado que validan y cuentan cada repetición. |
 | `history` | **Nuevo.** La serie de resultados de cada prueba y el cálculo del avance. |
+| `validation` | **Nuevo.** Comparación con evaluadores humanos: acuerdo, Bland-Altman y CCI(2,1). |
 | `app` | Pantallas, navegación y persistencia. |
 
 Las dependencias (`lib/`, `models/`, `wasm/`) están versionadas para que la app
@@ -93,13 +94,57 @@ También desde la consola: `FITGRAM.seedDemoHistory()`.
 Quedan marcados en pantalla como datos de demostración. Se borran con «Borrar
 mis datos de este teléfono».
 
+## Modo validación
+
+La hoja de ruta compromete, como etapa de hoy: *«comparar FitGram con 2
+evaluadores en 15 personas, meta de 95 % de acuerdo»*. Esto deja registrar esas
+comparaciones y calcula el acuerdo.
+
+Se activa en Ajustes → «Modo validación», o directo en
+`index.html?modo=validacion`. Está apagado por omisión: es una herramienta para
+el equipo, no para quien se evalúa.
+
+Para cada persona y cada prueba se anota el conteo de FitGram y el de cada
+evaluador sobre **la misma serie**. Después de una prueba real aparece un enlace
+en la pantalla de resultado que abre el formulario con el conteo de la app ya
+puesto.
+
+Qué calcula, y por qué:
+
+- **Acuerdo relativo (%)**: 100 % menos la diferencia contra el promedio de los
+  evaluadores, relativa a ese promedio. Es el titular porque no tiene unidad y
+  se puede promediar entre repeticiones y segundos.
+- **Referencia = promedio de los evaluadores**, no uno de ellos. No hay motivo
+  para tratar a un humano como la verdad.
+- **Acuerdo entre los evaluadores.** Si los dos humanos no coinciden entre sí no
+  existe patrón contra el cual comparar la app, y el 95 % no significa nada. La
+  pantalla avisa cuando difieren más que la meta. Es la primera pregunta que
+  hace cualquiera que sepa del tema.
+- **Sesgo y límites de acuerdo** (Bland y Altman): si la app cuenta de más o de
+  menos de forma sistemática, y cuánto puede desviarse en un caso cualquiera.
+- **CCI(2,1)**: dos vías, efectos aleatorios, acuerdo absoluto, evaluador único
+  (Shrout y Fleiss, 1979). Es lo que se reporta en la literatura del área. Con
+  menos de 5 sujetos la pantalla lo muestra con una advertencia, porque no
+  significa gran cosa.
+- En las pruebas **cronometradas** no se informa el acuerdo exacto ni el «±1»:
+  acertar el segundo exacto en un sostenido de 60 s no quiere decir nada.
+- Cuando falta un dato se devuelve vacío, nunca un número inventado.
+
+Las mediciones se guardan en su propia llave (`fitgram.validation.v1`) y
+«Borrar mis datos de este teléfono» **no** las toca, para que una limpieza del
+perfil no se lleve los datos del estudio. Igual viven solo en ese navegador: hay
+que exportar seguido, con los botones de CSV (separado con `;`, decimales con
+coma, para Excel) y JSON.
+
+El CCI está verificado contra el ejemplo publicado de Shrout y Fleiss (1979):
+6 sujetos, 4 jueces, CCI(2,1) = 0,29.
+
 ## Qué falta
 
 - **Los baremos cubren solo 18 a 21 años.** El pitch menciona escolares y
   mayores de 60; para eso hacen falta otras tablas.
-- **No hay validación contra evaluadores humanos.** La hoja de ruta la pone como
-  etapa de hoy (15 personas, meta de 95 % de acuerdo) y no hay forma de
-  registrarla en la app.
+- **La validación todavía no se corre.** La herramienta está; los datos no. Hay
+  que medir a las 15 personas.
 - **No hay backend ni cuentas.** Todo vive en el `localStorage` de ese teléfono:
   si se cambia de teléfono o se borra el navegador, el historial se pierde.
 - `createLifter('videopose3d')` es un stub que devuelve `null`.

@@ -232,6 +232,18 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .hist-list li.cur { font-weight: 600; }
 .due { border: 1px solid var(--line); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .due.now { border-color: var(--accent); }
+/* modo validacion */
+.inp { min-height: 48px; width: 100%; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: inherit; font-size: 17px; padding: 0 10px; }
+.inp::placeholder { color: var(--muted); opacity: .7; }
+.v-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.v-counts .lbl { font-size: 12px; letter-spacing: .04em; }
+.stat { border: 1px solid var(--line-soft); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.stat + .stat { margin-top: 8px; }
+.stat-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.stat-v { font-family: var(--font-cd); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.vrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; font-variant-numeric: tabular-nums; }
+.vrow:last-child { border-bottom: 0; }
+.vrow .x { border: 1px solid var(--line); background: transparent; color: var(--muted); min-height: 34px; min-width: 34px; font-size: 16px; }
 .prof-val { font-family: var(--font-cd); font-size: 24px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* Bottom tabs */
@@ -413,6 +425,7 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
       <button class="btn" id="btn-res-next" type="button"></button>
       <button class="btn ghost" id="btn-res-retry" type="button">Repetir</button>
     </div>
+    <button class="link-btn" id="btn-res-valid" type="button" hidden>Registrar el conteo de los evaluadores</button>
   </section>
 
   <!-- 6. Perfil -->
@@ -437,6 +450,51 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
       <p style="margin:0 0 10px">¿Borrar edad, sexo y resultados guardados en este teléfono?</p>
       <div class="btn-row"><button class="btn sm" id="btn-reset-yes" type="button">Sí, borrar</button><button class="btn ghost sm" id="btn-reset-no" type="button">No</button></div>
     </div>
+  </section>
+
+  <!-- 7. Modo validación (para el equipo, no para quien se evalúa) -->
+  <section class="screen" id="scr-valid" hidden>
+    <div>
+      <h1 class="screen-title">Modo validación</h1>
+      <p class="screen-sub">Comparar el conteo de FitGram con el de dos evaluadores humanos sobre las mismas repeticiones. Meta de la etapa 1: 15 personas, 95 % de acuerdo.</p>
+    </div>
+    <div class="card marks pad" id="valid-summary" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="card pad" style="display:flex;flex-direction:column;gap:14px">
+      <div class="lbl">Agregar una medición</div>
+      <div class="field">
+        <label class="lbl" for="v-part" style="color:var(--ink)">Código del participante</label>
+        <input class="inp" id="v-part" type="text" autocomplete="off" placeholder="P01" maxlength="12">
+        <div class="small muted">Un código, no el nombre: el protocolo es anónimo.</div>
+      </div>
+      <div class="field">
+        <div class="lbl" id="v-test-lbl" style="color:var(--ink)">Prueba</div>
+        <div class="seg" role="group" aria-labelledby="v-test-lbl" id="v-test"></div>
+      </div>
+      <div class="v-counts">
+        <div class="field"><label class="lbl" for="v-app">FitGram</label><input class="inp" id="v-app" type="text" inputmode="decimal" autocomplete="off"></div>
+        <div class="field"><label class="lbl" for="v-r1">Evaluador 1</label><input class="inp" id="v-r1" type="text" inputmode="decimal" autocomplete="off"></div>
+        <div class="field"><label class="lbl" for="v-r2">Evaluador 2</label><input class="inp" id="v-r2" type="text" inputmode="decimal" autocomplete="off"></div>
+      </div>
+      <div class="small muted" id="v-unit-hint"></div>
+      <div class="field"><label class="lbl" for="v-note">Nota (opcional)</label><input class="inp" id="v-note" type="text" autocomplete="off" placeholder="de lado, poca luz, polera suelta…"></div>
+      <div class="note warn small" id="v-error" hidden></div>
+      <button class="btn" id="v-save" type="button">Guardar medición</button>
+    </div>
+    <div class="card pad" style="display:flex;flex-direction:column;gap:12px">
+      <div class="lbl">Mediciones guardadas</div>
+      <div id="valid-list"></div>
+      <div class="btn-row">
+        <button class="btn quiet sm" id="v-csv" type="button">Exportar CSV</button>
+        <button class="btn quiet sm" id="v-json" type="button">Exportar JSON</button>
+      </div>
+      <button class="link-btn" id="v-clear" type="button">Borrar todas las mediciones de validación</button>
+      <div class="note warn small" id="v-clear-confirm" hidden>
+        <p style="margin:0 0 10px">¿Borrar las <span id="v-clear-n"></span> mediciones de validación? No se puede deshacer. Exporta antes.</p>
+        <div class="btn-row"><button class="btn sm" id="v-clear-yes" type="button">Sí, borrar</button><button class="btn ghost sm" id="v-clear-no" type="button">No</button></div>
+      </div>
+    </div>
+    <div class="note small">Estos datos se guardan aparte de los resultados personales, y «Borrar mis datos de este teléfono» no los toca. Igual viven solo en este navegador: exporta seguido.</div>
+    <div class="btn-row"><button class="btn ghost" id="v-back" type="button">Volver</button></div>
   </section>
 </main>
 
@@ -466,6 +524,8 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
       <div class="lbl">Elevador 3D</div>
       <div class="small">MediaPipe world, convertido al esqueleto Human3.6M de 17 articulaciones. VideoPose3D queda listo para conectarse en la fase 2.</div>
     </div>
+    <label class="toggle-row" for="set-valid"><span>Modo validación: comparar con evaluadores humanos</span><input type="checkbox" id="set-valid"></label>
+    <button class="btn quiet sm" id="btn-open-valid" type="button" hidden>Abrir modo validación</button>
     <button class="btn ghost sm" id="btn-edit-profile" type="button">Cambiar edad o sexo</button>
   </div>
 </div>
@@ -3021,6 +3081,258 @@ return { MAX_PER_TEST, CYCLE_DAYS, emptyHistory, trim, latestOf, latestMap,
   migrateStore, pushResult, bestOf, deltaOf, roundsOf, dueInfo, deltaText, sparkPoints };
 })();
 
+__mods["validation"] = (() => {
+/* ====================================================================
+   FitGram v0 — modo validación.
+
+   La hoja de ruta compromete, como etapa de HOY: "comparar FitGram con 2
+   evaluadores en 15 personas, meta de 95 % de acuerdo". Esto guarda esas
+   comparaciones y calcula el acuerdo.
+
+   Decisiones que importan:
+
+   - La referencia es el PROMEDIO de los evaluadores humanos, no uno de ellos.
+     No hay razón para tratar a uno como verdad.
+   - Se mide también el acuerdo ENTRE los evaluadores. Si los dos humanos no
+     coinciden entre sí, no existe un patrón contra el cual comparar la app, y
+     el 95 % no significa nada. Es la primera pregunta que hace un jurado.
+   - El acuerdo relativo (sin unidad) es el titular, porque es el que se puede
+     promediar entre repeticiones y segundos.
+   - CCI(2,1): dos vías, efectos aleatorios, acuerdo absoluto, evaluador único
+     (Shrout y Fleiss, 1979). Es lo que se reporta en la literatura del área.
+   - Cuando no hay datos suficientes se devuelve null. Nunca un número inventado.
+
+   Lógica pura: sin DOM ni localStorage, para poder probarla con node --test.
+   ==================================================================== */
+
+const toNum = (v) => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+  const n = Number(String(v ?? '').trim().replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
+};
+
+const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
+
+/** Desviación estándar muestral (n-1). null con menos de dos datos. */
+function sd(xs) {
+  if (xs.length < 2) return null;
+  const m = mean(xs);
+  return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / (xs.length - 1));
+}
+
+function newId() {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  } catch { /* ignore */ }
+  return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Un registro: una persona, una prueba, el conteo de la app y el de cada
+ * evaluador humano. Sin nombres: solo un código de participante.
+ */
+function newRecord({ participant, test, app, raters, date, note }) {
+  const code = String(participant ?? '').trim().toUpperCase();
+  if (!code) throw new Error('Falta el código del participante.');
+  if (!test) throw new Error('Falta la prueba.');
+  const a = toNum(app);
+  if (Number.isNaN(a)) throw new Error('El conteo de la app no es un número.');
+  const rs = (Array.isArray(raters) ? raters : [raters]).map(toNum);
+  if (!rs.length || rs.some(Number.isNaN)) throw new Error('Falta el conteo de algún evaluador.');
+  return {
+    id: newId(),
+    participant: code,
+    test: String(test),
+    app: a,
+    raters: rs,
+    date: date || new Date().toISOString(),
+    note: String(note ?? '').trim(),
+  };
+}
+
+function addRecord(records, rec) { return (records || []).concat([rec]); }
+function removeRecord(records, id) { return (records || []).filter((r) => r.id !== id); }
+
+/** Normaliza lo leído del almacenamiento, descartando lo que no sirva. */
+function loadRecords(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const r of raw) {
+    try {
+      out.push(Object.assign(newRecord(r), { id: r.id || newId() }));
+    } catch { /* se descarta la fila rota */ }
+  }
+  return out;
+}
+
+/**
+ * Coeficiente de correlación intraclase CCI(2,1).
+ * `rows` es una matriz sujetos x evaluadores. null si no alcanza para calcularlo.
+ */
+function icc21(rows) {
+  if (!Array.isArray(rows) || rows.length < 2) return null;
+  const n = rows.length;
+  const k = rows[0]?.length ?? 0;
+  if (k < 2 || rows.some((r) => r.length !== k || r.some((v) => !Number.isFinite(v)))) return null;
+
+  const grand = mean(rows.flat());
+  const rowMeans = rows.map(mean);
+  const colMeans = Array.from({ length: k }, (_, j) => mean(rows.map((r) => r[j])));
+
+  const SSR = k * rowMeans.reduce((a, m) => a + (m - grand) ** 2, 0);
+  const SSC = n * colMeans.reduce((a, m) => a + (m - grand) ** 2, 0);
+  const SST = rows.flat().reduce((a, x) => a + (x - grand) ** 2, 0);
+  const SSE = SST - SSR - SSC;
+
+  const MSR = SSR / (n - 1);
+  const MSC = SSC / (k - 1);
+  const MSE = SSE / ((n - 1) * (k - 1));
+
+  const den = MSR + (k - 1) * MSE + (k * (MSC - MSE)) / n;
+  if (!Number.isFinite(den) || Math.abs(den) < 1e-12) return null;
+  const v = (MSR - MSE) / den;
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Bland y Altman: sesgo medio y límites de acuerdo al 95 %. */
+function blandAltman(a, b) {
+  const diffs = a.map((x, i) => x - b[i]).filter(Number.isFinite);
+  if (!diffs.length) return { bias: null, sd: null, loA: null, n: 0 };
+  const bias = mean(diffs);
+  const s = sd(diffs);
+  return {
+    bias,
+    sd: s,
+    loA: s == null ? null : [bias - 1.96 * s, bias + 1.96 * s],
+    n: diffs.length,
+  };
+}
+
+/** Acuerdo relativo medio, en porcentaje. Sin unidad, así que se puede promediar entre pruebas. */
+function relAgreementOf(pairs) {
+  if (!pairs.length) return null;
+  const vals = pairs.map(([x, ref]) => {
+    const base = Math.max(Math.abs(ref), 1);
+    return Math.max(0, Math.min(100, 100 * (1 - Math.abs(x - ref) / base)));
+  });
+  return mean(vals);
+}
+
+const pct = (hits, n) => (n ? (100 * hits) / n : null);
+
+/** Mínimo de sujetos para que un CCI signifique algo. Por debajo se informa, pero avisando. */
+const ICC_MIN_N = 5;
+
+/**
+ * Estadísticos de un conjunto de registros de la misma prueba.
+ * `timed` marca las pruebas cronometradas: en un sostenido de 60 s, acertar el
+ * segundo exacto o quedar "dentro de ±1" no significa nada, así que no se informa.
+ */
+function statsFor(records, timed = false) {
+  if (!records.length) return null;
+  const app = records.map((r) => r.app);
+  const ref = records.map((r) => mean(r.raters));
+  const ba = blandAltman(app, ref);
+
+  // Acuerdo entre los dos evaluadores humanos: solo con los registros que tengan dos.
+  const pairs = records.filter((r) => r.raters.length === 2);
+  let raters = null;
+  if (pairs.length) {
+    const r1 = pairs.map((r) => r.raters[0]);
+    const r2 = pairs.map((r) => r.raters[1]);
+    const rba = blandAltman(r1, r2);
+    raters = {
+      n: pairs.length,
+      bias: rba.bias,
+      sd: rba.sd,
+      loA: rba.loA,
+      // Cuánto se parecen los dos humanos entre sí, relativo a su propio promedio.
+      relAgreement: mean(pairs.map((r) => {
+        const base = Math.max(Math.abs(mean(r.raters)), 1);
+        return Math.max(0, Math.min(100, 100 * (1 - Math.abs(r.raters[0] - r.raters[1]) / base)));
+      })),
+      icc: icc21(pairs.map((r) => [r.raters[0], r.raters[1]])),
+    };
+  }
+
+  const people = new Set(records.map((r) => r.participant)).size;
+  return {
+    n: records.length,
+    people,
+    timed,
+    relAgreement: relAgreementOf(records.map((r) => [r.app, mean(r.raters)])),
+    exact: timed ? null : pct(records.filter((r) => r.app === mean(r.raters)).length, records.length),
+    within1: timed ? null : pct(records.filter((r) => Math.abs(r.app - mean(r.raters)) <= 1).length, records.length),
+    bias: ba.bias,
+    sd: ba.sd,
+    loA: ba.loA,
+    icc: icc21(records.map((r) => [r.app].concat(r.raters))),
+    iccReliable: people >= ICC_MIN_N,
+    raters,
+  };
+}
+
+/**
+ * Resumen por prueba y total.
+ * El total deja fuera el sesgo y los límites de acuerdo a propósito: mezclar
+ * repeticiones con segundos daría un número sin significado.
+ */
+function summary(records, order, units = {}) {
+  const rs = records || [];
+  const timedOf = (t) => units[t] === 's';
+  const byTest = {};
+  for (const t of order) {
+    const sub = rs.filter((r) => r.test === t);
+    byTest[t] = sub.length ? statsFor(sub, timedOf(t)) : null;
+  }
+  // El acuerdo relativo no tiene unidad, así que se puede promediar entre pruebas.
+  // El exacto y el ±1 solo se cuentan sobre las pruebas de repeticiones.
+  const counted = rs.filter((r) => !timedOf(r.test));
+  const overall = !rs.length ? null : {
+    n: rs.length,
+    people: new Set(rs.map((r) => r.participant)).size,
+    counted: counted.length,
+    relAgreement: relAgreementOf(rs.map((r) => [r.app, mean(r.raters)])),
+    exact: pct(counted.filter((r) => r.app === mean(r.raters)).length, counted.length),
+    within1: pct(counted.filter((r) => Math.abs(r.app - mean(r.raters)) <= 1).length, counted.length),
+  };
+  return { byTest, overall };
+}
+
+/** Número con coma decimal, como se escribe en Chile. */
+function numCL(v, dec = 2) {
+  if (v == null || !Number.isFinite(v)) return '';
+  return String(Math.round(v * 10 ** dec) / 10 ** dec).replace('.', ',');
+}
+
+const csvCell = (v) => {
+  const s = String(v ?? '');
+  return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/** CSV con ; de separador, para que Excel en Chile lo abra en columnas. */
+function toCSV(records, order) {
+  const maxR = (records || []).reduce((m, r) => Math.max(m, r.raters.length), 2);
+  const head = ['participante', 'prueba', 'fecha', 'app']
+    .concat(Array.from({ length: maxR }, (_, i) => `evaluador${i + 1}`))
+    .concat(['promedio_evaluadores', 'diferencia_app_menos_promedio', 'nota']);
+  const rows = (records || []).slice().sort((a, b) => String(a.participant).localeCompare(String(b.participant))
+    || String(a.test).localeCompare(String(b.test)));
+  const body = rows.map((r) => {
+    const m = mean(r.raters);
+    return [
+      r.participant, r.test, (r.date || '').slice(0, 10), numCL(r.app),
+      ...Array.from({ length: maxR }, (_, i) => numCL(r.raters[i])),
+      numCL(m), numCL(r.app - m), r.note || '',
+    ].map(csvCell).join(';');
+  });
+  return [head.join(';')].concat(body).join('\n') + '\n';
+}
+
+return { newRecord, addRecord, removeRecord, loadRecords, icc21, blandAltman,
+  summary, statsFor, toCSV, numCL, toNum, mean, sd };
+})();
+
 __mods["app"] = (() => {
 // FitGram v0 — app shell: screens, camera, MediaPipe Pose Landmarker, test runner, results.
 // Modules are inlined by build.mjs; imports below are rewritten at build time.
@@ -3029,6 +3341,7 @@ const { createAnalyzer } = __mods["exercises"];
 const { synthSession } = __mods["synth"];
 const { toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } = __mods["skeleton"];
 const Hist = __mods["history"];
+const Val = __mods["validation"];
 /* ------------------------------------------------------------------ config */
 
 const CFG = (typeof window !== 'undefined' && window.FITGRAM_CONFIG) || {};
@@ -3097,6 +3410,14 @@ const mmss = (sec) => { const s = Math.max(0, Math.floor(sec)); return `${Math.f
 const deg = (v) => (v == null || !isFinite(v) ? '—' : `${Math.round(v)}°`);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const sexLabel = (s) => (s === 'F' ? 'Mujer' : 'Hombre');
+
+const VALID_KEY = 'fitgram.validation.v1'; // aparte de los resultados personales, a propósito
+function loadValid() {
+  try { return Val.loadRecords(JSON.parse(localStorage.getItem(VALID_KEY) || '[]')); } catch { return []; }
+}
+function saveValid() {
+  try { localStorage.setItem(VALID_KEY, JSON.stringify(S.valid)); } catch { /* storage unavailable */ }
+}
 
 function loadStore() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || {}; } catch { return {}; }
@@ -3281,7 +3602,8 @@ const S = {
   // `results` es solo el ultimo de cada serie, porque las pantallas ya lo usan asi.
   history: restored.history,
   results: restored.results,
-  settings: Object.assign({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true }, stored.settings || {}),
+  settings: Object.assign({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false }, stored.settings || {}),
+  valid: loadValid(), // mediciones del modo validación, en su propia llave
   screen: null,
   test: null,
   last: null, // last finished run, for the result screen
@@ -3305,7 +3627,7 @@ function normsFor(test) {
 
 /* ------------------------------------------------------------------ navigation */
 
-const SCREENS = ['onb', 'hub', 'intro', 'run', 'result', 'profile'];
+const SCREENS = ['onb', 'hub', 'intro', 'run', 'result', 'profile', 'valid'];
 
 function show(name) {
   if (S.screen === 'run' && name !== 'run') Runner.teardown();
@@ -3324,6 +3646,7 @@ function show(name) {
   window.scrollTo(0, 0);
   if (name === 'hub') renderHub();
   if (name === 'profile') renderProfile();
+  if (name === 'valid') renderValid();
 }
 
 function profileTag() {
@@ -4157,6 +4480,9 @@ function renderResult(test) {
   bn.textContent = next ? `Siguiente · ${TESTS[next].short}` : 'Ver mi estado de forma';
   bn.onclick = () => (next ? openIntro(next) : show('profile'));
   $('btn-res-retry').onclick = () => openIntro(test);
+  const bv = $('btn-res-valid');
+  bv.hidden = !S.settings.valid || !!L?.demo;
+  bv.onclick = () => openValid(test, r.value);
 
   setupReview(L?.rec || []);
 }
@@ -4426,11 +4752,151 @@ function renderProfile() {
   $('btn-prof-eval').onclick = () => (nextPending() ? openIntro(nextPending()) : show('hub'));
 }
 
+/* ------------------------------------------------------------------ validación */
+
+let vTest = ORDER[0];
+const stamp = () => new Date().toISOString().slice(0, 10);
+
+function renderValidForm() {
+  const seg = $('v-test');
+  seg.innerHTML = '';
+  for (const t of ORDER) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = TESTS[t].short;
+    b.setAttribute('aria-pressed', String(t === vTest));
+    b.addEventListener('click', () => { vTest = t; renderValidForm(); });
+    seg.appendChild(b);
+  }
+  $('v-unit-hint').textContent = TESTS[vTest].unit === 's'
+    ? 'Segundos que cada uno cronometró en posición. Se admiten decimales.'
+    : 'Repeticiones que cada uno contó como válidas, sobre la misma serie.';
+}
+
+/** Bloque de una prueba en el resumen de acuerdo. */
+function statBlock(test, s) {
+  if (!s) return '';
+  const T = TESTS[test];
+  const u = T.unit === 's' ? ' s' : ' rep';
+  const loa = s.loA ? `límites ${Val.numCL(s.loA[0], 1)} a ${Val.numCL(s.loA[1], 1)}${u}` : 'faltan datos para los límites';
+  // Si los dos humanos no coinciden entre sí, no hay patrón contra el cual comparar.
+  const warn = s.raters && s.raters.relAgreement < 95
+    ? '<div class="small" style="color:var(--warn)">Los dos evaluadores difieren entre sí más que la meta. Sin un patrón humano estable, el acuerdo de la app es difícil de interpretar.</div>'
+    : '';
+  return `<div class="stat">
+    <div class="stat-head"><span class="lbl" style="color:var(--ink)">${esc(T.short)}</span><span class="stat-v">${Val.numCL(s.relAgreement, 1)} %</span></div>
+    <div class="small">${s.n} ${s.n === 1 ? 'medición' : 'mediciones'} · ${s.people} ${s.people === 1 ? 'persona' : 'personas'}${s.within1 == null ? '' : ` · ${Val.numCL(s.within1, 0)} % dentro de ±1`}</div>
+    <div class="small">Sesgo ${s.bias > 0 ? '+' : ''}${Val.numCL(s.bias, 2)}${u} (${loa})${s.icc != null ? ` · CCI(2,1) ${Val.numCL(s.icc, 2)}${s.iccReliable ? '' : ' <span class="muted">(pocos sujetos: tómalo con pinzas)</span>'}` : ''}</div>
+    ${s.raters ? `<div class="small muted">Entre evaluadores: ${Val.numCL(s.raters.relAgreement, 1)} % de acuerdo${s.raters.icc != null ? `, CCI ${Val.numCL(s.raters.icc, 2)}` : ''}.</div>` : ''}
+    ${warn}
+  </div>`;
+}
+
+const VALID_TARGET = 15; // la hoja de ruta compromete 15 personas
+
+function renderValid() {
+  renderValidForm();
+  const units = Object.fromEntries(ORDER.map((t) => [t, TESTS[t].unit]));
+  const sum = Val.summary(S.valid, ORDER, units);
+  const box = $('valid-summary');
+  if (!sum.overall) {
+    box.innerHTML = `<div class="lbl">Acuerdo con los evaluadores</div>
+      <p class="small" style="margin:0">Todavía no hay mediciones. Para cada persona y cada prueba: el conteo que entregó FitGram y el que contó cada evaluador, sobre la misma serie.</p>`;
+  } else {
+    const o = sum.overall;
+    const falta = Math.max(0, VALID_TARGET - o.people);
+    box.innerHTML = `<div class="lbl">Acuerdo con los evaluadores</div>
+      <div class="result-head">
+        <div><span class="result-big">${Val.numCL(o.relAgreement, 1)}</span><span class="result-unit">% de acuerdo</span></div>
+        <div class="result-cat">${o.people}/${VALID_TARGET}</div>
+      </div>
+      <div class="small">${o.n} ${o.n === 1 ? 'medición' : 'mediciones'} en ${o.people} ${o.people === 1 ? 'persona' : 'personas'}${o.counted ? ` · en las de repeticiones, ${Val.numCL(o.within1, 0)} % dentro de ±1 y ${Val.numCL(o.exact, 0)} % exacto` : ''}</div>
+      ${falta
+        ? `<div class="small muted">Faltan ${falta} ${falta === 1 ? 'persona' : 'personas'} para la muestra de la etapa 1.</div>`
+        : '<div class="small">Se completó la muestra de 15 personas de la etapa 1.</div>'}
+      <div>${ORDER.map((t) => statBlock(t, sum.byTest[t])).join('')}</div>
+      <div class="small muted">El acuerdo es 100 % menos la diferencia contra el promedio de los evaluadores, relativa a ese promedio. El total no promedia sesgos: mezclaría repeticiones con segundos.</div>`;
+  }
+
+  const list = $('valid-list');
+  if (!S.valid.length) {
+    list.innerHTML = '<p class="small muted" style="margin:0">Nada guardado todavía.</p>';
+  } else {
+    const rows = S.valid.slice().sort((a, b) => a.participant.localeCompare(b.participant) || ORDER.indexOf(a.test) - ORDER.indexOf(b.test));
+    list.innerHTML = rows.map((r) => {
+      const u = TESTS[r.test]?.unit === 's' ? ' s' : '';
+      const d = r.app - Val.mean(r.raters);
+      const dir = d === 0 ? 'same' : Math.abs(d) <= 1 ? 'up' : 'down';
+      return `<div class="vrow">
+        <span><strong>${esc(r.participant)}</strong> <span class="muted">· ${esc(TESTS[r.test]?.short || r.test)}</span>${r.note ? `<br><span class="muted">${esc(r.note)}</span>` : ''}</span>
+        <span>${esc(Val.numCL(r.app, 1))}${u} <span class="muted">vs ${esc(r.raters.map((x) => Val.numCL(x, 1)).join(' / '))}</span> <span class="delta-inline ${dir}">${d > 0 ? '+' : ''}${esc(Val.numCL(d, 1))}</span></span>
+        <button class="x" type="button" data-del="${esc(r.id)}" aria-label="Borrar la medición de ${esc(r.participant)}">×</button>
+      </div>`;
+    }).join('');
+    for (const b of list.querySelectorAll('[data-del]')) {
+      b.addEventListener('click', () => { S.valid = Val.removeRecord(S.valid, b.dataset.del); saveValid(); renderValid(); });
+    }
+  }
+  $('v-clear-n').textContent = String(S.valid.length);
+}
+
+function validError(msg) {
+  const e = $('v-error');
+  e.hidden = !msg;
+  e.textContent = msg || '';
+}
+
+function saveValidRecord() {
+  try {
+    S.valid = Val.addRecord(S.valid, Val.newRecord({
+      participant: $('v-part').value,
+      test: vTest,
+      app: $('v-app').value,
+      raters: [$('v-r1').value, $('v-r2').value],
+      note: $('v-note').value,
+    }));
+    saveValid();
+    for (const id of ['v-app', 'v-r1', 'v-r2', 'v-note']) $(id).value = '';
+    validError(null);
+    renderValid();
+    $('v-part').focus();
+    $('v-part').select();
+  } catch (err) {
+    validError(err?.message || 'No se pudo guardar.');
+  }
+}
+
+/** Abre el modo validación con la prueba y el conteo de la app ya puestos. */
+function openValid(test, appValue) {
+  if (!S.settings.valid) { S.settings.valid = true; saveStore(); }
+  if (test && ORDER.includes(test)) vTest = test;
+  show('valid');
+  if (appValue != null) $('v-app').value = Val.numCL(appValue, 1);
+  $('v-part').focus();
+}
+
+function downloadText(name, text, type) {
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e) {
+    validError(`No se pudo exportar: ${e?.message || e}`);
+  }
+}
+
 /* ------------------------------------------------------------------ settings */
 
 function renderSettings() {
   $('set-voice').checked = !!S.settings.voice;
   $('set-angles').checked = !!S.settings.angles;
+  $('set-valid').checked = !!S.settings.valid;
+  $('btn-open-valid').hidden = !S.settings.valid;
   const box = $('model-pills');
   box.innerHTML = '';
   for (const [k, l] of [['full', 'Preciso'], ['lite', 'Rápido']]) {
@@ -4474,6 +4940,20 @@ function bind() {
   $('set-voice').addEventListener('change', (e) => { S.settings.voice = e.target.checked; saveStore(); });
   $('set-angles').addEventListener('change', (e) => { S.settings.angles = e.target.checked; saveStore(); });
   $('btn-edit-profile').addEventListener('click', () => { $('sheet').hidden = true; renderOnb(); show('onb'); });
+  $('set-valid').addEventListener('change', (e) => { S.settings.valid = e.target.checked; saveStore(); renderSettings(); });
+  $('btn-open-valid').addEventListener('click', () => { $('sheet').hidden = true; show('valid'); });
+  $('v-save').addEventListener('click', saveValidRecord);
+  $('v-back').addEventListener('click', () => show(S.profile.age && S.profile.sex ? 'hub' : 'onb'));
+  $('v-csv').addEventListener('click', () => downloadText(`fitgram-validacion-${stamp()}.csv`, '\ufeff' + Val.toCSV(S.valid, ORDER), 'text/csv'));
+  $('v-json').addEventListener('click', () => downloadText(`fitgram-validacion-${stamp()}.json`, JSON.stringify(S.valid, null, 2), 'application/json'));
+  $('v-clear').addEventListener('click', () => { $('v-clear-confirm').hidden = false; });
+  $('v-clear-no').addEventListener('click', () => { $('v-clear-confirm').hidden = true; });
+  $('v-clear-yes').addEventListener('click', () => {
+    S.valid = [];
+    try { localStorage.removeItem(VALID_KEY); } catch { /* ignore */ }
+    $('v-clear-confirm').hidden = true;
+    renderValid();
+  });
   $('btn-engine-test').addEventListener('click', async () => {
     const info = $('engine-info'), btn = $('btn-engine-test');
     btn.disabled = true;
@@ -4508,11 +4988,14 @@ function boot() {
   Voice.init();
   bind();
   renderOnb();
-  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, seedDemoHistory }; // handy for debugging and automated tests
+  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory }; // handy for debugging and automated tests
   // ?demo=historial abre el perfil; ?demo=pushup|squat|plank abre esa pantalla de resultado.
   let seed = null;
   try { seed = new URLSearchParams(location.search).get('demo'); } catch { /* ignore */ }
   if (seed) { seedDemoHistory(seed === 'historial' ? 'profile' : seed); return; }
+  let modo = null;
+  try { modo = new URLSearchParams(location.search).get('modo'); } catch { /* ignore */ }
+  if (modo === 'validacion') { openValid(); return; }
   if (S.profile.age && S.profile.sex) show('hub'); else show('onb');
 }
 

@@ -1,0 +1,237 @@
+/**
+ * Pruebas del modulo "validation" de index.html.
+ * Mismo truco que history.test.mjs: se recorta el pseudo-modulo y se evalua en Node.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+
+function loadModule(name) {
+  const src = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const open = `__mods["${name}"] = (() => {`;
+  const i = src.indexOf(open);
+  assert.notEqual(i, -1, `no encontre el modulo "${name}"`);
+  const lines = src.slice(i).split('\n');
+  const end = lines.findIndex((l, k) => k > 0 && l === '})();');
+  assert.notEqual(end, -1, `no encontre el cierre del modulo "${name}"`);
+  return new Function(lines.slice(1, end).join('\n'))();
+}
+
+const V = loadModule('validation');
+const near = (a, b, tol = 1e-3) => assert.ok(Math.abs(a - b) < tol, `${a} != ${b} (tol ${tol})`);
+
+const rec = (participant, test, app, raters, date = '2026-11-15') =>
+  V.newRecord({ participant, test, app, raters, date: new Date(date).toISOString() });
+
+/* ------------------------------------------------------------------ ICC */
+
+test('ICC(2,1): reproduce el ejemplo publicado de Shrout y Fleiss (1979)', () => {
+  // 6 sujetos x 4 jueces. Los valores publicados son ICC(1,1)=0,17 ICC(2,1)=0,29 ICC(3,1)=0,71.
+  const rows = [
+    [9, 2, 5, 8],
+    [6, 1, 3, 2],
+    [8, 4, 6, 8],
+    [7, 1, 2, 6],
+    [10, 5, 6, 9],
+    [6, 2, 4, 7],
+  ];
+  near(V.icc21(rows), 0.2898, 0.001);
+});
+
+test('ICC(2,1): acuerdo perfecto da 1', () => {
+  near(V.icc21([[10, 10], [20, 20], [30, 30], [40, 40]]), 1, 1e-9);
+});
+
+test('ICC(2,1): sin suficientes datos devuelve null en vez de un numero inventado', () => {
+  assert.equal(V.icc21([[1, 2]]), null, 'un solo sujeto');
+  assert.equal(V.icc21([[1], [2], [3]]), null, 'un solo evaluador');
+  assert.equal(V.icc21([]), null);
+});
+
+test('ICC(2,1): sin varianza entre sujetos devuelve null, no una division por cero', () => {
+  assert.equal(V.icc21([[5, 5], [5, 5], [5, 5]]), null);
+});
+
+/* ------------------------------------------------- Bland-Altman */
+
+test('Bland-Altman: sesgo, desviacion y limites de acuerdo', () => {
+  const ba = V.blandAltman([10, 12, 14, 16], [9, 12, 13, 17]);
+  near(ba.bias, 0.25);            // diferencias: 1, 0, 1, -1
+  near(ba.sd, 0.9574, 1e-3);      // desviacion muestral (n-1)
+  near(ba.loA[0], 0.25 - 1.96 * 0.9574, 1e-3);
+  near(ba.loA[1], 0.25 + 1.96 * 0.9574, 1e-3);
+});
+
+test('Bland-Altman: con menos de 2 pares no hay limites', () => {
+  assert.equal(V.blandAltman([5], [5]).sd, null);
+});
+
+/* ------------------------------------------------- registros */
+
+test('registro: se guarda con id, y los conteos quedan como numeros', () => {
+  const r = rec('P01', 'pushup', '29', ['28', '29']);
+  assert.ok(r.id, 'deberia traer id');
+  assert.equal(r.app, 29);
+  assert.deepEqual(r.raters, [28, 29]);
+  assert.equal(r.test, 'pushup');
+});
+
+test('registro: rechaza conteos que no son numeros', () => {
+  assert.throws(() => V.newRecord({ participant: 'P01', test: 'pushup', app: 'x', raters: [1, 2] }));
+  assert.throws(() => V.newRecord({ participant: 'P01', test: 'pushup', app: 10, raters: [] }));
+});
+
+test('registro: el codigo del participante se normaliza y no admite vacio', () => {
+  assert.equal(V.newRecord({ participant: '  p01 ', test: 'squat', app: 1, raters: [1] }).participant, 'P01');
+  assert.throws(() => V.newRecord({ participant: '   ', test: 'squat', app: 1, raters: [1] }));
+});
+
+test('registros: agregar y borrar', () => {
+  let rs = [];
+  const a = rec('P01', 'pushup', 29, [28, 29]);
+  rs = V.addRecord(rs, a);
+  rs = V.addRecord(rs, rec('P02', 'pushup', 31, [31, 30]));
+  assert.equal(rs.length, 2);
+  rs = V.removeRecord(rs, a.id);
+  assert.equal(rs.length, 1);
+  assert.equal(rs[0].participant, 'P02');
+});
+
+test('registros: agregar no modifica la lista que recibe', () => {
+  const rs = [];
+  V.addRecord(rs, rec('P01', 'pushup', 29, [28, 29]));
+  assert.equal(rs.length, 0);
+});
+
+/* ------------------------------------------------- acuerdo */
+
+test('acuerdo: app igual a los evaluadores da 100 %', () => {
+  const rs = [
+    rec('P01', 'pushup', 20, [20, 20]),
+    rec('P02', 'pushup', 30, [30, 30]),
+    rec('P03', 'pushup', 25, [25, 25]),
+  ];
+  const s = V.summary(rs, ['pushup']).byTest.pushup;
+  assert.equal(s.n, 3);
+  near(s.relAgreement, 100);
+  near(s.bias, 0);
+  assert.equal(s.exact, 100);
+});
+
+test('acuerdo: una diferencia de 1 sobre 20 da 95 %', () => {
+  const rs = [rec('P01', 'pushup', 19, [20, 20])];
+  const s = V.summary(rs, ['pushup']).byTest.pushup;
+  near(s.relAgreement, 95);
+  near(s.bias, -1);
+  assert.equal(s.exact, 0);
+  assert.equal(s.within1, 100);
+});
+
+test('acuerdo: la referencia es el promedio de los evaluadores', () => {
+  const rs = [rec('P01', 'squat', 30, [28, 32])];
+  const s = V.summary(rs, ['squat']).byTest.squat;
+  near(s.bias, 0, 1e-9);
+  near(s.relAgreement, 100);
+});
+
+test('acuerdo: tambien mide cuanto se parecen los evaluadores entre si', () => {
+  const rs = [
+    rec('P01', 'pushup', 20, [20, 24]),
+    rec('P02', 'pushup', 30, [30, 34]),
+    rec('P03', 'pushup', 25, [25, 29]),
+  ];
+  const s = V.summary(rs, ['pushup']).byTest.pushup;
+  near(s.raters.bias, -4, 1e-9); // evaluador 1 cuenta 4 menos que el 2
+  assert.ok(s.raters.relAgreement < 90, 'los evaluadores no se parecen tanto');
+});
+
+test('acuerdo: con un solo evaluador no se inventa el acuerdo entre evaluadores', () => {
+  const s = V.summary([rec('P01', 'pushup', 20, [20])], ['pushup']).byTest.pushup;
+  assert.equal(s.raters, null);
+});
+
+test('acuerdo: no divide por cero cuando la referencia es 0', () => {
+  const s = V.summary([rec('P01', 'pushup', 0, [0, 0])], ['pushup']).byTest.pushup;
+  assert.ok(Number.isFinite(s.relAgreement));
+});
+
+test('acuerdo: el total solo junta lo que no tiene unidad', () => {
+  const rs = [
+    rec('P01', 'pushup', 19, [20, 20]), // 95 %
+    rec('P01', 'plank', 57, [60, 60]),  // 95 %
+  ];
+  const o = V.summary(rs, ['pushup', 'plank']).overall;
+  assert.equal(o.n, 2);
+  near(o.relAgreement, 95);
+  assert.equal(o.bias, undefined, 'no deberia mezclar repeticiones con segundos');
+});
+
+test('acuerdo: sin registros no hay numeros', () => {
+  const s = V.summary([], ['pushup']);
+  assert.equal(s.byTest.pushup, null);
+  assert.equal(s.overall, null);
+});
+
+test('acuerdo: cuenta cuantas personas distintas se midieron, no cuantos registros', () => {
+  const rs = [
+    rec('P01', 'pushup', 20, [20, 20]),
+    rec('P01', 'squat', 30, [30, 30]),
+    rec('P02', 'pushup', 25, [25, 25]),
+  ];
+  assert.equal(V.summary(rs, ['pushup', 'squat']).overall.people, 2);
+});
+
+/* ------------------------------------------------- exportar */
+
+test('CSV: trae encabezado y una fila por registro', () => {
+  const rs = [rec('P01', 'pushup', 29, [28, 29], '2026-11-15T12:00:00Z')];
+  const csv = V.toCSV(rs);
+  const lines = csv.trim().split('\n');
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /participante/);
+  assert.match(lines[1], /P01/);
+  assert.ok(lines[1].includes(';'), 'separado con ; para Excel en Chile');
+});
+
+test('CSV: los decimales van con coma y el texto raro no rompe las columnas', () => {
+  const r = V.newRecord({ participant: 'P01', test: 'plank', app: 61.5, raters: [60, 62], note: 'cayó; la cadera' });
+  const line = V.toCSV([r]).trim().split('\n')[1];
+  assert.ok(line.includes('61,5'), `decimales con coma: ${line}`);
+  assert.ok(line.includes('"cayó; la cadera"'), `el ; del texto va entre comillas: ${line}`);
+});
+
+/* ------------------------------------------------- pruebas cronometradas */
+
+test('acuerdo: en una prueba de tiempo no se reporta el acuerdo exacto ni el ±1', () => {
+  const rs = [rec('P01', 'plank', 61.5, [60, 63]), rec('P02', 'plank', 44, [45, 46])];
+  const s = V.summary(rs, ['plank'], { plank: 's' }).byTest.plank;
+  assert.equal(s.timed, true);
+  assert.equal(s.exact, null, 'un segundo exacto no significa nada en un sostenido');
+  assert.equal(s.within1, null);
+  assert.ok(Number.isFinite(s.relAgreement));
+  assert.ok(Number.isFinite(s.bias));
+});
+
+test('acuerdo: el total cuenta el exacto y el ±1 solo sobre las pruebas de repeticiones', () => {
+  const rs = [
+    rec('P01', 'pushup', 20, [20, 20]),  // exacto
+    rec('P02', 'pushup', 19, [20, 20]),  // dentro de 1
+    rec('P03', 'plank', 50, [60, 60]),   // cronometrada, no entra en esos dos
+  ];
+  const o = V.summary(rs, ['pushup', 'plank'], { plank: 's' }).overall;
+  assert.equal(o.n, 3, 'el acuerdo relativo sí usa las tres');
+  assert.equal(o.counted, 2, 'pero el exacto y el ±1 solo las dos de repeticiones');
+  assert.equal(o.exact, 50);
+  assert.equal(o.within1, 100);
+});
+
+test('acuerdo: avisa cuando hay muy pocos sujetos para confiar en el CCI', () => {
+  const pocos = [rec('P01', 'pushup', 20, [20, 21]), rec('P02', 'pushup', 30, [30, 31])];
+  assert.equal(V.summary(pocos, ['pushup']).byTest.pushup.iccReliable, false);
+  const hartos = Array.from({ length: 6 }, (_, i) => rec(`P0${i}`, 'pushup', 20 + i * 3, [20 + i * 3, 21 + i * 3]));
+  assert.equal(V.summary(hartos, ['pushup']).byTest.pushup.iccReliable, true);
+});
