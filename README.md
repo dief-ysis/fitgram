@@ -170,12 +170,15 @@ Con `manifest.webmanifest` la app se puede agregar a la pantalla de inicio y
 abre a pantalla completa, sin barra del navegador. Útil para el teléfono del
 stand.
 
-> **Al publicar una versión nueva hay que subir `VERSION` en `sw.js`.** Si no,
-> los teléfonos que ya la tengan guardada seguirán sirviendo los archivos
-> viejos del caché. El `index.html` sí se busca primero en la red, así que el
-> cambio llega igual, pero el código y las tipografías no. Cuando hay una
-> versión nueva la app muestra una barra «Actualizar» en vez de cambiarla por
-> debajo mientras alguien está en medio de una prueba.
+`index.html` **no** se precarga a propósito: si se precargara, cada publicación
+obligaría a subir `VERSION` para no servir una copia vieja, y olvidarlo es el
+error clásico con los service workers. Como el documento va primero a la red,
+cada visita con conexión refresca la copia guardada sola.
+
+> `VERSION` en `sw.js` solo hay que subirlo cuando cambian las listas de
+> archivos o la lógica de `sw.js`. Cuando hay una versión nueva la app muestra
+> una barra «Actualizar», en vez de cambiarla por debajo mientras alguien está
+> en medio de una prueba.
 
 Verificado de verdad: se instala, se apaga el servidor y la app sigue abriendo
 y mostrando todo, tipografías incluidas.

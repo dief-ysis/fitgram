@@ -53,3 +53,12 @@ test('no queda ninguna llamada a un dominio de terceros en el HTML', () => {
     .filter((u) => !/^https?:\/\/(www\.)?(cocc\.edu|acefitness\.org|doi\.org)/.test(u));
   assert.deepEqual(externos, [], `la app pide recursos a terceros: ${externos.join(', ')}`);
 });
+
+test('index.html NO se precarga: si no, cada publicación obligaría a subir VERSION', () => {
+  const sw = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+  const shell = sw.slice(sw.indexOf('const SHELL = ['), sw.indexOf('];', sw.indexOf('const SHELL = [')));
+  assert.doesNotMatch(shell, /'\.\/index\.html'/, 'index.html no debe estar en la precarga');
+  assert.doesNotMatch(shell, /'\.\/',/, "'./' tampoco: es el mismo documento");
+  // pero el manejador del documento sí lo guarda al pasar por la red
+  assert.match(sw, /networkFirst/);
+});

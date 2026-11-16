@@ -20,13 +20,17 @@
    Ajustes → «Preparar para usar sin conexión».
    ==================================================================== */
 
-const VERSION = 'fitgram-v1';
+const VERSION = 'fitgram-v2';
 const SHELL_CACHE = `${VERSION}-shell`;
 const HEAVY_CACHE = `${VERSION}-heavy`;
 
+/* `index.html` NO va acá a propósito. Si se precargara, cada publicación
+   obligaria a subir VERSION para no servir una copia vieja, y olvidarlo es el
+   error clásico con los service workers. Como el documento va primero a la red,
+   networkFirst guarda la copia fresca en cada visita con conexión, y la copia
+   guardada solo se usa cuando no hay red. Asi VERSION solo hay que subirlo
+   cuando cambian estas listas o la logica de este archivo. */
 const SHELL = [
-  './',
-  './index.html',
   './manifest.webmanifest',
   './icono.svg',
   './icono-180.png',
