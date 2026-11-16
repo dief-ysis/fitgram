@@ -559,6 +559,12 @@ body.run-mode .stand-bar { display: none; }
       </div>
       <div class="small muted" id="v-unit-hint"></div>
       <div class="note small" id="v-run" hidden></div>
+      <div class="note small" id="v-rescate" hidden>
+        <div class="v-after">
+          <span class="small" id="v-rescate-msg"></span>
+          <button class="btn sm" id="v-rescate-si" type="button">Adjuntarla</button>
+        </div>
+      </div>
       <div class="field"><label class="lbl" for="v-note">Nota (opcional)</label><input class="inp" id="v-note" type="text" autocomplete="off" placeholder="de lado, poca luz, polera suelta…"></div>
       <div class="note warn small" id="v-error" hidden></div>
       <div class="note warn small" id="v-dup" hidden>
@@ -3591,8 +3597,24 @@ function normalizeRun(run) {
     temblor: Number.isNaN(temblor) ? null : temblor,
     sinVer: Number.isNaN(toNum(run.sinVer)) ? null : toNum(run.sinVer),
     reglas: run.reglas ? String(run.reglas) : null,
+    // Cuándo midió la app. No es lo mismo que la fecha de la medición: esa es
+    // cuándo se tecleó. Sirve para revisar un dato raro después, y para saber
+    // si esta corrida ya se adjuntó a otro participante.
+    fecha: run.fecha ? String(run.fecha) : null,
     reasons,
   };
+}
+
+/**
+ * La medición que ya tiene adjunta la corrida tomada en `fecha`, si existe.
+ *
+ * Una corrida es de una persona sola. Adjuntar la serie de P01 a la medición
+ * de P02 dejaría el diagnóstico mal en las dos, y en silencio. La app no sabe
+ * quién hizo esa serie, pero sí puede decir que esa corrida ya la usó alguien.
+ */
+function runYaUsada(records, fecha) {
+  if (!fecha) return null;
+  return (records || []).find((r) => r.run && r.run.fecha === fecha) || null;
 }
 
 /** Resume una corrida real de la app: cuántas contó, cuántas descartó y por qué. */
@@ -3618,6 +3640,7 @@ function runFromResult(result) {
     // Segundos en que la app no estuvo mirando: explican un conteo corto sin
     // que la culpa sea de la detección.
     sinVer: Number.isFinite(result.sinVer) ? result.sinVer : null,
+    fecha: result.date ? String(result.date) : null,
     // Con qué reglas de conteo se tomó. Si el estudio mezcla dos, las
     // mediciones no son comparables entre sí y hay que saberlo.
     reglas: result.reglas ? String(result.reglas) : null,
@@ -3906,7 +3929,7 @@ function toCSV(records, order, units = {}) {
     .concat(Array.from({ length: maxR }, (_, i) => `evaluador${i + 1}`))
     .concat(['promedio_evaluadores', 'diferencia_app_menos_promedio',
       'descartadas', 'motivo_principal', 'termino', 'clasificacion',
-      'temblor', 'calidad', 'sin_ver', 'reglas', 'nota']);
+      'temblor', 'calidad', 'sin_ver', 'reglas', 'fecha_corrida', 'nota']);
   const rows = (records || []).slice().sort((a, b) => String(a.participant).localeCompare(String(b.participant))
     || String(a.test).localeCompare(String(b.test)));
   const body = rows.map((r) => {
@@ -3920,6 +3943,7 @@ function toCSV(records, order, units = {}) {
       classifyRecord(r, units[r.test] === 's') || '',
       r.run?.temblor != null ? numCL(r.run.temblor, 4) : '', r.run?.calidad || '',
       r.run?.sinVer != null ? numCL(r.run.sinVer, 1) : '', r.run?.reglas || '',
+      r.run?.fecha || '',
       r.note || '',
     ].map(csvCell).join(';');
   });
@@ -4007,7 +4031,7 @@ function unexportedCount(records, exportedAt) {
 
 return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, mergeRecords, icc21, blandAltman,
   summary, statsFor, toCSV, numCL, toNum, mean, sd, SIN_VER_MIN,
-  findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount, reglasUsadas,
+  findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount, reglasUsadas, runYaUsada,
   runFromResult, classifyRecord, breakdown, topReasons, mainReason, BREAKDOWN_KEYS };
 })();
 
@@ -5992,7 +6016,7 @@ function renderValid() {
   bk.hidden = !S.valid.length;
   bk.classList.toggle('warn', sinRespaldo > 0);
   if (S.valid.length) {
-    const hora = vExportedAt ? new Date(vExportedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : null;
+    const hora = vExportedAt ? new Date(vExportedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false }) : null;
     bk.textContent = sinRespaldo
       ? (hora
         ? `${sinRespaldo} ${sinRespaldo === 1 ? 'medición' : 'mediciones'} sin exportar desde las ${hora}. Exporta antes de cerrar.`
@@ -6102,13 +6126,49 @@ function runEnUso() {
 function renderValidRun() {
   const box = $('v-run');
   const run = runEnUso();
-  if (!run) { box.hidden = true; return; }
-  box.hidden = false;
-  const motivos = Object.entries(run.reasons || {}).sort((a, b) => b[1] - a[1]);
-  box.textContent = motivos.length
-    ? `Se guarda junto con la medición lo que la app descartó en esa serie: `
-      + motivos.map(([m, n]) => `${m} ×${n}`).join(', ') + '.'
-    : 'Se guarda junto con la medición que la app no descartó ningún intento en esa serie.';
+  box.hidden = !run;
+  if (run) {
+    const motivos = Object.entries(run.reasons || {}).sort((a, b) => b[1] - a[1]);
+    box.textContent = motivos.length
+      ? `Se guarda junto con la medición lo que la app descartó en esa serie: `
+        + motivos.map(([m, n]) => `${m} ×${n}`).join(', ') + '.'
+      : 'Se guarda junto con la medición que la app no descartó ningún intento en esa serie.';
+  }
+  renderRescate(!!run);
+}
+
+/** La última medición de esta prueba guardada en el teléfono, si sirve de corrida. */
+function ultimaCorrida() {
+  const r = S.results[vTest];
+  return r && !hasDemoData() && Array.isArray(r.log) ? r : null;
+}
+
+/**
+ * Ofrecer la corrida de una medición que ya se tomó.
+ *
+ * La corrida se adjuntaba solo viniendo desde la pantalla de resultado. Si se
+ * salía de ahí —alguien tocó «Volver», se recargó la página, el teléfono pasó
+ * a otra mano— no había forma de volver a ella y la medición quedaba sin
+ * diagnóstico, aunque el resultado siguiera guardado acá mismo.
+ *
+ * No se adjunta sola: cuál persona hizo esa serie la app no lo sabe. Se
+ * muestra la hora y el número para que quien tomó los datos lo reconozca, y
+ * se avisa si esa misma corrida ya está en otra medición, porque adjuntarla
+ * dos veces dejaría el diagnóstico mal en las dos.
+ */
+function renderRescate(yaHayRun) {
+  const box = $('v-rescate');
+  const r = yaHayRun ? null : ultimaCorrida();
+  box.hidden = !r;
+  if (!r) return;
+  const hora = new Date(r.date).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const usada = Val.runYaUsada(S.valid, r.date);
+  box.classList.toggle('warn', !!usada);
+  $('v-rescate-msg').textContent =
+    `La última ${TESTS[vTest].short} medida en este teléfono fue a las ${hora} y dio ${resultText(vTest, r.value)}.`
+    + (usada
+      ? ` Ojo: esa corrida ya está guardada en la medición de ${usada.participant}. Si la adjuntas acá también, el diagnóstico queda mal en las dos.`
+      : ' Si es la de esta persona, adjúntala y se guarda con lo que la app descartó.');
 }
 
 function downloadText(name, text, type) {
@@ -6736,6 +6796,13 @@ function bind() {
   $('v-csv').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.csv`, '\ufeff' + Val.toCSV(S.valid, ORDER, unitsByTest()), 'text/csv'));
   $('v-json').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.json`, JSON.stringify(S.valid, null, 2), 'application/json'));
   // El mismo archivo que exporta el botón de al lado, de vuelta.
+  $('v-rescate-si').addEventListener('click', () => {
+    const r = ultimaCorrida();
+    if (!r) return;
+    vRun = { test: vTest, run: Val.runFromResult(r) };
+    $('v-app').value = Val.numCL(r.value, 1);
+    renderValidRun();
+  });
   $('v-load').addEventListener('click', () => { $('v-file').value = ''; $('v-file').click(); });
   $('v-file').addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];

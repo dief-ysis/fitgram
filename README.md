@@ -285,6 +285,31 @@ cargar, y que las mediciones vuelvan con su diagnóstico intacto (lo que la app
 descartó, el tiempo sin ver, la huella de las reglas)— además de
 `test/respaldo.test.mjs`.
 
+### Rescatar la corrida de una medición ya tomada
+
+La corrida de la app —qué descartó, por qué, cuánto rato no vio, con qué
+reglas contó— se adjuntaba **solo** desde la pantalla de resultado, en el
+momento. Si se salía de ahí (alguien tocó «Volver», se recargó la página, el
+teléfono pasó a otra mano), no había forma de volver a ella: la medición
+quedaba clasificada `sinDato` aunque el resultado siguiera guardado en el
+teléfono. El dato estaba; faltaba el camino.
+
+Ahora, al entrar a la validación sin venir de un resultado, la pantalla ofrece
+la última medición de esa prueba guardada en el teléfono, con **la hora y el
+número** para poder reconocerla: «La última Flexiones medida en este teléfono
+fue a las 16:44 y dio 20 rep». No se adjunta sola, porque cuál persona hizo esa
+serie la app no lo sabe.
+
+Rescatar abre un riesgo que antes no existía: adjuntar la misma corrida a dos
+participantes dejaría el diagnóstico mal en las dos, y en silencio. Por eso
+cada corrida guarda ahora **cuándo midió la app** (distinto de cuándo se tecleó
+la medición), y si esa corrida ya está en otra medición, la pantalla lo dice
+con el código de esa persona. Avisa; no prohíbe.
+
+Esa fecha va también al CSV, en la columna `fecha_corrida`: para revisar un
+dato raro después hace falta saber a qué hora se tomó, no solo qué día se
+anotó.
+
 ## ¿Se puede confiar en esta medición?
 
 La app contaba repeticiones con la misma seguridad, viera lo que viera. Midiendo
