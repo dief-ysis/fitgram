@@ -249,12 +249,24 @@ suavizar**, porque el filtro es justamente lo que se come el temblor.
 Con eso la app:
 
 - **avisa antes de empezar**, mientras la persona se acomoda, que conviene más
-  luz o ropa menos suelta — ahí todavía se puede arreglar;
+  luz o ropa ajustada — ahí todavía se puede arreglar. El aviso va aparte del
+  estado de posición: la posición puede estar bien y la detección igual
+  temblar, y decir que la posición está mal sería mentira;
 - **avisa durante la prueba** si está francamente mal, una vez cada 12 s;
+- en vivo **solo interrumpe el nivel grave**. El intermedio se marca en el
+  resultado y nada más, porque los umbrales son provisorios y un aviso que
+  salta de más deja de leerse;
 - **marca el resultado** cuando la detección no fue confiable, antes que
   cualquier otra advertencia, porque cambia cómo hay que leer el número;
 - **guarda el temblor con la medición de validación**, en las columnas `temblor`
   y `calidad` del CSV.
+
+Para no tener que adivinar, Ajustes → «Mostrar la estabilidad de la detección»
+pone el número crudo en la imagen y en el resultado. Con eso se pueden comparar
+condiciones reales —luz, ropa, distancia, teléfono, el lugar del pitch— y mover
+los umbrales con datos en vez de con la intuición. Durante la demostración
+sintética la vista previa muestra «—», y está bien: ahí se repite siempre el
+mismo cuadro, así que no hay temblor que medir.
 
 Los umbrales (0,030 y 0,045) son **provisorios**: salen del generador sintético,
 que mete ruido independiente en cada punto y cada cuadro, mientras que el de

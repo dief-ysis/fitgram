@@ -122,11 +122,13 @@ test('calibracion: a 6 fps con poco ruido el conteo sigue siendo exacto', () => 
   assert.equal(r.contadas, r.esperadas, 'los fps bajos no son el problema');
 });
 
-test('textos: hay un aviso para cada nivel que lo necesita, y ninguno para "bien"', () => {
+test('textos: en vivo solo se avisa lo grave; en el resultado se explican los dos niveles', () => {
+  // El cartel grande de la imagen descarta lo que pase de MAX_MENSAJE.
+  assert.ok(C.MENSAJE.malo && C.MENSAJE.malo.length <= C.MAX_MENSAJE,
+    `MENSAJE.malo tiene ${C.MENSAJE.malo?.length} caracteres y no se veria`);
+  assert.equal(C.MENSAJE.dudoso, undefined,
+    'el nivel dudoso no interrumpe en vivo: los umbrales son provisorios');
   for (const n of ['dudoso', 'malo']) {
-    // El cartel grande de la imagen descarta lo que pase de MAX_MENSAJE.
-    assert.ok(C.MENSAJE[n] && C.MENSAJE[n].length <= C.MAX_MENSAJE,
-      `MENSAJE.${n} tiene ${C.MENSAJE[n]?.length} caracteres y no se veria`);
     assert.ok(C.RESULTADO[n] && C.RESULTADO[n].length > 40, `RESULTADO.${n}`);
   }
   assert.equal(C.MENSAJE.bien, undefined, 'con la detección estable no se dice nada');
