@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FitGram">
+  <rect width="512" height="512" fill="#1d1f20"/>
+  <path d="M110 256 H176 L208 170 L280 342 L312 256 H402"
+        fill="none" stroke="#f2f2f3" stroke-width="30"
+        stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>

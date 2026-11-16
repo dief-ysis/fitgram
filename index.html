@@ -7,11 +7,22 @@
 <script>window.FITGRAM_CONFIG={lib:'./lib/vision_bundle.mjs',wasmLoader:'./lib/vision_wasm_internal.js'};</script>
 <title>FitGram</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="icon" href="data:,">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<link rel="icon" href="icono.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icono-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f2f2f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131516" media="(prefers-color-scheme: dark)">
 <style>
+/* Barlow y Barlow Condensed, auto-hospedadas (SIL OFL; el texto de la licencia
+   esta en fonts/OFL.txt). Antes venian de Google Fonts: sin conexion no
+   cargaban, y cada apertura de la app le avisaba a Google. Solo el subconjunto
+   latino, que es el que necesita el castellano. */
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/barlow-400.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/barlow-500.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/barlow-600.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/barlow-condensed-500.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/barlow-condensed-600.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/barlow-condensed-700.woff2') format('woff2'); }
 /* Layout: one mobile column (max 560px) with a sticky header; the test runner is a full-width camera stage.
    Visual language inherited from the FitGram MVP: square corners, crop marks on cards, condensed uppercase labels. */
 :root {
@@ -281,6 +292,10 @@ body.run-mode .stand-bar { display: none; }
 </header>
 
 <main class="wrap" id="main">
+  <div class="stand-bar" id="update-bar" hidden>
+    <span class="lbl" style="color:var(--accent-ink)">Hay una versión nueva de la app</span>
+    <button class="btn" id="btn-update" type="button">Actualizar</button>
+  </div>
   <div class="stand-bar" id="stand-bar" hidden>
     <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
       <span class="lbl" style="color:var(--accent-ink)">Modo stand · no se guarda nada en este teléfono</span>
@@ -530,6 +545,12 @@ body.run-mode .stand-bar { display: none; }
       <div class="lbl" id="lbl-model">Modelo de pose</div>
       <div class="pill-row" role="group" aria-labelledby="lbl-model" id="model-pills"></div>
       <div class="small muted">Preciso usa el modelo completo de MediaPipe (9 MB). Rápido usa el liviano (6 MB) y anda mejor en teléfonos antiguos.</div>
+    </div>
+    <div class="field">
+      <div class="lbl">Sin conexión</div>
+      <div class="small" id="offline-info">Comprobando…</div>
+      <button class="btn quiet sm" id="btn-offline" type="button">Preparar para usar sin conexión</button>
+      <div class="small muted">Guarda el detector y los dos modelos (unos 29 MB) en este teléfono. Después la app abre y mide en modo avión, sin pedirle nada a ningún servidor.</div>
     </div>
     <div class="field">
       <div class="lbl">Motor</div>
@@ -4947,6 +4968,63 @@ function downloadText(name, text, type) {
   }
 }
 
+/* ------------------------------------------------------------------ sin conexión */
+
+/* El service worker (sw.js) guarda la app en el teléfono. Acá va solo la parte
+   de la página: registrarlo, mostrar el avance y avisar cuando hay una versión
+   nueva, en vez de cambiarla por debajo mientras alguien está en una prueba. */
+
+let swReg = null;
+
+const offlineInfo = (msg) => { $('offline-info').textContent = msg; };
+
+function swMsg(type) {
+  (navigator.serviceWorker?.controller || swReg?.active)?.postMessage({ type });
+}
+
+function registrarSW() {
+  if (!('serviceWorker' in navigator)) {
+    offlineInfo('Este navegador no permite guardar la app para usarla sin conexión.');
+    $('btn-offline').disabled = true;
+    return;
+  }
+
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    const d = e.data;
+    if (d?.type !== 'offline') return;
+    if (d.estado === 'avance') offlineInfo(`Descargando… ${d.hechos} de ${d.total}`);
+    else if (d.estado === 'listo') offlineInfo('Listo: la app abre y mide sin conexión, incluso en modo avión.');
+    else if (d.estado === 'parcial') offlineInfo(d.hechos ? `Guardados ${d.hechos} de ${d.total} archivos pesados.` : 'Todavía no está guardada para usarla sin conexión.');
+    else if (d.estado === 'error') offlineInfo(`No se pudo preparar: ${d.detalle}`);
+    if (d.estado !== 'avance') $('btn-offline').disabled = false;
+  });
+
+  // Si ya había un worker al cargar, un cambio de control significa versión nueva activada.
+  const teniaControl = !!navigator.serviceWorker.controller;
+  let recargando = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!teniaControl || recargando) return;
+    recargando = true;
+    location.reload();
+  });
+
+  navigator.serviceWorker.register('./sw.js').then((reg) => {
+    swReg = reg;
+    if (reg.waiting) $('update-bar').hidden = false;
+    reg.addEventListener('updatefound', () => {
+      const nuevo = reg.installing;
+      nuevo?.addEventListener('statechange', () => {
+        if (nuevo.state === 'installed' && navigator.serviceWorker.controller) $('update-bar').hidden = false;
+      });
+    });
+    return navigator.serviceWorker.ready;
+  }).then((reg) => {
+    reg.active?.postMessage({ type: 'estadoOffline' });
+  }).catch((e) => {
+    offlineInfo(`No se pudo activar: ${e?.message || e}`);
+  });
+}
+
 /* ------------------------------------------------------------------ modo stand */
 
 /* Para una feria: cualquiera toma el teléfono, prueba y se lo pasa al siguiente.
@@ -5056,6 +5134,15 @@ function bind() {
   $('btn-edit-profile').addEventListener('click', () => { $('sheet').hidden = true; renderOnb(); show('onb'); });
   $('set-stand').addEventListener('change', (e) => { $('sheet').hidden = true; if (e.target.checked) enterStand(); else exitStand(); });
   $('btn-next-person').addEventListener('click', nextPerson);
+  $('btn-offline').addEventListener('click', () => {
+    $('btn-offline').disabled = true;
+    offlineInfo('Descargando…');
+    swMsg('prepararOffline');
+  });
+  $('btn-update').addEventListener('click', () => {
+    $('update-bar').hidden = true;
+    swReg?.waiting?.postMessage({ type: 'activarAhora' });
+  });
   $('onb-age-num').addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
     S.profile.age = Number.isInteger(v) && v >= 10 && v <= 99 ? v : null;
@@ -5109,6 +5196,7 @@ function bind() {
 function boot() {
   Voice.init();
   bind();
+  registrarSW();
   renderOnb();
   window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory }; // handy for debugging and automated tests
   // ?demo=historial abre el perfil; ?demo=pushup|squat|plank abre esa pantalla de resultado.

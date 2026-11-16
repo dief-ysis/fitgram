@@ -52,7 +52,12 @@ Todo vive en `index.html`, en pseudo-módulos dentro de un solo `<script type="m
 | `app` | Pantallas, navegación y persistencia. |
 
 Las dependencias (`lib/`, `models/`, `wasm/`) están versionadas para que la app
-funcione sin CDN y sin conexión.
+funcione sin CDN. Las tipografías (`fonts/`, Barlow y Barlow Condensed, SIL OFL)
+están auto-hospedadas: antes venían de Google Fonts, así que sin conexión no
+cargaban y cada apertura de la app le avisaba a Google.
+
+Fuera de `index.html` hay solo dos archivos de código: `sw.js` (el service
+worker) y `manifest.webmanifest`.
 
 ## Qué cambió respecto del base
 
@@ -139,6 +144,41 @@ coma, para Excel) y JSON.
 
 El CCI está verificado contra el ejemplo publicado de Shrout y Fleiss (1979):
 6 sujetos, 4 jueces, CCI(2,1) = 0,29.
+
+## Sin conexión
+
+`sw.js` guarda la app en el teléfono. Con Ajustes → «Preparar para usar sin
+conexión» se bajan el detector y los dos modelos (unos 29 MB) y después la app
+**abre y mide en modo avión**, sin pedirle nada a ningún servidor.
+
+Vale para una feria con WiFi mala, y de paso convierte la promesa del pitch
+—«el video no sale del celular»— en algo que se puede comprobar en vez de solo
+afirmarlo: se pone el teléfono en modo avión y la medición sigue funcionando.
+
+Tres políticas de caché, según el archivo:
+
+| Clase | Qué | Estrategia | Por qué |
+|---|---|---|---|
+| `document` | `index.html` | primero la red, caché si falla | al revés quedarían pegados en una versión vieja |
+| `shell` | código, tipografías, iconos | caché primero, refresco en segundo plano | arranque instantáneo |
+| `heavy` | `.wasm` y `.task` | caché primero, sin refrescar | binarios inmutables de 6 a 13 MB |
+
+Los pesados **no** se bajan al instalar: son 29 MB y quien solo entra a mirar no
+debería pagarlos. Se guardan cuando se usan, o todos de una con el botón.
+
+Con `manifest.webmanifest` la app se puede agregar a la pantalla de inicio y
+abre a pantalla completa, sin barra del navegador. Útil para el teléfono del
+stand.
+
+> **Al publicar una versión nueva hay que subir `VERSION` en `sw.js`.** Si no,
+> los teléfonos que ya la tengan guardada seguirán sirviendo los archivos
+> viejos del caché. El `index.html` sí se busca primero en la red, así que el
+> cambio llega igual, pero el código y las tipografías no. Cuando hay una
+> versión nueva la app muestra una barra «Actualizar» en vez de cambiarla por
+> debajo mientras alguien está en medio de una prueba.
+
+Verificado de verdad: se instala, se apaga el servidor y la app sigue abriendo
+y mostrando todo, tipografías incluidas.
 
 ## Modo stand
 
