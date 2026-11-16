@@ -221,3 +221,83 @@ test('acuerdo: avisa cuando hay muy pocos sujetos para confiar en el CCI', () =>
   const hartos = Array.from({ length: 6 }, (_, i) => rec(`P0${i}`, 'pushup', 20 + i * 3, [20 + i * 3, 21 + i * 3]));
   assert.equal(V.summary(hartos, ['pushup']).byTest.pushup.iccReliable, true);
 });
+
+/* ------------------------------------------- en terreno: no perder datos */
+
+test('duplicados: encuentra una medicion ya hecha de la misma persona y prueba', () => {
+  const rs = [rec('P01', 'pushup', 20, [20, 21]), rec('P02', 'pushup', 30, [30, 31])];
+  assert.equal(V.findDuplicate(rs, 'P01', 'pushup').app, 20);
+  assert.equal(V.findDuplicate(rs, 'P01', 'squat'), null, 'otra prueba no es duplicado');
+  assert.equal(V.findDuplicate(rs, 'P03', 'pushup'), null, 'otra persona tampoco');
+});
+
+test('duplicados: el codigo se compara normalizado, como lo guarda newRecord', () => {
+  const rs = [rec('P01', 'pushup', 20, [20, 21])];
+  assert.ok(V.findDuplicate(rs, '  p01  ', 'pushup'), 'minusculas y espacios son la misma persona');
+});
+
+test('reemplazar: deja la medicion nueva en el lugar de la vieja y conserva su id', () => {
+  const rs = [rec('P01', 'pushup', 20, [20, 21]), rec('P02', 'pushup', 30, [30, 31])];
+  const id = rs[0].id;
+  const out = V.replaceRecord(rs, id, rec('P01', 'pushup', 25, [25, 26]));
+  assert.equal(out.length, 2, 'no crece');
+  assert.equal(out[0].id, id, 'mismo id: lo exportado antes sigue cuadrando');
+  assert.equal(out[0].app, 25);
+  assert.equal(out[1].app, 30, 'no toca a los demas');
+});
+
+test('reemplazar: con un id que no existe no inventa ni pierde nada', () => {
+  const rs = [rec('P01', 'pushup', 20, [20, 21])];
+  const out = V.replaceRecord(rs, 'no-existe', rec('P01', 'pushup', 25, [25, 26]));
+  assert.deepEqual(out, rs);
+});
+
+test('avance: dice que pruebas ya le tomaron a una persona, en el orden de la app', () => {
+  const orden = ['plank', 'pushup', 'squat'];
+  const rs = [rec('P01', 'squat', 30, [30, 31]), rec('P01', 'plank', 60, [60, 61])];
+  assert.deepEqual(V.testsDoneBy(rs, 'P01', orden), ['plank', 'squat'], 'ordenadas como en la app');
+  assert.deepEqual(V.testsDoneBy(rs, 'P02', orden), []);
+});
+
+test('avance: propone la siguiente prueba que le falta a la misma persona', () => {
+  const orden = ['plank', 'pushup', 'squat'];
+  const rs = [rec('P01', 'plank', 60, [60, 61])];
+  assert.equal(V.nextPendingTest(rs, 'P01', orden, 'plank'), 'pushup');
+  const dos = rs.concat([rec('P01', 'pushup', 20, [20, 21])]);
+  assert.equal(V.nextPendingTest(dos, 'P01', orden, 'pushup'), 'squat');
+});
+
+test('avance: si a la persona no le falta ninguna, no propone nada', () => {
+  const orden = ['plank', 'pushup'];
+  const rs = [rec('P01', 'plank', 60, [60, 61]), rec('P01', 'pushup', 20, [20, 21])];
+  assert.equal(V.nextPendingTest(rs, 'P01', orden, 'pushup'), null);
+});
+
+test('avance: envuelve, para no dejar afuera una prueba anterior', () => {
+  const orden = ['plank', 'pushup', 'squat'];
+  const rs = [rec('P01', 'pushup', 20, [20, 21])];
+  // Venia en flexiones y le falta la plancha, que esta antes: igual la propone.
+  assert.equal(V.nextPendingTest(rs, 'P01', orden, 'pushup'), 'squat');
+  const conSquat = rs.concat([rec('P01', 'squat', 30, [30, 31])]);
+  assert.equal(V.nextPendingTest(conSquat, 'P01', orden, 'squat'), 'plank');
+});
+
+test('codigos: lista los participantes ya ingresados, sin repetir y ordenados', () => {
+  const rs = [rec('P03', 'pushup', 20, [20, 21]), rec('P01', 'pushup', 20, [20, 21]), rec('P03', 'squat', 20, [20, 21])];
+  assert.deepEqual(V.participantCodes(rs), ['P01', 'P03']);
+});
+
+test('respaldo: cuenta las mediciones guardadas despues de la ultima exportacion', () => {
+  const rs = [
+    rec('P01', 'pushup', 20, [20, 21], '2026-11-15T10:00:00Z'),
+    rec('P02', 'pushup', 20, [20, 21], '2026-11-15T12:00:00Z'),
+  ];
+  assert.equal(V.unexportedCount(rs, null), 2, 'sin exportar nunca, todas');
+  assert.equal(V.unexportedCount(rs, '2026-11-15T11:00:00Z'), 1);
+  assert.equal(V.unexportedCount(rs, '2026-11-15T13:00:00Z'), 0);
+});
+
+test('respaldo: una fecha de exportacion ilegible se trata como si no hubiera', () => {
+  const rs = [rec('P01', 'pushup', 20, [20, 21])];
+  assert.equal(V.unexportedCount(rs, 'cualquier cosa'), 1, 'mejor avisar de mas que dar por salvado');
+});

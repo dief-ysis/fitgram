@@ -146,6 +146,38 @@ coma, para Excel) y JSON.
 El CCI está verificado contra el ejemplo publicado de Shrout y Fleiss (1979):
 6 sujetos, 4 jueces, CCI(2,1) = 0,29.
 
+### Tomar los datos en terreno
+
+La pantalla se armó probándola con el mouse, y tomar los datos es otra cosa:
+teléfono en una mano, dos evaluadores cantando el conteo y una persona
+esperando al frente. Lo que se cambió con ese uso en mente:
+
+- **Borrar se puede deshacer.** La `×` queda al lado del dato en una pantalla de
+  teléfono. Antes un toque mal puesto borraba la medición para siempre y sin
+  avisar; ahora aparece «Deshacer» con el código y la prueba de lo que se borró.
+- **Avisa si la persona ya tiene esa prueba.** Dos mediciones del mismo
+  participante en la misma prueba pesan doble en el acuerdo. Puede ser una
+  repetición legítima o puede ser que se perdió la cuenta: la pantalla muestra
+  la medición anterior y deja elegir entre reemplazarla o guardar las dos. No lo
+  decide el código.
+- **El código del participante se queda** después de guardar, el formulario
+  salta solo a la prueba que le falta a esa misma persona y el foco cae en el
+  primer número. Volver a escribir el código en cada prueba es la forma más
+  fácil de inventar un participante que no existe: `P1` y `P01` serían dos
+  personas distintas. El campo además sugiere los códigos ya usados y dice qué
+  pruebas lleva esa persona. «Otro participante» parte en limpio.
+- **Enter pasa al campo siguiente** y, en el último, guarda. Con el teclado del
+  teléfono abierto, cada toque de más es un toque sobre un dato a la vista.
+- **Avisa de lo que no está respaldado**: cuántas mediciones se guardaron desde
+  la última exportación. Después de exportar queda la hora a la vista, no un
+  «listo»: que el navegador haya iniciado la descarga no prueba que el archivo
+  quedó guardado, sobre todo en iOS.
+
+Esto se verificó manejando la pantalla desde el navegador como lo haría un dedo
+—19 comprobaciones sobre el flujo completo: guardar con Enter, duplicado,
+reemplazo, borrado, deshacer, cambio de participante y exportación—, además de
+las pruebas de `node --test` sobre la lógica.
+
 ## Sin conexión
 
 `sw.js` guarda la app en el teléfono. Con Ajustes → «Preparar para usar sin

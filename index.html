@@ -254,6 +254,10 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .stat-v { font-family: var(--font-cd); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .vrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; font-variant-numeric: tabular-nums; }
 .vrow:last-child { border-bottom: 0; }
+/* La diferencia iba pegada al conteo del segundo evaluador: "70 / 70 0". */
+.vrow .delta-inline { margin-left: 8px; }
+.v-after { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.v-after .small { flex: 1 1 auto; min-width: 0; }
 .vrow .x { border: 1px solid var(--line); background: transparent; color: var(--muted); min-height: 34px; min-width: 34px; font-size: 16px; }
 /* modo stand */
 .stand-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid var(--accent); padding: 8px 12px; margin-bottom: 4px; }
@@ -540,8 +544,9 @@ body.run-mode .stand-bar { display: none; }
       <div class="lbl">Agregar una medición</div>
       <div class="field">
         <label class="lbl" for="v-part" style="color:var(--ink)">Código del participante</label>
-        <input class="inp" id="v-part" type="text" autocomplete="off" placeholder="P01" maxlength="12">
-        <div class="small muted">Un código, no el nombre: el protocolo es anónimo.</div>
+        <input class="inp" id="v-part" type="text" autocomplete="off" placeholder="P01" maxlength="12" list="v-codes">
+        <datalist id="v-codes"></datalist>
+        <div class="small muted" id="v-part-done">Un código, no el nombre: el protocolo es anónimo.</div>
       </div>
       <div class="field">
         <div class="lbl" id="v-test-lbl" style="color:var(--ink)">Prueba</div>
@@ -555,11 +560,30 @@ body.run-mode .stand-bar { display: none; }
       <div class="small muted" id="v-unit-hint"></div>
       <div class="field"><label class="lbl" for="v-note">Nota (opcional)</label><input class="inp" id="v-note" type="text" autocomplete="off" placeholder="de lado, poca luz, polera suelta…"></div>
       <div class="note warn small" id="v-error" hidden></div>
+      <div class="note warn small" id="v-dup" hidden>
+        <p style="margin:0 0 10px" id="v-dup-msg"></p>
+        <div class="btn-row">
+          <button class="btn sm" id="v-dup-replace" type="button">Reemplazar</button>
+          <button class="btn ghost sm" id="v-dup-both" type="button">Guardar las dos</button>
+          <button class="btn quiet sm" id="v-dup-cancel" type="button">Cancelar</button>
+        </div>
+      </div>
       <button class="btn" id="v-save" type="button">Guardar medición</button>
+      <div class="v-after" id="v-saved" hidden>
+        <span class="small" id="v-saved-msg"></span>
+        <button class="btn quiet sm" id="v-next-person" type="button">Otro participante</button>
+      </div>
     </div>
     <div class="card pad" style="display:flex;flex-direction:column;gap:12px">
       <div class="lbl">Mediciones guardadas</div>
+      <div class="note warn small" id="v-undo" hidden>
+        <div class="v-after">
+          <span class="small" id="v-undo-msg"></span>
+          <button class="btn sm" id="v-undo-yes" type="button">Deshacer</button>
+        </div>
+      </div>
       <div id="valid-list"></div>
+      <div class="note small" id="v-backup" hidden></div>
       <div class="btn-row">
         <button class="btn quiet sm" id="v-csv" type="button">Exportar CSV</button>
         <button class="btn quiet sm" id="v-json" type="button">Exportar JSON</button>
@@ -3426,8 +3450,83 @@ function toCSV(records, order) {
   return [head.join(';')].concat(body).join('\n') + '\n';
 }
 
-return { newRecord, addRecord, removeRecord, loadRecords, icc21, blandAltman,
-  summary, statsFor, toCSV, numCL, toNum, mean, sd };
+/* ------------------------------------------------------------------------
+   Tomar los datos en terreno, con una persona esperando al frente, es otra
+   cosa que probarlo con el mouse. Esto es para que la interfaz no sea la que
+   haga perder una medicion.
+   ------------------------------------------------------------------------ */
+
+/** El codigo tal como lo guarda newRecord, para poder comparar. */
+const normCode = (v) => String(v ?? '').trim().toUpperCase();
+
+/** La medicion que ya existe de esa persona en esa prueba, si existe. */
+function findDuplicate(records, participant, test) {
+  const code = normCode(participant);
+  if (!code || !test) return null;
+  return (records || []).find((r) => r.participant === code && r.test === test) || null;
+}
+
+/**
+ * Deja `rec` en el lugar de la medicion `id`, conservando su id.
+ * Conservarlo importa: si ya se exporto, la fila corregida sigue siendo la
+ * misma fila y no aparece como una medicion nueva.
+ */
+function replaceRecord(records, id, rec) {
+  const rs = records || [];
+  const i = rs.findIndex((r) => r.id === id);
+  if (i < 0) return rs;
+  const out = rs.slice();
+  out[i] = Object.assign({}, rec, { id });
+  return out;
+}
+
+/** Las pruebas que ya se le tomaron a una persona, en el orden de la app. */
+function testsDoneBy(records, participant, order) {
+  const code = normCode(participant);
+  const done = new Set((records || []).filter((r) => r.participant === code).map((r) => r.test));
+  return (order || []).filter((t) => done.has(t));
+}
+
+/**
+ * La siguiente prueba que le falta a la misma persona, empezando despues de
+ * `current` y dando la vuelta. null si no le falta ninguna.
+ */
+function nextPendingTest(records, participant, order, current) {
+  const ord = order || [];
+  if (!ord.length) return null;
+  const done = new Set(testsDoneBy(records, participant, ord));
+  const from = ord.indexOf(current);
+  for (let k = 1; k <= ord.length; k++) {
+    const t = ord[(Math.max(0, from) + k) % ord.length];
+    if (!done.has(t)) return t;
+  }
+  return null;
+}
+
+/** Los codigos ya ingresados, sin repetir y ordenados. */
+function participantCodes(records) {
+  return Array.from(new Set((records || []).map((r) => r.participant))).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Cuantas mediciones se guardaron despues de la ultima exportacion.
+ * Todo esto vive solo en este navegador, asi que es el unico aviso de que hay
+ * trabajo sin respaldo. Una fecha ilegible cuenta como "nunca exporto": mas
+ * vale avisar de mas que dar por salvado lo que no esta.
+ */
+function unexportedCount(records, exportedAt) {
+  const rs = records || [];
+  const t = exportedAt ? Date.parse(exportedAt) : NaN;
+  if (!Number.isFinite(t)) return rs.length;
+  return rs.filter((r) => {
+    const d = Date.parse(r.date);
+    return !Number.isFinite(d) || d > t;
+  }).length;
+}
+
+return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, icc21, blandAltman,
+  summary, statsFor, toCSV, numCL, toNum, mean, sd,
+  findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount };
 })();
 
 __mods["game"] = (() => {
@@ -3730,6 +3829,16 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const sexLabel = (s) => (s === 'F' ? 'Mujer' : 'Hombre');
 
 const VALID_KEY = 'fitgram.validation.v1'; // aparte de los resultados personales, a propósito
+const VALID_EXPORT_KEY = 'fitgram.validation.exported.v1'; // cuándo se exportó por última vez
+
+function loadValidExport() {
+  try { return localStorage.getItem(VALID_EXPORT_KEY) || null; } catch { return null; }
+}
+
+function saveValidExport(iso) {
+  if (S.stand) return;
+  try { localStorage.setItem(VALID_EXPORT_KEY, iso); } catch { /* storage unavailable */ }
+}
 function loadValid() {
   try { return Val.loadRecords(JSON.parse(localStorage.getItem(VALID_KEY) || '[]')); } catch { return []; }
 }
@@ -5102,6 +5211,12 @@ function renderProfile() {
 /* ------------------------------------------------------------------ validación */
 
 let vTest = ORDER[0];
+/* Lo que hay que resolver antes de guardar (duplicado), lo que se puede
+   deshacer (borrado) y cuándo se exportó por última vez. Todo de pantalla:
+   nada de esto es dato de la validación. */
+let vPending = null;
+let vUndo = null;
+let vExportedAt = loadValidExport();
 const stamp = () => new Date().toISOString().slice(0, 10);
 
 function renderValidForm() {
@@ -5118,6 +5233,40 @@ function renderValidForm() {
   $('v-unit-hint').textContent = TESTS[vTest].unit === 's'
     ? 'Segundos que cada uno cronometró en posición. Se admiten decimales.'
     : 'Repeticiones que cada uno contó como válidas, sobre la misma serie.';
+  renderValidPerson();
+}
+
+/**
+ * Qué pruebas lleva ya la persona que está escrita en el campo.
+ * En terreno uno va con el teléfono en una mano y pierde la cuenta de a quién
+ * le falta qué; esto lo deja a la vista sin tener que buscar en la lista.
+ */
+function renderValidPerson() {
+  const dl = $('v-codes');
+  dl.innerHTML = Val.participantCodes(S.valid).map((c) => `<option value="${esc(c)}"></option>`).join('');
+
+  const code = $('v-part').value.trim().toUpperCase();
+  const hint = $('v-part-done');
+  if (!code) {
+    hint.textContent = 'Un código, no el nombre: el protocolo es anónimo.';
+    return;
+  }
+  const done = Val.testsDoneBy(S.valid, code, ORDER);
+  if (!done.length) {
+    hint.textContent = `${code}: primera medición.`;
+    return;
+  }
+  const falta = ORDER.filter((t) => !done.includes(t)).map((t) => TESTS[t].short);
+  hint.textContent = `${code}: ya tiene ${done.map((t) => TESTS[t].short).join(', ')}`
+    + (falta.length ? ` · falta ${falta.join(', ')}.` : ' · están las tres.');
+}
+
+/** Esconde lo que quedó de la medición anterior. */
+function vClearNotices() {
+  vPending = null;
+  $('v-dup').hidden = true;
+  $('v-saved').hidden = true;
+  validError(null);
 }
 
 /** Bloque de una prueba en el resumen de acuerdo. */
@@ -5181,10 +5330,38 @@ function renderValid() {
       </div>`;
     }).join('');
     for (const b of list.querySelectorAll('[data-del]')) {
-      b.addEventListener('click', () => { S.valid = Val.removeRecord(S.valid, b.dataset.del); saveValid(); renderValid(); });
+      b.addEventListener('click', () => {
+        const r = S.valid.find((x) => x.id === b.dataset.del);
+        vUndo = {
+          records: S.valid,
+          label: r ? `${r.participant} · ${TESTS[r.test]?.short || r.test}` : 'la medición',
+        };
+        S.valid = Val.removeRecord(S.valid, b.dataset.del);
+        saveValid();
+        renderValid();
+      });
     }
   }
   $('v-clear-n').textContent = String(S.valid.length);
+
+  $('v-undo').hidden = !vUndo;
+  if (vUndo) $('v-undo-msg').textContent = `Se borró ${vUndo.label}.`;
+
+  // Todo esto vive solo en este navegador. Si no se exportó, no hay respaldo.
+  const sinRespaldo = Val.unexportedCount(S.valid, vExportedAt);
+  const bk = $('v-backup');
+  bk.hidden = !S.valid.length;
+  bk.classList.toggle('warn', sinRespaldo > 0);
+  if (S.valid.length) {
+    const hora = vExportedAt ? new Date(vExportedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : null;
+    bk.textContent = sinRespaldo
+      ? (hora
+        ? `${sinRespaldo} ${sinRespaldo === 1 ? 'medición' : 'mediciones'} sin exportar desde las ${hora}. Exporta antes de cerrar.`
+        : `${sinRespaldo} ${sinRespaldo === 1 ? 'medición' : 'mediciones'} sin exportar: todavía no hay respaldo de nada.`)
+      // Que el navegador haya iniciado la descarga no prueba que el archivo
+      // quedó guardado, sobre todo en iOS. Por eso no se dice "a salvo".
+      : `Exportado a las ${hora}. Revisa que el archivo haya quedado en el teléfono.`;
+  }
 }
 
 function validError(msg) {
@@ -5194,30 +5371,74 @@ function validError(msg) {
 }
 
 function saveValidRecord() {
+  let rec;
   try {
-    S.valid = Val.addRecord(S.valid, Val.newRecord({
+    rec = Val.newRecord({
       participant: $('v-part').value,
       test: vTest,
       app: $('v-app').value,
       raters: [$('v-r1').value, $('v-r2').value],
       note: $('v-note').value,
-    }));
-    saveValid();
-    for (const id of ['v-app', 'v-r1', 'v-r2', 'v-note']) $(id).value = '';
-    validError(null);
-    renderValid();
-    $('v-part').focus();
-    $('v-part').select();
+    });
   } catch (err) {
+    vPending = null;
+    $('v-dup').hidden = true;
     validError(err?.message || 'No se pudo guardar.');
+    return;
   }
+
+  // Dos mediciones de la misma persona en la misma prueba pesan doble en el
+  // acuerdo. Puede ser una repetición legítima o puede ser que se perdió la
+  // cuenta: no lo decide el código, lo decide quien está tomando los datos.
+  const dup = Val.findDuplicate(S.valid, rec.participant, rec.test);
+  if (dup) {
+    vPending = { rec, dupId: dup.id };
+    const u = TESTS[dup.test]?.unit === 's' ? ' s' : '';
+    $('v-dup-msg').textContent = `${dup.participant} ya tiene una medición en ${TESTS[dup.test]?.short || dup.test}:`
+      + ` ${Val.numCL(dup.app, 1)}${u} contra ${dup.raters.map((x) => Val.numCL(x, 1)).join(' / ')}.`
+      + ' ¿Reemplazarla o guardar las dos?';
+    $('v-dup').hidden = false;
+    validError(null);
+    $('v-saved').hidden = true;
+    return;
+  }
+  commitValidRecord(rec, null);
+}
+
+/** Guarda de verdad y prepara el formulario para la siguiente prueba de la misma persona. */
+function commitValidRecord(rec, replaceId) {
+  S.valid = replaceId ? Val.replaceRecord(S.valid, replaceId, rec) : Val.addRecord(S.valid, rec);
+  saveValid();
+  vPending = null;
+  vUndo = null;
+  $('v-dup').hidden = true;
+  validError(null);
+
+  for (const id of ['v-app', 'v-r1', 'v-r2', 'v-note']) $(id).value = '';
+  $('v-part').value = rec.participant; // tal como quedó guardado, no como se tecleó
+  // El código se queda: lo normal es tomarle las tres pruebas a la misma
+  // persona de corrido, y volver a escribirlo cada vez es la forma más fácil
+  // de inventar un participante que no existe (P1 y P01 serían dos personas).
+  const sigue = Val.nextPendingTest(S.valid, rec.participant, ORDER, rec.test);
+  if (sigue) vTest = sigue;
+
+  $('v-saved-msg').textContent = `Guardado: ${rec.participant} · ${TESTS[rec.test]?.short || rec.test}.`
+    + (sigue ? ` Sigue ${TESTS[sigue].short}.` : ' A esta persona ya están las tres.');
+  $('v-saved').hidden = false;
+
+  renderValid();
+  const foco = sigue ? 'v-app' : 'v-part';
+  $(foco).focus();
+  if (foco === 'v-part') $('v-part').select();
 }
 
 /** Abre el modo validación con la prueba y el conteo de la app ya puestos. */
 function openValid(test, appValue) {
   if (!S.settings.valid) { S.settings.valid = true; saveStore(); }
   if (test && ORDER.includes(test)) vTest = test;
+  vUndo = null;
   show('valid');
+  vClearNotices();
   if (appValue != null) $('v-app').value = Val.numCL(appValue, 1);
   $('v-part').focus();
 }
@@ -5232,9 +5453,19 @@ function downloadText(name, text, type) {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return true;
   } catch (e) {
     validError(`No se pudo exportar: ${e?.message || e}`);
+    return false;
   }
+}
+
+/** Marca que hay respaldo, solo si la descarga partió. */
+function exportValid(name, text, type) {
+  if (!downloadText(name, text, type)) return;
+  vExportedAt = new Date().toISOString();
+  saveValidExport(vExportedAt);
+  renderValid();
 }
 
 /** Pide la cámara. Compartido por las pruebas y por el modo juego. */
@@ -5793,13 +6024,55 @@ function bind() {
   $('btn-open-valid').addEventListener('click', () => { $('sheet').hidden = true; show('valid'); });
   $('v-save').addEventListener('click', saveValidRecord);
   $('v-back').addEventListener('click', () => show(S.profile.age && S.profile.sex ? 'hub' : 'onb'));
-  $('v-csv').addEventListener('click', () => downloadText(`fitgram-validacion-${stamp()}.csv`, '\ufeff' + Val.toCSV(S.valid, ORDER), 'text/csv'));
-  $('v-json').addEventListener('click', () => downloadText(`fitgram-validacion-${stamp()}.json`, JSON.stringify(S.valid, null, 2), 'application/json'));
+  $('v-csv').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.csv`, '\ufeff' + Val.toCSV(S.valid, ORDER), 'text/csv'));
+  $('v-json').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.json`, JSON.stringify(S.valid, null, 2), 'application/json'));
+
+  // Escribir el código vuelve a mostrar qué le falta a esa persona.
+  $('v-part').addEventListener('input', () => { vPending = null; $('v-dup').hidden = true; renderValidPerson(); });
+
+  // Enter pasa al campo siguiente y, en el último, guarda. Con el teclado del
+  // teléfono abierto, cada toque de más es un toque sobre un dato a la vista.
+  const salto = { 'v-app': 'v-r1', 'v-r1': 'v-r2' };
+  for (const [from, to] of Object.entries(salto)) {
+    $(from).addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      $(to).focus();
+    });
+  }
+  $('v-r2').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    saveValidRecord();
+  });
+
+  $('v-dup-replace').addEventListener('click', () => { if (vPending) commitValidRecord(vPending.rec, vPending.dupId); });
+  $('v-dup-both').addEventListener('click', () => { if (vPending) commitValidRecord(vPending.rec, null); });
+  $('v-dup-cancel').addEventListener('click', () => { vPending = null; $('v-dup').hidden = true; });
+
+  $('v-next-person').addEventListener('click', () => {
+    vClearNotices();
+    for (const id of ['v-part', 'v-app', 'v-r1', 'v-r2', 'v-note']) $(id).value = '';
+    vTest = ORDER[0];
+    renderValid();
+    $('v-part').focus();
+  });
+
+  $('v-undo-yes').addEventListener('click', () => {
+    if (!vUndo) return;
+    S.valid = vUndo.records;
+    vUndo = null;
+    saveValid();
+    renderValid();
+  });
   $('v-clear').addEventListener('click', () => { $('v-clear-confirm').hidden = false; });
   $('v-clear-no').addEventListener('click', () => { $('v-clear-confirm').hidden = true; });
   $('v-clear-yes').addEventListener('click', () => {
     S.valid = [];
+    vUndo = null;
+    vExportedAt = null;
     try { localStorage.removeItem(VALID_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(VALID_EXPORT_KEY); } catch { /* ignore */ }
     $('v-clear-confirm').hidden = true;
     renderValid();
   });
