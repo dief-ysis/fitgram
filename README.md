@@ -197,16 +197,29 @@ mediciones de antes y las de después dejan de ser comparables — y el CSV
 saldría con 45 filas que parecen una sola tanda. Un número de versión puesto a
 mano no sirve, porque lo que se olvida es justamente subirlo.
 
-Cada medición se sella con una **huella de las reglas**: un hash corto de
-`EX_CONFIG` (los umbrales con los que se cuenta) y de `SKELETON_CONFIG` (el
-suavizado). Van los dos porque cambiar el filtro cambia qué se cuenta igual
-que cambiar un umbral, y una huella que mirara solo los umbrales prometería
-algo que no es cierto. Cualquier cambio en cualquiera de ellos cambia la
-huella sin que nadie tenga que acordarse.
+Cada medición se sella con una **huella de las reglas**: un hash corto de tres
+cosas.
 
-Quedan fuera a propósito los textos de los avisos, los colores y los
-parámetros de dibujo: arreglar una falta de ortografía no vuelve incomparables
-las mediciones de ayer, y reordenar el objeto tampoco.
+| qué entra | por qué |
+|---|---|
+| `EX_CONFIG` | los umbrales con los que se cuenta |
+| `SKELETON_CONFIG` | el suavizado cambia la señal sobre la que se mide |
+| el código que decide qué cuenta | una corrección en la máquina de estados cambia el resultado sin tocar ni una constante |
+
+La tercera la agregué después de que pasara: arreglar cómo se cierra una prueba
+cuando la cámara se queda pegada cambió lo que mide la plancha, y la huella
+anterior —que solo miraba la configuración— no se habría movido ni un carácter.
+Habría dicho que las mediciones de antes y las de después son comparables. Una
+garantía que falla justo cuando importa es peor que no tenerla.
+
+El código entra como texto normalizado: sin comentarios y con los espacios
+colapsados. Así, reindentar un bloque o arreglar una falta de ortografía en un
+comentario no vuelve incomparables las mediciones de ayer, pero cambiar una
+condición sí.
+
+Quedan fuera a propósito los textos de los avisos, los colores, los parámetros
+de dibujo y todo lo que no cuenta nada: la pantalla de validación, el modo
+juego, el historial. Reordenar un objeto tampoco cambia la huella.
 
 La pantalla de validación avisa sola cuando entre las mediciones guardadas hay
 más de una huella, y el CSV la lleva en la columna `reglas`.
@@ -352,6 +365,47 @@ calibrar solas.
 Verificado también con el motor real en el navegador: una corrida sintética
 limpia da temblor 0,0093, nivel «bien», 13 repeticiones y ningún aviso — el mismo
 número que el barrido offline.
+
+### Y cuando la cámara se queda pegada
+
+«No te veo» y «no me llegan cuadros» se ven igual desde la persona que está
+haciendo la prueba, pero el analizador solo sabía contar la primera. Su cuenta
+del tiempo sin ver vive dentro de `update()`, que es justo lo que deja de
+pasar cuando la cámara se cuelga.
+
+El caso concreto: la plancha son 60 segundos con el teléfono apoyado y nadie
+tocándolo. Si la cámara se queda pegada en el segundo 20 y la persona toca
+«Terminar» en el 60:
+
+| | antes | ahora |
+|---|---|---|
+| segundos que informa | 60 | 20 |
+| `sin_ver` | 0 | 40 |
+| cómo termina | normal | `not_visible` |
+
+Lo grave no era el número sino el `sin_ver` en cero: el diagnóstico que existe
+para cazar justamente esto decía que la medición había salido limpia. En el
+CSV habría quedado una fila de 60 segundos sin nada que la distinguiera.
+
+Tres cambios, ninguno toca un umbral:
+
+- **El analizador mira cuánto hace que no le llega un cuadro.** Al cerrar la
+  prueba, un hueco cuenta como tiempo sin ver, y el reloj no pasa del último
+  cuadro que de verdad llegó. Si el hueco supera `invisibleEndSec` —el mismo
+  criterio que ya rige para no ver a nadie— la prueba termina como
+  `not_visible`.
+- **Un vigilante en la app.** Revisa cada segundo que sigan llegando cuadros,
+  así la prueba no se queda esperando para siempre con la imagen congelada. Se
+  revisa también al volver a la app, porque con la app en segundo plano los
+  temporizadores se frenan y puede no haber alcanzado a correr.
+- **La prueba se cierra con el reloj de pared, no con la marca del último
+  cuadro.** Era lo que escondía el hueco: en vivo los cuadros vienen sellados
+  con `performance.now()`, así que los dos relojes son comparables. En video no,
+  y ahí se sigue usando la marca del cuadro.
+
+Fijado en `test/camara-pegada.test.mjs`, incluidos los dos casos que **no**
+tienen que cambiar: terminar una prueba normal, y un tropezón de 0,4 s, que es
+un teléfono con calor y no una cámara colgada.
 
 ## Sin conexión
 

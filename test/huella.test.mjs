@@ -37,10 +37,13 @@ test('quitar o agregar una regla cambia la huella', () => {
 
 test('la huella de las reglas de verdad es corta y reproducible', () => {
   const S = loadModule('skeleton');
-  // La misma combinacion que sella la app: umbrales + suavizado.
-  const h = E.huellaDe({ ex: E.EX_CONFIG, sk: S.SKELETON_CONFIG });
+  // La misma combinacion que sella la app: umbrales, suavizado y el codigo que
+  // decide que cuenta. Si esto deja de coincidir con la app, la huella del CSV
+  // deja de significar lo que dice el README.
+  const reglas = { ex: E.EX_CONFIG, sk: S.SKELETON_CONFIG, cod: E.codigoDeConteo() };
+  const h = E.huellaDe(reglas);
   assert.match(h, /^[0-9a-z]{6,10}$/);
-  assert.equal(h, E.huellaDe({ ex: E.EX_CONFIG, sk: S.SKELETON_CONFIG }));
+  assert.equal(h, E.huellaDe(reglas));
 });
 
 test('los textos de los avisos no cambian la huella: no cambian el conteo', () => {
@@ -65,4 +68,46 @@ test('los colores y el dibujo no entran en la huella: no cambian el conteo', () 
   const a = E.huellaDe({ sk: S.SKELETON_CONFIG });
   const b = E.huellaDe({ sk: { ...S.SKELETON_CONFIG, colors: { nuevo: '#fff' }, draw2D: { grosor: 9 } } });
   assert.equal(a, b);
+});
+
+/* --------------------------------------- la huella del codigo que cuenta */
+
+test('normalizar: un comentario o la indentacion no cambian el codigo', () => {
+  const a = E.normalizarCodigo(`function f(x) {
+    // sube el umbral
+    return x > 3;
+  }`);
+  const b = E.normalizarCodigo(`function f(x) { return x > 3; }   /* sube el umbral */`);
+  assert.equal(a, b);
+});
+
+test('normalizar: cambiar una condicion si cambia el codigo', () => {
+  assert.notEqual(
+    E.normalizarCodigo('function f(x) { return x > 3; }'),
+    E.normalizarCodigo('function f(x) { return x > 4; }'),
+  );
+});
+
+test('normalizar: lo que esta dentro de un texto se respeta', () => {
+  // Un "//" dentro de un texto no es un comentario, y los espacios de un
+  // mensaje para la persona tampoco se pueden colapsar.
+  const src = `function f() { return 'a  //  b'; }`;
+  assert.match(E.normalizarCodigo(src), /'a {2}\/\/ {2}b'/);
+});
+
+test('la huella del codigo de conteo es corta y reproducible', () => {
+  const a = E.codigoDeConteo();
+  assert.equal(a, E.codigoDeConteo());
+  assert.match(a, /^[0-9a-z]{7}$/);
+});
+
+test('la huella de las reglas cubre el codigo, no solo la configuracion', () => {
+  // Esto es lo que fallaba: arreglar como se cierra una prueba cuando la camara
+  // se queda pegada cambio lo que mide la plancha sin tocar una sola constante,
+  // y la huella anterior no se habria movido.
+  const S = loadModule('skeleton');
+  const con = E.huellaDe({ ex: E.EX_CONFIG, sk: S.SKELETON_CONFIG, cod: E.codigoDeConteo() });
+  const sin = E.huellaDe({ ex: E.EX_CONFIG, sk: S.SKELETON_CONFIG });
+  assert.notEqual(con, sin);
+  assert.match(con, /^[0-9a-z]{7}$/);
 });

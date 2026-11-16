@@ -2612,17 +2612,26 @@ const SIN_VER_MIN = 0.5;
 
 /**
  * Qué decir sobre el tiempo en que la app no estuvo mirando.
- * En flexiones y sentadillas las repeticiones de ese rato no se contaron. En
- * la plancha es al revés: el reloj sigue corriendo a propósito durante un
- * corte corto, así que esos segundos se contaron sin poder comprobar la
- * posición. Son cosas distintas y se dicen distinto.
+ *
+ * Son tres situaciones distintas y decirlas igual sería mentir en dos de ellas:
+ *
+ *   - La prueba se cortó por eso (`not_visible`): el número es hasta donde
+ *     alcanzó a ver, no lo que la persona hizo.
+ *   - Flexiones y sentadillas, corte corto: las repeticiones de ese rato no se
+ *     contaron, así que el número puede quedarse corto.
+ *   - Plancha, corte corto: al revés, el reloj sigue corriendo a propósito, así
+ *     que esos segundos se contaron sin poder comprobar la posición.
  */
-function sinVerTexto(test, segundos) {
+function sinVerTexto(test, segundos, termino = null) {
   if (!Number.isFinite(segundos) || segundos < SIN_VER_MIN) return null;
   const s = String(Math.round(segundos * 10) / 10).replace('.', ',');
+  const cabeza = `Durante ${s} s no te vi: alguien pasó por delante, se cortó la imagen o la cámara se quedó pegada.`;
+  if (termino === 'not_visible') {
+    return `${cabeza} La prueba se cortó ahí, así que el número es lo que alcancé a ver y no lo que hiciste. Conviene repetirla.`;
+  }
   return test === 'plank'
-    ? `Durante ${s} s no te vi: alguien pasó por delante o se cortó la imagen. El reloj siguió corriendo, así que esos segundos se contaron sin poder comprobar la posición.`
-    : `Durante ${s} s no te vi: alguien pasó por delante o se cortó la imagen. Las repeticiones de ese rato no se contaron, así que el número puede quedarse corto.`;
+    ? `${cabeza} El reloj siguió corriendo, así que esos segundos se contaron sin poder comprobar la posición.`
+    : `${cabeza} Las repeticiones de ese rato no se contaron, así que el número puede quedarse corto.`;
 }
 
 function nivelDe(temblor) {
@@ -3149,7 +3158,22 @@ function createAnalyzer(test, opts) {
     },
     stop(t, reason = 'manual') {
       if (S.phase !== 'ended') {
-        if (S.started && machine.stopValue && S.badStart == null) machine.stopValue(t);   // unseen right now: keep the last good value
+        /* Cuánto rato lleva sin llegar un cuadro. update() solo sabe contar el
+           tiempo de los cuadros que llegan: si la cámara se queda pegada no
+           pasa nada por ahí, y sin esta cuenta la plancha se lleva de regalo
+           todo el rato que la app no vio, con sinVer en cero. Para la persona
+           que hizo la prueba es el mismo problema que no verla, visto desde el
+           otro lado, así que se trata igual. */
+        const ts = t / 1000;
+        const hueco = S.lastT == null || !finite(ts) ? 0 : Math.max(0, ts - S.lastT);
+        if (hueco > CM.gapFreezeSec) {
+          S.frozen += hueco - CM.nominalFrameSec;        // el hueco cuenta como un cuadro nominal, igual que en update()
+          if (hueco > CM.invisibleEndSec) { S.visible = false; reason = 'not_visible'; }
+        }
+        // El reloj no puede pasar del último cuadro que llegó. Si ahora mismo no se ve a nadie, se queda en el último valor bueno.
+        if (S.started && machine.stopValue && S.badStart == null) {
+          machine.stopValue(hueco > CM.gapFreezeSec ? (S.lastT + CM.nominalFrameSec) * 1000 : t);
+        }
         S.end(reason, t);
       }
       return stateOf(S);
@@ -3199,12 +3223,63 @@ function huellaDe(reglas) {
   return h.toString(36).padStart(7, '0');
 }
 
+/**
+ * Deja el código de una función como algo comparable: sin comentarios y con
+ * los espacios colapsados.
+ *
+ * Es lo mismo que hace `estable` con la configuración. Arreglar una falta de
+ * ortografía en un comentario o reindentar un bloque no vuelve incomparables
+ * las mediciones de ayer; cambiar una condición sí.
+ */
+function normalizarCodigo(src) {
+  const s = String(src);
+  let out = '', i = 0;
+  while (i < s.length) {
+    const c = s[i], d = s[i + 1];
+    if (c === '/' && d === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
+    if (c === '"' || c === "'" || c === '`') {                 // el contenido de un texto va tal cual
+      const q = c; out += c; i++;
+      while (i < s.length) {
+        if (s[i] === '\\') { out += s[i] + (s[i + 1] ?? ''); i += 2; continue; }
+        out += s[i];
+        if (s[i] === q) { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    if (/\s/.test(c)) { if (out && !out.endsWith(' ')) out += ' '; i++; continue; }
+    out += c; i++;
+  }
+  return out.trim();
+}
+
+/**
+ * Las funciones que deciden qué se cuenta.
+ *
+ * Entran en la huella porque cambiar una de ellas cambia el resultado tanto
+ * como cambiar un umbral. Pasó de verdad: arreglar cómo se cierra una prueba
+ * cuando la cámara se queda pegada cambió lo que mide la plancha, y una huella
+ * que solo mirara la configuración habría dicho que las mediciones de antes y
+ * las de después son comparables.
+ *
+ * Lo que queda fuera es lo que no cuenta nada: los textos, el dibujo, la
+ * pantalla de validación, la huella misma.
+ */
+const CODIGO_DE_CONTEO = Object.freeze([angleAt, makeSmoother, sideScore, pickSide, measure,
+  pushupIssue, squatIssue, plankIssue, createCore, stateOf, repMachine, plankMachine, createAnalyzer]);
+
+/** Huella del código de conteo de esta copia. */
+function codigoDeConteo() {
+  return huellaDe(CODIGO_DE_CONTEO.map((f) => normalizarCodigo(f.toString())));
+}
+
 // La huella de esta copia de la app NO se arma acá: tiene que cubrir también
 // el suavizado (`SKELETON_CONFIG`), porque cambiar el filtro cambia qué se
 // cuenta igual que cambiar un umbral. Se arma en el módulo de la app, que ve
-// las dos configuraciones; acá va solo la función.
+// las dos configuraciones; acá van solo las funciones.
 
-return { EX_CONFIG, createAnalyzer, huellaDe };
+return { EX_CONFIG, createAnalyzer, huellaDe, normalizarCodigo, codigoDeConteo };
 })();
 // ---- app.js ----
 __mods["history"] = (() => {
@@ -4118,7 +4193,7 @@ __mods["app"] = (() => {
 // FitGram v0 — app shell: screens, camera, MediaPipe Pose Landmarker, test runner, results.
 // Modules are inlined by build.mjs; imports below are rewritten at build time.
 const { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } = __mods["norms"];
-const { createAnalyzer, huellaDe } = __mods["exercises"];
+const { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG } = __mods["exercises"];
 const { synthSession } = __mods["synth"];
 const { SKELETON_CONFIG, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } = __mods["skeleton"];
 const Hist = __mods["history"];
@@ -4126,11 +4201,15 @@ const Val = __mods["validation"];
 const Gm = __mods["game"];
 const Cal = __mods["calidad"];
 /**
- * Con qué reglas cuenta esta copia de la app: umbrales y suavizado juntos.
- * Va sellada en cada resultado, para que el estudio no mezcle dos versiones
- * sin que nadie se entere.
+ * Con qué reglas cuenta esta copia de la app: los umbrales, el suavizado y el
+ * código que decide qué cuenta. Va sellada en cada resultado, para que el
+ * estudio no mezcle dos versiones sin que nadie se entere.
+ *
+ * Los tres hacen falta. Un umbral distinto cambia el conteo; el filtro cambia
+ * la señal con que se mide; y una corrección en la máquina de estados cambia
+ * el resultado sin tocar ni una constante.
  */
-const REGLAS = huellaDe({ ex: __mods["exercises"].EX_CONFIG, sk: SKELETON_CONFIG });
+const REGLAS = huellaDe({ ex: EX_CONFIG, sk: SKELETON_CONFIG, cod: codigoDeConteo() });
 const { AGE_RANGE, coversAge } = __mods["norms"];
 /* ------------------------------------------------------------------ config */
 
@@ -4711,6 +4790,7 @@ const Runner = {
   },
 
   teardown() {
+    this.dejarDeVigilar();
     this.sid = (this.sid || 0) + 1;
     this.runId = (this.runId || 0) + 1;
     this.running = false;
@@ -4809,10 +4889,55 @@ const Runner = {
     tick();
   },
 
+  /**
+   * Con qué reloj se cierra la prueba.
+   *
+   * En vivo los cuadros vienen sellados con performance.now(), así que el
+   * reloj de pared es comparable y el analizador puede darse cuenta de que el
+   * último cuadro que recibió tiene cuarenta segundos. En video la marca es
+   * tiempo del medio, donde performance.now() no significa nada.
+   */
+  relojFin() {
+    return this.mode === 'live' ? performance.now() : (this.frame?.t ?? performance.now());
+  },
+
+  /**
+   * Vigila que sigan llegando cuadros.
+   *
+   * La plancha es un minuto con el teléfono apoyado y nadie tocándolo. Si la
+   * cámara se queda pegada, no llega ningún cuadro, y entonces el analizador
+   * no se entera: su cuenta del tiempo sin ver vive dentro de update(), que es
+   * justo lo que deja de pasar. Sin esto la prueba se queda esperando para
+   * siempre con la imagen congelada y nada lo dice.
+   *
+   * El umbral es el mismo que ya rige para no ver a nadie: son la misma cosa
+   * para quien está haciendo la prueba.
+   */
+  vigilarCuadros() {
+    this.dejarDeVigilar();
+    if (this.mode !== 'live') return;
+    this.ultimoCuadroAt = performance.now();
+    this.vigia = setInterval(() => this.revisarCuadros(), 1000);
+  },
+
+  dejarDeVigilar() {
+    if (this.vigia) { clearInterval(this.vigia); this.vigia = 0; }
+  },
+
+  revisarCuadros() {
+    if (this.phase !== 'active' || this.mode !== 'live') return;
+    const hueco = (performance.now() - (this.ultimoCuadroAt || 0)) / 1000;
+    if (hueco <= EX_CONFIG.common.invisibleEndSec) return;
+    this.dejarDeVigilar();
+    const st = this.analyzer.stop(performance.now(), 'not_visible');
+    this.finish(st, 'not_visible');
+  },
+
   beginActive(t, immediate = false) {
     this.analyzer.start(t);
     this.phase = 'active';
     this.startT = t;
+    this.vigilarCuadros();
     // El temblor que se guarda con el resultado es el de la serie, no el de
     // la gente acomodándose antes de empezar.
     this.jitter?.reset();
@@ -4848,8 +4973,7 @@ const Runner = {
       return this.notStarted('Prueba detenida', 'El reloj no alcanzó a partir.');
     }
     if (this.phase === 'active') {
-      const t = this.frame?.t ?? performance.now();
-      const st = this.analyzer.stop(t, 'manual');
+      const st = this.analyzer.stop(this.relojFin(), 'manual');
       if (this.mode === 'video') this.haltVideo();
       return this.finish(st, 'manual');
     }
@@ -4894,6 +5018,7 @@ const Runner = {
 
   /** A video frame in which MediaPipe found nobody: clears the overlay and lets the analyzer count unseen time. */
   processEmpty(t) {
+    this.ultimoCuadroAt = performance.now();
     this.draw(null);
     if (this.phase === 'active') {
       const st = this.analyzer.update(blankJoints(t));
@@ -5010,6 +5135,7 @@ const Runner = {
 
   process(raw) {
     if (!raw) { this.draw(null); return; }
+    this.ultimoCuadroAt = performance.now();
     // El temblor se mide sobre los puntos sin suavizar: el filtro justamente
     // se lo come, y es lo que dice si se puede confiar en el conteo.
     this.jitter?.push(raw.lm);
@@ -5193,6 +5319,7 @@ const Runner = {
 
   /** The test never really started (plank clock never ran, or no start position in a video): back to preview. */
   notStarted(title = 'No encontré la posición', detail = null) {
+    this.dejarDeVigilar();
     if (this.mode === 'video') this.haltVideo();
     this.phase = 'preview';
     this.analyzer = createAnalyzer(this.test, { sex: S.profile.sex });
@@ -5229,6 +5356,7 @@ const Runner = {
     if (this.test !== 'plank' && !(st?.log?.length > 0)) { this.notStarted('No registré repeticiones'); return; }
     this.phase = 'ended';
     this.running = false;
+    this.dejarDeVigilar();
     WakeLock.off();
     try { $('video').pause(); } catch { /* ignore */ }
     const endReason = reason || st?.endReason || 'manual';
@@ -5346,7 +5474,7 @@ function renderResult(test) {
 
   // Si no se pudo confiar en la detección, eso va primero: cambia cómo hay que
   // leer el número, incluso antes que la tabla con la que se comparó.
-  const avisoSinVer = Cal.sinVerTexto(test, r.sinVer);
+  const avisoSinVer = Cal.sinVerTexto(test, r.sinVer, r.endReason);
   if (avisoSinVer) $('res-flags').insertAdjacentHTML('afterbegin', `<div class="flag">${esc(avisoSinVer)}</div>`);
   const avisoCal = Cal.RESULTADO[r.calidad?.nivel];
   if (avisoCal) $('res-flags').insertAdjacentHTML('afterbegin', `<div class="flag">${esc(avisoCal)}</div>`);
@@ -6605,6 +6733,9 @@ function bind() {
     if (document.visibilityState !== 'visible' || S.screen !== 'run' || Runner.mode !== 'live') return;
     $('video').play().catch(() => {});
     if (['countdown', 'arming', 'active'].includes(Runner.phase)) WakeLock.on();
+    // Los temporizadores se frenan con la app en segundo plano, así que el
+    // vigilante puede no haber alcanzado a correr: se revisa al volver.
+    Runner.revisarCuadros();
   });
 }
 
