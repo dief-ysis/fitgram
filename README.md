@@ -50,6 +50,7 @@ Todo vive en `index.html`, en pseudo-módulos dentro de un solo `<script type="m
 | `history` | **Nuevo.** La serie de resultados de cada prueba y el cálculo del avance. |
 | `validation` | **Nuevo.** Comparación con evaluadores humanos: acuerdo, Bland-Altman y CCI(2,1). |
 | `game` | **Nuevo.** Modo juego: recorrido, corredores y puntaje. Idea de Elias Hermosilla. |
+| `calidad` | **Nuevo.** Mide el temblor de la detección para saber si se puede confiar en el conteo. |
 | `app` | Pantallas, navegación y persistencia. |
 
 Las dependencias (`lib/`, `models/`, `wasm/`) están versionadas para que la app
@@ -212,6 +213,58 @@ Esto se verificó manejando la pantalla desde el navegador como lo haría un ded
 —19 comprobaciones sobre el flujo completo: guardar con Enter, duplicado,
 reemplazo, borrado, deshacer, cambio de participante y exportación—, además de
 las pruebas de `node --test` sobre la lógica.
+
+## ¿Se puede confiar en esta medición?
+
+La app contaba repeticiones con la misma seguridad, viera lo que viera. Midiendo
+el generador sintético con el motor real se ve que el conteo **no se degrada de
+a poco**: aguanta sin despeinarse y después se cae entero.
+
+Dos resultados del barrido (12 semillas × fps × ruido, el analizador de verdad):
+
+**Los cuadros por segundo no son el problema.** El mismo conteo exacto a 30, 20,
+15, 10 y hasta 6 fps. Un teléfono lento no arruina la medición.
+
+**El ruido en los puntos del cuerpo sí.** Con ruido alto la app llega a contar
+**cero de trece repeticiones**, y antes de eso pasa por una zona peor: cuenta
+cuatro de trece y las entrega como si nada, con su categoría y todo.
+
+| temblor | qué pasaba con el conteo |
+|---|---|
+| hasta 0,025 | exacto en 24 de 24 corridas |
+| 0,031 | empieza a perder alguna (23/24) |
+| 0,037 | pierde en la mitad de los casos (18/24) |
+| 0,046 | pierde casi siempre (11/24), 6 % de las repeticiones |
+| 0,061 | catastrófico: 2/24, más de la mitad de las repeticiones perdidas |
+| 0,076 | cuenta cero |
+
+El módulo `calidad` mide ese temblor en vivo con la **segunda diferencia** de los
+puntos clave: un movimiento rápido pero limpio tiene primera diferencia grande y
+segunda chica, mientras que el ruido invierte la dirección cuadro a cuadro y
+dispara la segunda. Por eso la medida da casi lo mismo a 30 que a 15 fps (0,0092
+contra 0,0093): mide ruido, no velocidad. Se toma la mediana de la ventana para
+que un cuadro perdido no la dispare, y se calcula sobre los puntos **sin
+suavizar**, porque el filtro es justamente lo que se come el temblor.
+
+Con eso la app:
+
+- **avisa antes de empezar**, mientras la persona se acomoda, que conviene más
+  luz o ropa menos suelta — ahí todavía se puede arreglar;
+- **avisa durante la prueba** si está francamente mal, una vez cada 12 s;
+- **marca el resultado** cuando la detección no fue confiable, antes que
+  cualquier otra advertencia, porque cambia cómo hay que leer el número;
+- **guarda el temblor con la medición de validación**, en las columnas `temblor`
+  y `calidad` del CSV.
+
+Los umbrales (0,030 y 0,045) son **provisorios**: salen del generador sintético,
+que mete ruido independiente en cada punto y cada cuadro, mientras que el de
+MediaPipe real está correlacionado. No hace falta adivinarlos: como cada medición
+del estudio queda guardada con su temblor, las 45 corridas reales los van a
+calibrar solas.
+
+Verificado también con el motor real en el navegador: una corrida sintética
+limpia da temblor 0,0093, nivel «bien», 13 repeticiones y ningún aviso — el mismo
+número que el barrido offline.
 
 ## Sin conexión
 

@@ -420,3 +420,40 @@ test('CSV: lleva lo descartado, el motivo principal y la clasificacion', () => {
   assert.ok(fila.includes('criterio'), fila);
   assert.ok(fila.includes('pause'), fila);
 });
+
+test('corrida: lleva tambien si se podia confiar en la deteccion', () => {
+  const r = V.runFromResult({
+    invalid: 1, endReason: 'manual', log: [{ valid: false, reason: 'Poca profundidad' }],
+    calidad: { temblor: 0.0512, nivel: 'malo', cuadros: 300 },
+  });
+  assert.equal(r.calidad, 'malo');
+  assert.equal(r.temblor, 0.0512);
+});
+
+test('corrida: sin medida de calidad no se inventa un nivel', () => {
+  const r = V.runFromResult({ invalid: 0, endReason: 'manual', log: [] });
+  assert.equal(r.calidad, null);
+  assert.equal(r.temblor, null);
+});
+
+test('guardar: la calidad sobrevive a releer la medicion del almacenamiento', () => {
+  const rec0 = V.newRecord({
+    participant: 'P01', test: 'pushup', app: 9, raters: [14, 14],
+    run: V.runFromResult({ invalid: 0, endReason: 'manual', log: [], calidad: { temblor: 0.062, nivel: 'malo', cuadros: 200 } }),
+  });
+  const vuelta = V.loadRecords([JSON.parse(JSON.stringify(rec0))]);
+  assert.equal(vuelta[0].run.calidad, 'malo');
+  assert.equal(vuelta[0].run.temblor, 0.062);
+});
+
+test('CSV: lleva el temblor y la calidad de la deteccion', () => {
+  const rs = [Object.assign(rec('P01', 'pushup', 9, [14, 14]), {
+    run: V.runFromResult({ invalid: 0, endReason: 'manual', log: [], calidad: { temblor: 0.062, nivel: 'malo', cuadros: 200 } }),
+  })];
+  const csv = V.toCSV(rs, ['pushup'], { pushup: 'rep' });
+  const [head, fila] = csv.trim().split('\n');
+  assert.ok(head.includes('temblor'), head);
+  assert.ok(head.includes('calidad'), head);
+  assert.ok(fila.includes('0,062'), fila);
+  assert.ok(fila.includes('malo'), fila);
+});

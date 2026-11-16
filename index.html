@@ -2538,6 +2538,131 @@ let memo = { test: null, opts: null, o: null, plan: null };
 return { SYNTH_CONFIG, synthSession, synthFrameAt };
 })();
 // ---- exercises.js ----
+__mods["calidad"] = (() => {
+/* ====================================================================
+   FitGram — ¿se puede confiar en esta medición?
+
+   La app contaba repeticiones con la misma seguridad daba igual lo que
+   estuviera viendo. Midiendo el barrido sintético se ve que el conteo no se
+   degrada despacio: aguanta sin despeinarse hasta cierto nivel de ruido en los
+   puntos del cuerpo y después se cae entero. Con ruido alto llega a contar
+   CERO repeticiones de trece, sin decir nada.
+
+   Lo que no lo rompe: los cuadros por segundo. El mismo barrido a 30 y a 6 fps
+   da el mismo conteo. El problema es el temblor de los puntos, no la cadencia.
+
+   El temblor se mide con la segunda diferencia de los puntos clave: un
+   movimiento rápido pero limpio tiene primera diferencia grande y segunda
+   chica, mientras que el ruido invierte la dirección cuadro a cuadro y dispara
+   la segunda. Por eso la medida sale casi igual a 30 que a 15 fps: mide ruido,
+   no velocidad. Se toma la mediana de la ventana para que un cuadro perdido no
+   la dispare.
+
+   Los umbrales salen de ese barrido sintético y por eso son PROVISORIOS: el
+   generador mete ruido independiente en cada punto y cada cuadro, y el ruido
+   de MediaPipe real está correlacionado. El estudio de validación los va a
+   calibrar solo, porque cada medición queda guardada con su temblor.
+   ==================================================================== */
+
+/** Los puntos que usan las tres pruebas: hombros, codos, muñecas, caderas, rodillas, tobillos. */
+const CLAVE = Object.freeze([11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]);
+
+/**
+ * Umbrales provisorios, del barrido sintético (12 semillas x fps x ruido):
+ *   hasta 0,025  conteo exacto en 12 de 12
+ *   0,031        empieza a perder alguna
+ *   0,037        pierde en la mitad de los casos
+ *   0,046        pierde casi siempre
+ *   0,061        catastrófico: llega a contar cero
+ * Se avisa antes de que empiece a perder, no después.
+ */
+const UMBRAL = Object.freeze({ dudoso: 0.030, malo: 0.045 });
+
+/** Cuántos cuadros hacen falta antes de decir algo. Menos que esto no es una medición. */
+const MIN_MUESTRAS = 12;
+
+/**
+ * Lo que se dice sobre la imagen, antes y durante la prueba. Va al cartel
+ * grande, que se lee a 2,5 m, y ese solo acepta hasta 44 caracteres (setPos):
+ * más largo que eso no se vería, que es justo cuando hace falta.
+ */
+const MENSAJE = Object.freeze({
+  dudoso: 'Algo de temblor: busca más luz',
+  malo: 'No te veo estable: más luz y ropa ajustada',
+});
+const MAX_MENSAJE = 44;
+
+/** Lo que se dice en el resultado, donde hay espacio para explicar. */
+const RESULTADO = Object.freeze({
+  dudoso: 'La detección tuvo algo de temblor durante la prueba. El conteo puede quedarse corto en una repetición o dos.',
+  malo: 'La detección estuvo inestable durante toda la prueba, y con ese nivel de temblor el conteo se queda corto. Conviene repetirla con más luz, ropa ajustada y el teléfono apoyado y quieto.',
+});
+
+function nivelDe(temblor) {
+  if (!Number.isFinite(temblor)) return null;
+  if (temblor >= UMBRAL.malo) return 'malo';
+  if (temblor >= UMBRAL.dudoso) return 'dudoso';
+  return 'bien';
+}
+
+const mediana = (xs) => {
+  if (!xs.length) return NaN;
+  const a = xs.slice().sort((x, y) => x - y);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+};
+
+/** El temblor de un cuadro, dados los dos anteriores. NaN si falta algún punto. */
+function temblorCuadro(a, b, c) {
+  if (!a || !b || !c) return NaN;
+  let suma = 0, n = 0;
+  for (const k of CLAVE) {
+    const pa = a[k], pb = b[k], pc = c[k];
+    if (!pa || !pb || !pc) continue;
+    const dx = pc.x - 2 * pb.x + pa.x;
+    const dy = pc.y - 2 * pb.y + pa.y;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) continue;
+    suma += Math.hypot(dx, dy); n++;
+  }
+  return n ? suma / n : NaN;
+}
+
+/**
+ * Sigue el temblor a lo largo de una corrida.
+ * `ventana` son los cuadros recientes que miran `nivel()` y `temblor()`; aparte
+ * se guarda el peor tramo y la mediana de toda la corrida para el resultado.
+ */
+function createJitterTracker({ ventana = 90 } = {}) {
+  let prev2 = null, prev1 = null;
+  let recientes = [];
+  let todos = [];
+  return {
+    reset() { prev2 = prev1 = null; recientes = []; todos = []; },
+    /** `lm` son los puntos SIN suavizar: suavizados ya no tienen el temblor que se busca. */
+    push(lm) {
+      if (!Array.isArray(lm)) return;
+      const v = temblorCuadro(prev2, prev1, lm);
+      prev2 = prev1; prev1 = lm;
+      if (!Number.isFinite(v)) return;
+      recientes.push(v);
+      if (recientes.length > ventana) recientes.shift();
+      todos.push(v);
+    },
+    /** Temblor de los cuadros recientes, para avisar en vivo. */
+    temblor() { return recientes.length >= MIN_MUESTRAS ? mediana(recientes) : NaN; },
+    nivel() { return recientes.length >= MIN_MUESTRAS ? nivelDe(mediana(recientes)) : null; },
+    /** Resumen de toda la corrida, para guardar con el resultado. */
+    resumen() {
+      if (todos.length < MIN_MUESTRAS) return null;
+      const med = mediana(todos);
+      return { temblor: Math.round(med * 1e4) / 1e4, nivel: nivelDe(med), cuadros: todos.length };
+    },
+  };
+}
+
+return { CLAVE, UMBRAL, MIN_MUESTRAS, MENSAJE, MAX_MENSAJE, RESULTADO, nivelDe, temblorCuadro, createJitterTracker, mediana };
+})();
+
 __mods["exercises"] = (() => {
 // FitGram exercise analyzers: push-ups (CSEP), squats (ACE) and forearm plank (Strand 2014).
 // Self-contained (no imports, no DOM). Input = Joints from skeleton.js#toJoints: j2 in aspect-corrected image units
@@ -3300,10 +3425,14 @@ function normalizeRun(run) {
   }
   const invalid = toNum(run.invalid);
   const counted = toNum(run.counted);
+  const temblor = toNum(run.temblor);
   return {
     invalid: Number.isNaN(invalid) ? null : invalid,
     counted: Number.isNaN(counted) ? null : counted,
     endReason: run.endReason ? String(run.endReason) : null,
+    // Si se podía confiar en la detección durante esa serie (módulo "calidad").
+    calidad: run.calidad ? String(run.calidad) : null,
+    temblor: Number.isNaN(temblor) ? null : temblor,
     reasons,
   };
 }
@@ -3326,6 +3455,8 @@ function runFromResult(result) {
     invalid: Number.isNaN(invalid) ? rechazadas : invalid,
     counted,
     endReason: result.endReason ? String(result.endReason) : null,
+    calidad: result.calidad?.nivel ? String(result.calidad.nivel) : null,
+    temblor: Number.isFinite(result.calidad?.temblor) ? result.calidad.temblor : null,
     reasons,
   };
 }
@@ -3557,7 +3688,8 @@ function toCSV(records, order, units = {}) {
   const head = ['participante', 'prueba', 'fecha', 'app']
     .concat(Array.from({ length: maxR }, (_, i) => `evaluador${i + 1}`))
     .concat(['promedio_evaluadores', 'diferencia_app_menos_promedio',
-      'descartadas', 'motivo_principal', 'termino', 'clasificacion', 'nota']);
+      'descartadas', 'motivo_principal', 'termino', 'clasificacion',
+      'temblor', 'calidad', 'nota']);
   const rows = (records || []).slice().sort((a, b) => String(a.participant).localeCompare(String(b.participant))
     || String(a.test).localeCompare(String(b.test)));
   const body = rows.map((r) => {
@@ -3569,6 +3701,7 @@ function toCSV(records, order, units = {}) {
       r.run && r.run.invalid != null ? numCL(r.run.invalid, 0) : '',
       mainReason(r.run), r.run?.endReason || '',
       classifyRecord(r, units[r.test] === 's') || '',
+      r.run?.temblor != null ? numCL(r.run.temblor, 4) : '', r.run?.calidad || '',
       r.note || '',
     ].map(csvCell).join(';');
   });
@@ -3884,6 +4017,7 @@ const { toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } = __mods[
 const Hist = __mods["history"];
 const Val = __mods["validation"];
 const Gm = __mods["game"];
+const Cal = __mods["calidad"];
 const { AGE_RANGE, coversAge } = __mods["norms"];
 /* ------------------------------------------------------------------ config */
 
@@ -4331,7 +4465,7 @@ const Runner = {
   mode: null, test: null, stream: null, videoUrl: null, raf: 0, vfc: 0, running: false,
   phase: 'idle', analyzer: null, smoother: null, lifter: null, view: null,
   st: null, frame: null, rec: [], lastRecT: -1e9, countdownEnd: 0, armOkSince: null, startT: 0,
-  demo: null, demoT0: 0, videoOffset: 0, detectMs: [], resizeObs: null, lastCueMsg: '', lastCueAt: 0, lastCount: 0,
+  demo: null, demoT0: 0, videoOffset: 0, detectMs: [], jitter: null, avisoCalidad: 0, resizeObs: null, lastCueMsg: '', lastCueAt: 0, lastCount: 0,
 
   async open(test, mode, file) {
     this.teardown();
@@ -4358,6 +4492,8 @@ const Runner = {
     this.setPos(null, 'Preparando…');
     this.analyzer = createAnalyzer(test, { sex: S.profile.sex });
     this.smoother = new PoseSmoother();
+    this.jitter = Cal.createJitterTracker();
+    this.avisoCalidad = 0;
     this.lifter = createLifter('mediapipe');
     this.rec = []; this.lastRecT = -1e9; this.st = null; this.frame = null; this.lastRaw = null; this.phase = 'preview';
     this.lastCount = 0;
@@ -4564,6 +4700,10 @@ const Runner = {
     this.analyzer.start(t);
     this.phase = 'active';
     this.startT = t;
+    // El temblor que se guarda con el resultado es el de la serie, no el de
+    // la gente acomodándose antes de empezar.
+    this.jitter?.reset();
+    this.avisoCalidad = 0;
     Voice.say(this.test === 'plank' ? 'Mantén la posición' : 'Comienza', true);
     if (immediate) this.cue(null);
   },
@@ -4677,6 +4817,7 @@ const Runner = {
     $('btn-start').hidden = true; $('btn-stop').hidden = false;
     this.phase = 'arming'; this.armOkSince = null;
     this.smoother.reset?.();
+    this.jitter?.reset();
     this.videoOffset = Engine.lastTs + 1000;
     this.detectMs = [];
     v.playbackRate = 1;
@@ -4741,13 +4882,20 @@ const Runner = {
 
   process(raw) {
     if (!raw) { this.draw(null); return; }
+    // El temblor se mide sobre los puntos sin suavizar: el filtro justamente
+    // se lo come, y es lo que dice si se puede confiar en el conteo.
+    this.jitter?.push(raw.lm);
     const frame = this.smoother.smooth(raw);
     this.frame = frame;
     const joints = toJoints(frame);
 
     if (this.phase === 'preview' || this.phase === 'countdown') {
       const c = this.analyzer.check(joints);
-      this.setPos(c.ok, c.ok ? 'Posición correcta' : c.msg);
+      // Antes de empezar, si la detección está inestable conviene arreglarlo
+      // ahora y no descubrirlo cuando el número ya salió corto.
+      const nivel = c.ok ? this.jitter?.nivel() : null;
+      if (nivel === 'malo' || nivel === 'dudoso') this.setPos(false, Cal.MENSAJE[nivel]);
+      else this.setPos(c.ok, c.ok ? 'Posición correcta' : c.msg);
     } else if (this.phase === 'arming' && this.test === 'plank') {
       this.beginActive(frame.t); // the plank analyzer itself waits for the 1 s hold before starting the clock
     } else if (this.phase === 'arming') {
@@ -4761,6 +4909,11 @@ const Runner = {
     if (this.phase === 'active') {
       const st = this.analyzer.update(joints);
       this.st = st;
+      // Una sola vez cada 12 s: avisar más seguido sería ruido encima del ruido.
+      if (this.jitter?.nivel() === 'malo' && frame.t - this.avisoCalidad > 12000) {
+        this.avisoCalidad = frame.t;
+        this.cue({ level: 'warn', msg: Cal.MENSAJE.malo });
+      }
       this.handleEvents(st);
       this.updateHud(st);
       if (st.phase === 'ended') { this.finish(st, st.endReason); return; }
@@ -4952,6 +5105,7 @@ const Runner = {
     Sound.beep(523, 0.3, 0.15);
     const value = this.test === 'plank' ? Math.round((st.value || 0) * 10) / 10 : (st.value || 0);
     const result = { value, invalid: st.invalid || 0, endReason, mode: this.mode, date: new Date().toISOString(), log: (st.log || []).slice(0, 200),
+      calidad: this.jitter?.resumen() || null,
       profile: { age: S.profile.age, sex: S.profile.sex } };
     if (this.mode !== 'demo') {
       S.history = Hist.pushResult(S.history, this.test, result, ORDER);
@@ -5053,6 +5207,11 @@ function renderResult(test) {
       : 'No se pudo clasificar este resultado con las tablas disponibles.';
     $('res-flags').innerHTML = `<div class="flag">${esc(porque)}</div>`;
   }
+
+  // Si no se pudo confiar en la detección, eso va primero: cambia cómo hay que
+  // leer el número, incluso antes que la tabla con la que se comparó.
+  const avisoCal = Cal.RESULTADO[r.calidad?.nivel];
+  if (avisoCal) $('res-flags').insertAdjacentHTML('afterbegin', `<div class="flag">${esc(avisoCal)}</div>`);
 
   const next = ORDER.find((x) => x !== test && !S.results[x]);
   const bn = $('btn-res-next');
