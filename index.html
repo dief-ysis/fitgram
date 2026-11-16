@@ -260,6 +260,10 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .v-after .small { flex: 1 1 auto; min-width: 0; }
 .vrow .x { border: 1px solid var(--line); background: transparent; color: var(--muted); min-height: 34px; min-width: 34px; font-size: 16px; }
 /* modo stand */
+.err-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 60; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 12px; background: var(--bad); color: #fff; font-size: 13px; line-height: 1.35;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
+.err-bar .btn { width: auto; min-height: 36px; font-size: 14px; padding: 0 12px; background: transparent; color: #fff; border-color: #fff; flex: none; }
 .stand-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid var(--accent); padding: 8px 12px; margin-bottom: 4px; }
 .stand-bar .btn { width: auto; min-height: 40px; font-size: 15px; padding: 0 14px; }
 body.run-mode .stand-bar { display: none; }
@@ -290,6 +294,10 @@ body.run-mode .stand-bar { display: none; }
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
 </head>
 <body>
+<div class="err-bar" id="error-bar" hidden role="alert">
+  <span style="min-width:0"><strong>Algo falló dentro de la app.</strong> <span id="error-bar-msg"></span></span>
+  <button class="btn" id="btn-error-close" type="button">Cerrar</button>
+</div>
 <header class="app-head">
   <div class="wrap">
     <button class="brand" id="brand" type="button" aria-label="FitGram, ir al inicio">FITGRAM</button>
@@ -4753,6 +4761,7 @@ const Runner = {
     this.avisoCalidad = 0;
     this.lifter = createLifter('mediapipe');
     this.rec = []; this.lastRecT = -1e9; this.st = null; this.frame = null; this.lastRaw = null; this.phase = 'preview';
+    this.huboCuadro = false; this.fallosSeguidos = 0; this.fallosTotal = 0;
     this.lastCount = 0;
     this.setup3D();
     this.observeResize();
@@ -4772,7 +4781,16 @@ const Runner = {
       await this.ensureEngine();
       if (sid !== this.sid) return;
       $('btn-start').disabled = false;
-      if (mode === 'live') { await this.warmUp($('video'), performance.now()); if (sid !== this.sid) return; this.veil(null); this.loop(); }
+      if (mode === 'live') {
+        await this.warmUp($('video'), performance.now());
+        if (sid !== this.sid) return;
+        this.veil(null);
+        this.loop();
+        // Desde acá, no solo durante la serie: si la cámara se queda pegada
+        // mientras la persona se acomoda, antes quedaba la imagen congelada
+        // sin que nada lo dijera.
+        this.vigilarCuadros();
+      }
       else { this.veil(null); this.setPos(null, 'Toca «Analizar video» para procesar la grabación.'); }
     } catch (e) {
       console.warn(e);
@@ -4985,15 +5003,26 @@ const Runner = {
     this.vigia = setInterval(() => this.revisarCuadros(), 1000);
   },
 
+  /** Marca que llegó un cuadro. Lo usan los dos caminos que alimentan al analizador. */
+  anotarCuadro() {
+    this.ultimoCuadroAt = performance.now();
+    this.huboCuadro = true;
+  },
+
   dejarDeVigilar() {
     if (this.vigia) { clearInterval(this.vigia); this.vigia = 0; }
   },
 
   revisarCuadros() {
-    if (this.phase !== 'active' || this.mode !== 'live') return;
+    if (this.mode !== 'live') return;
+    if (!['preview', 'countdown', 'arming', 'active'].includes(this.phase)) return;
+    // Sin un primer cuadro no hay nada que vigilar: la cámara puede estar
+    // todavía encendiéndose, y declararla muerta ahí sería un falso aviso.
+    if (!this.huboCuadro) return;
     const hueco = (performance.now() - (this.ultimoCuadroAt || 0)) / 1000;
     if (hueco <= EX_CONFIG.common.invisibleEndSec) return;
     this.dejarDeVigilar();
+    if (this.phase !== 'active') { this.cameraLost(); return; }
     const st = this.analyzer.stop(performance.now(), 'not_visible');
     this.finish(st, 'not_visible');
   },
@@ -5051,13 +5080,37 @@ const Runner = {
     this.running = true;
     const v = $('video');
     const useVfc = this.mode === 'live' && typeof v.requestVideoFrameCallback === 'function';
+    /* El reagendado va DESPUÉS de tick(), así que una excepción ahí adentro
+       mataba el bucle para siempre: la imagen quedaba congelada, el conteo
+       detenido y nada lo decía. Se aguanta un tropezón y se sigue; si falla
+       de verdad, se dice con el mensaje real en vez de dejar la pantalla
+       quieta. */
     const step = () => {
       if (!this.running) return;
-      this.tick();
+      try { this.tick(); this.fallosSeguidos = 0; }
+      catch (e) { if (this.tickFallo(e)) return; }
       if (useVfc) this.vfc = v.requestVideoFrameCallback(step);
       else this.raf = requestAnimationFrame(step);
     };
     if (useVfc) this.vfc = v.requestVideoFrameCallback(step); else this.raf = requestAnimationFrame(step);
+  },
+
+  /** Un error dentro de tick(). Devuelve true si hay que parar el bucle. */
+  tickFallo(e) {
+    this.fallosSeguidos = (this.fallosSeguidos || 0) + 1;
+    this.fallosTotal = (this.fallosTotal || 0) + 1;
+    if (this.fallosSeguidos <= 3) console.warn('tick', e);
+    if (this.fallosSeguidos < 10 && this.fallosTotal < 60) return false;
+    this.running = false;
+    this.dejarDeVigilar();
+    if (this.phase === 'active') {
+      // La medición no se puede defender: se cierra diciendo por qué.
+      const st = this.analyzer.stop(this.relojFin(), 'not_visible');
+      this.finish(st, 'not_visible');
+    } else {
+      this.fail(new Error(`La app falló mientras procesaba la imagen: ${e?.message || e}`));
+    }
+    return true;
   },
 
   tick() {
@@ -5083,7 +5136,7 @@ const Runner = {
 
   /** A video frame in which MediaPipe found nobody: clears the overlay and lets the analyzer count unseen time. */
   processEmpty(t) {
-    this.ultimoCuadroAt = performance.now();
+    this.anotarCuadro();
     this.draw(null);
     if (this.phase === 'active') {
       const st = this.analyzer.update(blankJoints(t));
@@ -5200,7 +5253,7 @@ const Runner = {
 
   process(raw) {
     if (!raw) { this.draw(null); return; }
-    this.ultimoCuadroAt = performance.now();
+    this.anotarCuadro();
     // El temblor se mide sobre los puntos sin suavizar: el filtro justamente
     // se lo come, y es lo que dice si se puede confiar en el conteo.
     this.jitter?.push(raw.lm);
@@ -6899,9 +6952,40 @@ function bind() {
   });
 }
 
+/**
+ * Red de seguridad: un error que nadie atrapó.
+ *
+ * Sin esto, una excepción en cualquier parte deja la pantalla tal como estaba
+ * y a la persona mirando algo que ya no responde. Decirlo no arregla el error,
+ * pero evita que una medición se dé por buena cuando en realidad se cayó.
+ *
+ * Solo informa: no toca el estado de la app. El error pudo venir de cualquier
+ * parte, incluida una extensión del navegador, y cerrar una prueba buena por
+ * algo ajeno sería peor que el aviso.
+ */
+let erroresSueltos = 0;
+function avisarErrorSuelto(origen, e) {
+  erroresSueltos++;
+  if (erroresSueltos <= 3) console.warn(origen, e);
+  const bar = $('error-bar');
+  if (!bar || erroresSueltos > 1) {
+    // Ya hay un aviso puesto: no se pisa, solo se cuenta.
+    if (bar && !bar.hidden) $('error-bar-msg').textContent += ` (y ${erroresSueltos - 1} más)`;
+    return;
+  }
+  const msg = String(e?.message || e || 'error desconocido').slice(0, 160);
+  bar.hidden = false;
+  $('error-bar-msg').textContent = S.screen === 'run'
+    ? `${msg} — si estabas midiendo, repite la prueba: ese resultado no es confiable.`
+    : msg;
+}
+
 function boot() {
   Voice.init();
   bind();
+  $('btn-error-close').addEventListener('click', () => { $('error-bar').hidden = true; erroresSueltos = 0; });
+  window.addEventListener('error', (e) => avisarErrorSuelto('error', e.error || e.message));
+  window.addEventListener('unhandledrejection', (e) => avisarErrorSuelto('rejection', e.reason));
   registrarSW();
   renderOnb();
   window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory, openValid, renderResult, show }; // handy for debugging and automated tests

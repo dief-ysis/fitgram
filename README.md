@@ -495,6 +495,38 @@ Fijado en `test/camara-pegada.test.mjs`, incluidos los dos casos que **no**
 tienen que cambiar: terminar una prueba normal, y un tropezón de 0,4 s, que es
 un teléfono con calor y no una cámara colgada.
 
+### Que un fallo no quede en silencio
+
+Esto es la continuación del caso de la cámara pegada: lo que le pasa a la
+persona cuando algo se rompe no es ver un error, es ver una pantalla que ya no
+responde y no saber por qué.
+
+**El bucle de cuadros moría con una sola excepción.** El reagendado del
+siguiente cuadro iba *después* de procesar el actual, así que cualquier error
+ahí adentro cortaba el bucle para siempre: el video seguía corriendo, el
+esqueleto y el conteo quedaban congelados y nada lo decía. Ahora se aguanta un
+tropezón y se sigue; si falla diez veces seguidas (o sesenta en toda la
+corrida) se detiene **diciendo la causa real**, y si era durante una serie, la
+medición se cierra como `not_visible` en vez de darse por buena.
+
+**El vigilante de cuadros ahora corre también en la vista previa**, no solo
+durante la serie. Si la cámara se queda pegada mientras la persona se acomoda,
+antes quedaba la imagen congelada sin un mensaje. No se dispara hasta que haya
+llegado un primer cuadro: la cámara puede estar todavía encendiéndose y
+declararla muerta ahí sería un falso aviso.
+
+**Y una red de seguridad para lo que nadie atrapó**: un error no capturado o
+una promesa rechazada ponen un aviso arriba con el mensaje real. Si estaba en
+curso una prueba, agrega que ese resultado no es confiable. El aviso tiene su
+propio estilo y no el de la barra del modo stand, porque esa se oculta en modo
+prueba, que es justo cuando más importa verlo. Solo informa: no toca el estado
+de la app, porque el error pudo venir de cualquier parte —una extensión del
+navegador, por ejemplo— y cerrar una prueba buena por algo ajeno sería peor que
+el aviso.
+
+Verificado en el navegador: 19 comprobaciones, incluidas que cinco tropezones
+seguidos no matan el bucle y que el aviso se ve con la app en modo prueba.
+
 ## Sin conexión
 
 `sw.js` guarda la app en el teléfono. Con Ajustes → «Preparar para usar sin
