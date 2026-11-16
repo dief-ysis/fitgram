@@ -558,6 +558,7 @@ body.run-mode .stand-bar { display: none; }
         <div class="field"><label class="lbl" for="v-r2">Evaluador 2</label><input class="inp" id="v-r2" type="text" inputmode="decimal" autocomplete="off"></div>
       </div>
       <div class="small muted" id="v-unit-hint"></div>
+      <div class="note small" id="v-run" hidden></div>
       <div class="field"><label class="lbl" for="v-note">Nota (opcional)</label><input class="inp" id="v-note" type="text" autocomplete="off" placeholder="de lado, poca luz, polera suelta…"></div>
       <div class="note warn small" id="v-error" hidden></div>
       <div class="note warn small" id="v-dup" hidden>
@@ -3252,7 +3253,7 @@ function newId() {
  * Un registro: una persona, una prueba, el conteo de la app y el de cada
  * evaluador humano. Sin nombres: solo un código de participante.
  */
-function newRecord({ participant, test, app, raters, date, note }) {
+function newRecord({ participant, test, app, raters, date, note, run }) {
   const code = String(participant ?? '').trim().toUpperCase();
   if (!code) throw new Error('Falta el código del participante.');
   if (!test) throw new Error('Falta la prueba.');
@@ -3268,7 +3269,126 @@ function newRecord({ participant, test, app, raters, date, note }) {
     raters: rs,
     date: date || new Date().toISOString(),
     note: String(note ?? '').trim(),
+    // Qué hizo la app en esa serie. Opcional: una medición tecleada a mano no
+    // la tiene, y una corrida malformada no puede costar la medición.
+    run: normalizeRun(run),
   };
+}
+
+/* ------------------------------------------------------------------------
+   Por qué no coinciden los conteos.
+
+   Un 95 % de acuerdo no dice nada por sí solo: lo que hay que poder responder
+   es QUÉ pasa en el 5 % restante. No es lo mismo que a la app se le escape una
+   repetición (falla de detección) a que la haya visto y la haya rechazado por
+   técnica mientras el evaluador humano la contó igual (diferencia de criterio).
+   Lo primero es un error; lo segundo es una decisión del protocolo, y hay que
+   discutirla con quien puso los criterios, no arreglarla en el código.
+
+   Por eso cada medición puede llevar adjunto el resumen de la corrida.
+   ------------------------------------------------------------------------ */
+
+/** Deja la corrida en su forma compacta, o null si no se entiende. */
+function normalizeRun(run) {
+  if (!run || typeof run !== 'object' || Array.isArray(run)) return null;
+  const reasons = {};
+  if (run.reasons && typeof run.reasons === 'object') {
+    for (const [k, v] of Object.entries(run.reasons)) {
+      const n = toNum(v);
+      if (!Number.isNaN(n) && n > 0) reasons[String(k)] = n;
+    }
+  }
+  const invalid = toNum(run.invalid);
+  const counted = toNum(run.counted);
+  return {
+    invalid: Number.isNaN(invalid) ? null : invalid,
+    counted: Number.isNaN(counted) ? null : counted,
+    endReason: run.endReason ? String(run.endReason) : null,
+    reasons,
+  };
+}
+
+/** Resume una corrida real de la app: cuántas contó, cuántas descartó y por qué. */
+function runFromResult(result) {
+  if (!result || typeof result !== 'object') return null;
+  const log = Array.isArray(result.log) ? result.log : [];
+  const reasons = {};
+  let counted = 0;
+  let rechazadas = 0;
+  for (const e of log) {
+    if (e && e.valid) { counted++; continue; }
+    rechazadas++;
+    const k = String(e?.reason ?? '').trim() || 'sin motivo';
+    reasons[k] = (reasons[k] || 0) + 1;
+  }
+  const invalid = toNum(result.invalid);
+  return {
+    invalid: Number.isNaN(invalid) ? rechazadas : invalid,
+    counted,
+    endReason: result.endReason ? String(result.endReason) : null,
+    reasons,
+  };
+}
+
+/**
+ * En qué consiste la diferencia de una medición.
+ *
+ * 'acuerdo'       el mismo conteo. Media repetición de diferencia solo aparece
+ *                 cuando los dos evaluadores no coinciden entre sí, así que
+ *                 tampoco es un fallo de la app.
+ * 'criterio'      la app contó menos, pero descartó al menos esa cantidad por
+ *                 técnica: las vio y las rechazó.
+ * 'noDetectadas'  contó menos y no descartó suficientes: se le escaparon.
+ * 'deMas'         contó más que los evaluadores.
+ * 'sinDato'       hay diferencia pero no se adjuntó la corrida.
+ * null            prueba cronometrada: una diferencia de segundos no es una
+ *                 repetición y no se puede clasificar así.
+ */
+function classifyRecord(rec, timed = false) {
+  if (!rec || timed) return null;
+  const ref = mean(rec.raters || []);
+  if (!Number.isFinite(ref) || !Number.isFinite(rec.app)) return null;
+  const d = rec.app - ref;
+  if (Math.abs(d) <= 0.5) return 'acuerdo';
+  if (d > 0) return 'deMas';
+  const rechazadas = rec.run?.invalid;
+  if (!Number.isFinite(rechazadas)) return 'sinDato';
+  // Si descartó menos de las que faltan, aunque parte sea criterio, al menos
+  // una se le escapó: se informa el caso peor.
+  return -d <= rechazadas + 1e-9 ? 'criterio' : 'noDetectadas';
+}
+
+const BREAKDOWN_KEYS = Object.freeze(['acuerdo', 'criterio', 'noDetectadas', 'deMas', 'sinDato']);
+
+/** Cuántas diferencias de cada tipo, solo sobre las pruebas de repeticiones. */
+function breakdown(records, order, units = {}) {
+  const out = { total: 0 };
+  for (const k of BREAKDOWN_KEYS) out[k] = 0;
+  for (const r of records || []) {
+    if (order && !order.includes(r.test)) continue;
+    if (units[r.test] === 's') continue;
+    const k = classifyRecord(r, false);
+    if (!k) continue;
+    out[k]++;
+    out.total++;
+  }
+  return out;
+}
+
+/** Los motivos de rechazo más frecuentes, de mayor a menor. */
+function topReasons(records) {
+  const acc = {};
+  for (const r of records || []) {
+    for (const [k, v] of Object.entries(r.run?.reasons || {})) acc[k] = (acc[k] || 0) + v;
+  }
+  return Object.entries(acc).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+/** El motivo que más veces apareció en una corrida. */
+function mainReason(run) {
+  const es = Object.entries(run?.reasons || {});
+  if (!es.length) return '';
+  return es.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
 }
 
 function addRecord(records, rec) { return (records || []).concat([rec]); }
@@ -3280,7 +3400,7 @@ function loadRecords(raw) {
   const out = [];
   for (const r of raw) {
     try {
-      out.push(Object.assign(newRecord(r), { id: r.id || newId() }));
+      out.push(Object.assign(newRecord(r), { id: r.id || newId() }));  // newRecord ya normaliza r.run
     } catch { /* se descarta la fila rota */ }
   }
   return out;
@@ -3432,11 +3552,12 @@ const csvCell = (v) => {
 };
 
 /** CSV con ; de separador, para que Excel en Chile lo abra en columnas. */
-function toCSV(records, order) {
+function toCSV(records, order, units = {}) {
   const maxR = (records || []).reduce((m, r) => Math.max(m, r.raters.length), 2);
   const head = ['participante', 'prueba', 'fecha', 'app']
     .concat(Array.from({ length: maxR }, (_, i) => `evaluador${i + 1}`))
-    .concat(['promedio_evaluadores', 'diferencia_app_menos_promedio', 'nota']);
+    .concat(['promedio_evaluadores', 'diferencia_app_menos_promedio',
+      'descartadas', 'motivo_principal', 'termino', 'clasificacion', 'nota']);
   const rows = (records || []).slice().sort((a, b) => String(a.participant).localeCompare(String(b.participant))
     || String(a.test).localeCompare(String(b.test)));
   const body = rows.map((r) => {
@@ -3444,7 +3565,11 @@ function toCSV(records, order) {
     return [
       r.participant, r.test, (r.date || '').slice(0, 10), numCL(r.app),
       ...Array.from({ length: maxR }, (_, i) => numCL(r.raters[i])),
-      numCL(m), numCL(r.app - m), r.note || '',
+      numCL(m), numCL(r.app - m),
+      r.run && r.run.invalid != null ? numCL(r.run.invalid, 0) : '',
+      mainReason(r.run), r.run?.endReason || '',
+      classifyRecord(r, units[r.test] === 's') || '',
+      r.note || '',
     ].map(csvCell).join(';');
   });
   return [head.join(';')].concat(body).join('\n') + '\n';
@@ -3526,7 +3651,8 @@ function unexportedCount(records, exportedAt) {
 
 return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, icc21, blandAltman,
   summary, statsFor, toCSV, numCL, toNum, mean, sd,
-  findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount };
+  findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount,
+  runFromResult, classifyRecord, breakdown, topReasons, mainReason, BREAKDOWN_KEYS };
 })();
 
 __mods["game"] = (() => {
@@ -4935,7 +5061,7 @@ function renderResult(test) {
   $('btn-res-retry').onclick = () => openIntro(test);
   const bv = $('btn-res-valid');
   bv.hidden = !S.settings.valid || !!L?.demo;
-  bv.onclick = () => openValid(test, r.value);
+  bv.onclick = () => openValid(test, r.value, r);
 
   setupReview(L?.rec || []);
 }
@@ -5216,6 +5342,9 @@ let vTest = ORDER[0];
    nada de esto es dato de la validación. */
 let vPending = null;
 let vUndo = null;
+/* La corrida que quedó de la prueba recién hecha, para adjuntarla a la
+   medición. Lleva su prueba: si se cambia el selector ya no corresponde. */
+let vRun = null;
 let vExportedAt = loadValidExport();
 const stamp = () => new Date().toISOString().slice(0, 10);
 
@@ -5234,6 +5363,7 @@ function renderValidForm() {
     ? 'Segundos que cada uno cronometró en posición. Se admiten decimales.'
     : 'Repeticiones que cada uno contó como válidas, sobre la misma serie.';
   renderValidPerson();
+  renderValidRun();
 }
 
 /**
@@ -5290,9 +5420,37 @@ function statBlock(test, s) {
 
 const VALID_TARGET = 15; // la hoja de ruta compromete 15 personas
 
+/** La unidad de cada prueba: marca cuáles son cronometradas. */
+function unitsByTest() {
+  return Object.fromEntries(ORDER.map((t) => [t, TESTS[t].unit]));
+}
+
+/**
+ * El desglose de las diferencias, que es lo que de verdad hay que poder
+ * responder. Un 95 % de acuerdo no dice nada por sí solo: la pregunta es qué
+ * pasa en el resto, y no es lo mismo que a la app se le escape una repetición
+ * a que la haya rechazado por técnica y el evaluador la haya contado igual.
+ */
+function renderBreakdown() {
+  const b = Val.breakdown(S.valid, ORDER, unitsByTest());
+  const dif = b.total - b.acuerdo;
+  if (!b.total || !dif) return '';
+  const linea = (n, txt) => (n ? `<div class="small">${n} ${txt}</div>` : '');
+  const motivos = Val.topReasons(S.valid).slice(0, 3);
+  return `<div style="border-top:1px solid var(--line);padding-top:10px">
+    <div class="lbl">En qué consisten las diferencias</div>
+    <div class="small muted" style="margin-bottom:6px">${dif} de ${b.total} mediciones de repeticiones no coinciden con el promedio de los evaluadores.</div>
+    ${linea(b.criterio, 'por criterio: la app las vio y las descartó por técnica, el evaluador las contó.')}
+    ${linea(b.noDetectadas, 'no detectadas: se le escaparon a la app.')}
+    ${linea(b.deMas, 'de más: la app contó repeticiones que el evaluador no contó.')}
+    ${linea(b.sinDato, 'sin dato: se tecleó a mano, sin la corrida de la app.')}
+    ${motivos.length ? `<div class="small muted" style="margin-top:6px">Lo que más descarta la app: ${motivos.map(([m, n]) => `${esc(m)} (${n})`).join(', ')}.</div>` : ''}
+  </div>`;
+}
+
 function renderValid() {
   renderValidForm();
-  const units = Object.fromEntries(ORDER.map((t) => [t, TESTS[t].unit]));
+  const units = unitsByTest();
   const sum = Val.summary(S.valid, ORDER, units);
   const box = $('valid-summary');
   if (!sum.overall) {
@@ -5311,6 +5469,7 @@ function renderValid() {
         ? `<div class="small muted">Faltan ${falta} ${falta === 1 ? 'persona' : 'personas'} para la muestra de la etapa 1.</div>`
         : '<div class="small">Se completó la muestra de 15 personas de la etapa 1.</div>'}
       <div>${ORDER.map((t) => statBlock(t, sum.byTest[t])).join('')}</div>
+      ${renderBreakdown()}
       <div class="small muted">El acuerdo es 100 % menos la diferencia contra el promedio de los evaluadores, relativa a ese promedio. El total no promedia sesgos: mezclaría repeticiones con segundos.</div>`;
   }
 
@@ -5323,8 +5482,10 @@ function renderValid() {
       const u = TESTS[r.test]?.unit === 's' ? ' s' : '';
       const d = r.app - Val.mean(r.raters);
       const dir = d === 0 ? 'same' : Math.abs(d) <= 1 ? 'up' : 'down';
+      const KIND = { criterio: 'criterio', noDetectadas: 'no detectada', deMas: 'de más', sinDato: 'sin corrida' };
+      const kind = KIND[Val.classifyRecord(r, TESTS[r.test]?.unit === 's')] || '';
       return `<div class="vrow">
-        <span><strong>${esc(r.participant)}</strong> <span class="muted">· ${esc(TESTS[r.test]?.short || r.test)}</span>${r.note ? `<br><span class="muted">${esc(r.note)}</span>` : ''}</span>
+        <span><strong>${esc(r.participant)}</strong> <span class="muted">· ${esc(TESTS[r.test]?.short || r.test)}${kind ? ` · ${kind}` : ''}</span>${r.note ? `<br><span class="muted">${esc(r.note)}</span>` : ''}</span>
         <span>${esc(Val.numCL(r.app, 1))}${u} <span class="muted">vs ${esc(r.raters.map((x) => Val.numCL(x, 1)).join(' / '))}</span> <span class="delta-inline ${dir}">${d > 0 ? '+' : ''}${esc(Val.numCL(d, 1))}</span></span>
         <button class="x" type="button" data-del="${esc(r.id)}" aria-label="Borrar la medición de ${esc(r.participant)}">×</button>
       </div>`;
@@ -5379,6 +5540,7 @@ function saveValidRecord() {
       app: $('v-app').value,
       raters: [$('v-r1').value, $('v-r2').value],
       note: $('v-note').value,
+      run: runEnUso(),
     });
   } catch (err) {
     vPending = null;
@@ -5415,6 +5577,7 @@ function commitValidRecord(rec, replaceId) {
   validError(null);
 
   for (const id of ['v-app', 'v-r1', 'v-r2', 'v-note']) $(id).value = '';
+  vRun = null;  // pertenecía a esa serie y ya se guardó
   $('v-part').value = rec.participant; // tal como quedó guardado, no como se tecleó
   // El código se queda: lo normal es tomarle las tres pruebas a la misma
   // persona de corrido, y volver a escribirlo cada vez es la forma más fácil
@@ -5432,15 +5595,42 @@ function commitValidRecord(rec, replaceId) {
   if (foco === 'v-part') $('v-part').select();
 }
 
-/** Abre el modo validación con la prueba y el conteo de la app ya puestos. */
-function openValid(test, appValue) {
+/**
+ * Abre el modo validación con la prueba y el conteo de la app ya puestos.
+ * `result` es la corrida recién hecha, para adjuntarle lo que la app descartó.
+ */
+function openValid(test, appValue, result) {
   if (!S.settings.valid) { S.settings.valid = true; saveStore(); }
   if (test && ORDER.includes(test)) vTest = test;
   vUndo = null;
+  vRun = result && test ? { test, run: Val.runFromResult(result) } : null;
   show('valid');
   vClearNotices();
   if (appValue != null) $('v-app').value = Val.numCL(appValue, 1);
+  renderValidRun();
   $('v-part').focus();
+}
+
+/** La corrida solo vale para la prueba de la que salió. */
+function runEnUso() {
+  return vRun && vRun.test === vTest ? vRun.run : null;
+}
+
+/**
+ * Qué descartó la app en esa serie.
+ * Es lo que después permite distinguir una repetición que se le escapó de una
+ * que vio y rechazó por técnica mientras el evaluador la contaba igual.
+ */
+function renderValidRun() {
+  const box = $('v-run');
+  const run = runEnUso();
+  if (!run) { box.hidden = true; return; }
+  box.hidden = false;
+  const motivos = Object.entries(run.reasons || {}).sort((a, b) => b[1] - a[1]);
+  box.textContent = motivos.length
+    ? `Se guarda junto con la medición lo que la app descartó en esa serie: `
+      + motivos.map(([m, n]) => `${m} ×${n}`).join(', ') + '.'
+    : 'Se guarda junto con la medición que la app no descartó ningún intento en esa serie.';
 }
 
 function downloadText(name, text, type) {
@@ -6024,7 +6214,7 @@ function bind() {
   $('btn-open-valid').addEventListener('click', () => { $('sheet').hidden = true; show('valid'); });
   $('v-save').addEventListener('click', saveValidRecord);
   $('v-back').addEventListener('click', () => show(S.profile.age && S.profile.sex ? 'hub' : 'onb'));
-  $('v-csv').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.csv`, '\ufeff' + Val.toCSV(S.valid, ORDER), 'text/csv'));
+  $('v-csv').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.csv`, '\ufeff' + Val.toCSV(S.valid, ORDER, unitsByTest()), 'text/csv'));
   $('v-json').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.json`, JSON.stringify(S.valid, null, 2), 'application/json'));
 
   // Escribir el código vuelve a mostrar qué le falta a esa persona.
@@ -6052,6 +6242,7 @@ function bind() {
 
   $('v-next-person').addEventListener('click', () => {
     vClearNotices();
+    vRun = null;
     for (const id of ['v-part', 'v-app', 'v-r1', 'v-r2', 'v-note']) $(id).value = '';
     vTest = ORDER[0];
     renderValid();
@@ -6111,7 +6302,7 @@ function boot() {
   bind();
   registrarSW();
   renderOnb();
-  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory }; // handy for debugging and automated tests
+  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory, openValid }; // handy for debugging and automated tests
   // ?demo=historial abre el perfil; ?demo=pushup|squat|plank abre esa pantalla de resultado.
   let seed = null;
   try { seed = new URLSearchParams(location.search).get('demo'); } catch { /* ignore */ }

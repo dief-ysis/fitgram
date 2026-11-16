@@ -146,6 +146,41 @@ coma, para Excel) y JSON.
 El CCI está verificado contra el ejemplo publicado de Shrout y Fleiss (1979):
 6 sujetos, 4 jueces, CCI(2,1) = 0,29.
 
+### Por qué no coinciden los conteos
+
+Un 95 % de acuerdo no dice nada por sí solo: lo que hay que poder responder es
+**qué pasa en el resto**. No es lo mismo que a la app se le escape una
+repetición a que la haya visto, la haya rechazado por técnica y el evaluador
+humano la haya contado igual. Lo primero es un error de detección; lo segundo es
+una diferencia de criterio, y se discute con quien puso los criterios.
+
+Por eso, cuando la medición se anota desde la pantalla de resultado, viaja con
+el resumen de esa corrida: cuántos intentos descartó la app, con qué motivo cada
+uno y por qué terminó la serie. El formulario lo dice antes de guardar. Una
+medición tecleada a mano no lo lleva, y se marca como tal en vez de suponerlo.
+
+Con eso cada diferencia queda clasificada:
+
+| | |
+|---|---|
+| `acuerdo` | el mismo conteo. Media repetición de diferencia solo aparece cuando los dos evaluadores no coinciden entre sí, así que tampoco es un fallo de la app |
+| `criterio` | la app contó menos, pero descartó al menos esa cantidad por técnica: las vio y las rechazó |
+| `noDetectadas` | contó menos y no descartó suficientes: se le escaparon |
+| `deMas` | contó más que los evaluadores |
+| `sinDato` | hay diferencia, pero la medición se tecleó sin la corrida |
+
+En las pruebas cronometradas no se clasifica: una diferencia de segundos no es
+una repetición.
+
+La pantalla resume el desglose y nombra **el criterio que más veces choca con
+los evaluadores**, que es la pregunta útil para ajustar el protocolo. El CSV
+lleva las columnas `descartadas`, `motivo_principal`, `termino` y
+`clasificacion`; el JSON lleva además los motivos uno por uno.
+
+Esto hay que tenerlo **antes** de tomar los datos: si el estudio se corre sin
+adjuntar las corridas, después no hay forma de saber en qué consistía cada
+diferencia.
+
 ### Tomar los datos en terreno
 
 La pantalla se armó probándola con el mouse, y tomar los datos es otra cosa:

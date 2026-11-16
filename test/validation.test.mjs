@@ -301,3 +301,122 @@ test('respaldo: una fecha de exportacion ilegible se trata como si no hubiera', 
   const rs = [rec('P01', 'pushup', 20, [20, 21])];
   assert.equal(V.unexportedCount(rs, 'cualquier cosa'), 1, 'mejor avisar de mas que dar por salvado');
 });
+
+/* ------------------------------------------- por que no coinciden los conteos */
+
+const corrida = (valid, rechazos, endReason = 'manual') => ({
+  invalid: rechazos.length,
+  endReason,
+  log: Array.from({ length: valid }, () => ({ valid: true, reason: null }))
+    .concat(rechazos.map((reason) => ({ valid: false, reason }))),
+});
+
+test('corrida: resume lo que la app conto y lo que descarto, con los motivos', () => {
+  const r = V.runFromResult(corrida(20, ['No bajaste lo suficiente', 'No bajaste lo suficiente', 'Cadera caida'], 'pause'));
+  assert.equal(r.counted, 20);
+  assert.equal(r.invalid, 3);
+  assert.equal(r.endReason, 'pause');
+  assert.deepEqual(r.reasons, { 'No bajaste lo suficiente': 2, 'Cadera caida': 1 });
+});
+
+test('corrida: sin resultado o sin registro no inventa nada', () => {
+  assert.equal(V.runFromResult(null), null);
+  const vacia = V.runFromResult({ invalid: 0, endReason: 'manual', log: [] });
+  assert.deepEqual(vacia.reasons, {});
+  assert.equal(vacia.counted, 0);
+});
+
+test('clasificar: mismo conteo es acuerdo', () => {
+  const r = Object.assign(rec('P01', 'pushup', 24, [24, 24]), { run: V.runFromResult(corrida(24, [])) });
+  assert.equal(V.classifyRecord(r), 'acuerdo');
+});
+
+test('clasificar: media repeticion de diferencia es que los humanos no coinciden, no un fallo', () => {
+  const r = Object.assign(rec('P01', 'pushup', 24, [24, 25]), { run: V.runFromResult(corrida(24, [])) });
+  assert.equal(V.classifyRecord(r), 'acuerdo');
+});
+
+test('clasificar: si la app descarto suficientes, la diferencia es de criterio y no de deteccion', () => {
+  // La app conto 23, los evaluadores 25, y descarto 2 por profundidad: no se le
+  // escaparon, las rechazo. Es la distincion que cambia la lectura del estudio.
+  const r = Object.assign(rec('P01', 'pushup', 23, [25, 25]), {
+    run: V.runFromResult(corrida(23, ['No bajaste lo suficiente', 'No bajaste lo suficiente'])),
+  });
+  assert.equal(V.classifyRecord(r), 'criterio');
+});
+
+test('clasificar: si no descarto suficientes, se le escaparon repeticiones', () => {
+  const r = Object.assign(rec('P01', 'pushup', 23, [25, 25]), { run: V.runFromResult(corrida(23, [])) });
+  assert.equal(V.classifyRecord(r), 'noDetectadas');
+});
+
+test('clasificar: contar de mas es su propia categoria', () => {
+  const r = Object.assign(rec('P01', 'pushup', 27, [25, 25]), { run: V.runFromResult(corrida(27, [])) });
+  assert.equal(V.classifyRecord(r), 'deMas');
+});
+
+test('clasificar: sin corrida adjunta no se adivina el motivo de la diferencia', () => {
+  assert.equal(V.classifyRecord(rec('P01', 'pushup', 23, [25, 25])), 'sinDato');
+  assert.equal(V.classifyRecord(rec('P01', 'pushup', 25, [25, 25])), 'acuerdo', 'el acuerdo si se ve sin corrida');
+});
+
+test('clasificar: en las cronometradas no aplica, una diferencia de segundos no es una repeticion', () => {
+  assert.equal(V.classifyRecord(rec('P01', 'plank', 50, [60, 60]), true), null);
+});
+
+test('desglose: cuenta las diferencias por tipo, dejando fuera las cronometradas', () => {
+  const rs = [
+    Object.assign(rec('P01', 'pushup', 25, [25, 25]), { run: V.runFromResult(corrida(25, [])) }),
+    Object.assign(rec('P02', 'pushup', 23, [25, 25]), { run: V.runFromResult(corrida(23, ['Poca profundidad', 'Poca profundidad'])) }),
+    Object.assign(rec('P03', 'pushup', 23, [25, 25]), { run: V.runFromResult(corrida(23, [])) }),
+    Object.assign(rec('P04', 'squat', 27, [25, 25]), { run: V.runFromResult(corrida(27, [])) }),
+    rec('P05', 'plank', 50, [60, 60]),
+  ];
+  const b = V.breakdown(rs, ['pushup', 'squat', 'plank'], { plank: 's' });
+  assert.equal(b.total, 4, 'la plancha no entra');
+  assert.equal(b.acuerdo, 1);
+  assert.equal(b.criterio, 1);
+  assert.equal(b.noDetectadas, 1);
+  assert.equal(b.deMas, 1);
+  assert.equal(b.sinDato, 0);
+});
+
+test('motivos: dice cual es el criterio que mas veces choca con los evaluadores', () => {
+  const rs = [
+    Object.assign(rec('P01', 'pushup', 23, [25, 25]), { run: V.runFromResult(corrida(23, ['Poca profundidad', 'Poca profundidad'])) }),
+    Object.assign(rec('P02', 'pushup', 24, [25, 25]), { run: V.runFromResult(corrida(24, ['Poca profundidad'])) }),
+    Object.assign(rec('P03', 'pushup', 24, [25, 25]), { run: V.runFromResult(corrida(24, ['Cadera caida'])) }),
+  ];
+  assert.deepEqual(V.topReasons(rs), [['Poca profundidad', 3], ['Cadera caida', 1]]);
+});
+
+test('guardar: la corrida viaja con la medicion y sobrevive a releerla del almacenamiento', () => {
+  const r = V.newRecord({
+    participant: 'P01', test: 'pushup', app: 23, raters: [25, 25],
+    run: V.runFromResult(corrida(23, ['Poca profundidad', 'Poca profundidad'])),
+  });
+  assert.equal(r.run.invalid, 2);
+  const vuelta = V.loadRecords([JSON.parse(JSON.stringify(r))]);
+  assert.equal(vuelta[0].run.invalid, 2);
+  assert.deepEqual(vuelta[0].run.reasons, { 'Poca profundidad': 2 });
+});
+
+test('guardar: una corrida con basura no bota la medicion, solo se queda sin ella', () => {
+  const r = V.newRecord({ participant: 'P01', test: 'pushup', app: 23, raters: [25, 25], run: 'cualquier cosa' });
+  assert.equal(r.run, null);
+  assert.equal(r.app, 23, 'la medicion se guarda igual');
+});
+
+test('CSV: lleva lo descartado, el motivo principal y la clasificacion', () => {
+  const rs = [Object.assign(rec('P01', 'pushup', 23, [25, 25]), {
+    run: V.runFromResult(corrida(23, ['Poca profundidad', 'Poca profundidad'], 'pause')),
+  })];
+  const csv = V.toCSV(rs, ['pushup'], { pushup: 'rep' });
+  const [head, fila] = csv.trim().split('\n');
+  assert.ok(head.includes('descartadas'), head);
+  assert.ok(head.includes('motivo_principal'), head);
+  assert.ok(head.includes('clasificacion'), head);
+  assert.ok(fila.includes('Poca profundidad'), fila);
+  assert.ok(fila.includes('criterio'), fila);
+  assert.ok(fila.includes('pause'), fila);
+});
