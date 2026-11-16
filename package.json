@@ -5,7 +5,7 @@
   "description": "Evaluación de condición física con la cámara del teléfono",
   "type": "module",
   "scripts": {
-    "test": "node --test test/history.test.mjs test/validation.test.mjs",
+    "test": "node --test test/history.test.mjs test/validation.test.mjs test/norms.test.mjs",
     "serve": "python3 -m http.server 8787 --bind 127.0.0.1"
   }
 }

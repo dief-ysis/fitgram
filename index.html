@@ -244,6 +244,10 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .vrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; font-variant-numeric: tabular-nums; }
 .vrow:last-child { border-bottom: 0; }
 .vrow .x { border: 1px solid var(--line); background: transparent; color: var(--muted); min-height: 34px; min-width: 34px; font-size: 16px; }
+/* modo stand */
+.stand-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid var(--accent); padding: 8px 12px; margin-bottom: 4px; }
+.stand-bar .btn { width: auto; min-height: 40px; font-size: 15px; padding: 0 14px; }
+body.run-mode .stand-bar { display: none; }
 .prof-val { font-family: var(--font-cd); font-size: 24px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* Bottom tabs */
@@ -277,6 +281,13 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 </header>
 
 <main class="wrap" id="main">
+  <div class="stand-bar" id="stand-bar" hidden>
+    <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+      <span class="lbl" style="color:var(--accent-ink)">Modo stand · no se guarda nada en este teléfono</span>
+      <span class="small muted" id="stand-status"></span>
+    </span>
+    <button class="btn" id="btn-next-person" type="button">Siguiente persona</button>
+  </div>
 
   <!-- 1. Datos -->
   <section class="screen" id="scr-onb" hidden>
@@ -288,6 +299,11 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
       <div class="field">
         <div class="lbl" id="lbl-age">Edad</div>
         <div class="pill-row" role="group" aria-labelledby="lbl-age" id="age-pills"></div>
+        <div id="onb-other" hidden style="display:flex;flex-direction:column;gap:8px">
+          <label class="lbl" for="onb-age-num" style="color:var(--ink)">U otra edad</label>
+          <input class="inp" id="onb-age-num" type="number" min="10" max="99" inputmode="numeric" placeholder="por ejemplo, 42">
+          <div class="small muted">Fuera de 18 a 21 no hay tabla de referencia. FitGram igual cuenta las repeticiones y corrige la técnica, pero no puede decir en qué nivel estás.</div>
+        </div>
       </div>
       <div class="field">
         <div class="lbl" id="lbl-sex">Sexo</div>
@@ -398,7 +414,7 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
       <div class="small" id="res-next"></div>
       <div id="res-delta"></div>
     </div>
-    <div class="card pad" style="display:flex;flex-direction:column;gap:10px">
+    <div class="card pad" id="res-table-card" style="display:flex;flex-direction:column;gap:10px">
       <div class="lbl" id="res-table-lbl"></div>
       <div class="norm-table-wrap"><table class="norm" id="res-table"></table></div>
       <div id="res-flags" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -524,6 +540,7 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
       <div class="lbl">Elevador 3D</div>
       <div class="small">MediaPipe world, convertido al esqueleto Human3.6M de 17 articulaciones. VideoPose3D queda listo para conectarse en la fase 2.</div>
     </div>
+    <label class="toggle-row" for="set-stand"><span>Modo stand: cualquier edad, nada se guarda</span><input type="checkbox" id="set-stand"></label>
     <label class="toggle-row" for="set-valid"><span>Modo validación: comparar con evaluadores humanos</span><input type="checkbox" id="set-valid"></label>
     <button class="btn quiet sm" id="btn-open-valid" type="button" hidden>Abrir modo validación</button>
     <button class="btn ghost sm" id="btn-edit-profile" type="button">Cambiar edad o sexo</button>
@@ -641,8 +658,21 @@ const NORMS = deepFreeze({
 
 /* ---------------------------------------------------------------- helpers */
 
+/**
+ * Edades que cubren los baremos de esta versión.
+ * La tabla CSEP de flexiones llega hasta 29 y la de sentadillas de ACE dice 18–25,
+ * pero la de plancha es de universitarios, así que el conjunto se declara en 18–21.
+ * Subirlo es una decisión del equipo de ciencias del deporte, no del código.
+ */
+const AGE_RANGE = Object.freeze({ min: 18, max: 21 });
+
+/** True si los baremos cubren esa edad. Única fuente de verdad del rango. */
+function coversAge(age) {
+  return Number.isInteger(age) && age >= AGE_RANGE.min && age <= AGE_RANGE.max;
+}
+
 function checkAgeSex(age, sex) {
-  if (!Number.isInteger(age) || age < 18 || age > 21) throw new RangeError('FitGram v0 solo tiene baremos para personas de 18 a 21 años.');
+  if (!coversAge(age)) throw new RangeError(`FitGram v0 solo tiene baremos para personas de ${AGE_RANGE.min} a ${AGE_RANGE.max} años.`);
   if (sex !== 'M' && sex !== 'F') throw new RangeError('El sexo debe ser "M" (hombre) o "F" (mujer).');
 }
 
@@ -684,7 +714,7 @@ function result(test, value, unit, band, cats, index, position, percentile, tabl
  * @returns {'15–19'|'20–29'|null} null outside 18–21
  */
 function ageBandPushups(age) {
-  if (!Number.isInteger(age) || age < 18 || age > 21) return null;
+  if (!coversAge(age)) return null;
   return age <= 19 ? '15–19' : '20–29';
 }
 
@@ -782,7 +812,7 @@ function fitnessProfile({ pushup = null, squat = null, plank = null } = {}) {
   return { position, label, parts, note };
 }
 
-return { NORMS, ageBandPushups, classifyPushups, classifySquats, plankPercentile, classifyPlank, fitnessProfile };
+return { NORMS, AGE_RANGE, coversAge, ageBandPushups, classifyPushups, classifySquats, plankPercentile, classifyPlank, fitnessProfile };
 })();
 // ---- skeleton.js ----
 __mods["skeleton"] = (() => {
@@ -3342,6 +3372,7 @@ const { synthSession } = __mods["synth"];
 const { toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } = __mods["skeleton"];
 const Hist = __mods["history"];
 const Val = __mods["validation"];
+const { AGE_RANGE, coversAge } = __mods["norms"];
 /* ------------------------------------------------------------------ config */
 
 const CFG = (typeof window !== 'undefined' && window.FITGRAM_CONFIG) || {};
@@ -3416,6 +3447,7 @@ function loadValid() {
   try { return Val.loadRecords(JSON.parse(localStorage.getItem(VALID_KEY) || '[]')); } catch { return []; }
 }
 function saveValid() {
+  if (S.stand) return; // modo stand: no se escribe nada en este teléfono
   try { localStorage.setItem(VALID_KEY, JSON.stringify(S.valid)); } catch { /* storage unavailable */ }
 }
 
@@ -3423,6 +3455,7 @@ function loadStore() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || {}; } catch { return {}; }
 }
 function saveStore() {
+  if (S.stand) return; // modo stand: no se escribe nada en este teléfono
   try { localStorage.setItem(STORE_KEY, JSON.stringify({ profile: S.profile, results: S.results, history: S.history, settings: S.settings })); } catch { /* storage unavailable */ }
 }
 
@@ -3605,6 +3638,7 @@ const S = {
   settings: Object.assign({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false }, stored.settings || {}),
   valid: loadValid(), // mediciones del modo validación, en su propia llave
   screen: null,
+  stand: false, // modo stand: efímero, no toca el almacenamiento
   test: null,
   last: null, // last finished run, for the result screen
 };
@@ -3641,7 +3675,8 @@ function show(name) {
     if (cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   }
   const t = S.test ? TESTS[S.test] : null;
-  $('head-right').textContent = name === 'onb' ? '18 a 21 años'
+  $('stand-bar').hidden = !S.stand || name === 'run';
+  $('head-right').textContent = name === 'onb' ? (S.stand ? 'Modo stand' : `${AGE_RANGE.min} a ${AGE_RANGE.max} años`)
     : (name === 'intro' || name === 'run' || name === 'result') && t ? `Prueba ${t.n} de 03` : profileTag();
   window.scrollTo(0, 0);
   if (name === 'hub') renderHub();
@@ -3675,9 +3710,18 @@ function renderOnb() {
     b.addEventListener('click', () => { S.profile.sex = k; renderOnb(); });
     sexes.appendChild(b);
   }
+  $('onb-other').hidden = !S.stand;
+  if (S.stand) {
+    const inp = $('onb-age-num');
+    const fuera = S.profile.age != null && !coversAge(S.profile.age);
+    if (document.activeElement !== inp) inp.value = fuera ? String(S.profile.age) : '';
+  }
   const ok = !!(S.profile.age && S.profile.sex);
   $('btn-onb').disabled = !ok;
-  $('onb-hint').textContent = !S.profile.age ? 'Elige tu edad.' : !S.profile.sex ? 'Elige tu sexo para usar la tabla correcta.' : '';
+  $('onb-hint').textContent = !S.profile.age ? 'Elige tu edad.'
+    : !S.profile.sex ? 'Elige tu sexo para usar la tabla correcta.'
+      : !coversAge(S.profile.age) ? `Fuera de ${AGE_RANGE.min} a ${AGE_RANGE.max} años no hay tabla: vas a ver el conteo, no la categoría.`
+        : '';
 }
 
 /* ------------------------------------------------------------------ hub */
@@ -3708,7 +3752,8 @@ function renderHub() {
   }
   const done = ORDER.filter((t) => S.results[t]).length;
   $('hub-title').textContent = done === 3 ? 'Evaluación completa' : 'Tu evaluación';
-  $('hub-sub').textContent = `${profileTag()}. ${hasDemoData() ? 'Estás viendo datos de demostración.' : done === 3 ? 'Puedes repetir cualquier prueba cuando quieras.' : '3 pruebas. Descansa lo que necesites entre una y otra.'}`;
+  const sinTabla = S.profile.age != null && !coversAge(S.profile.age);
+  $('hub-sub').textContent = `${profileTag()}. ${sinTabla ? `Fuera de ${AGE_RANGE.min} a ${AGE_RANGE.max} años: verás el conteo, no la categoría.` : hasDemoData() ? 'Estás viendo datos de demostración.' : done === 3 ? 'Puedes repetir cualquier prueba cuando quieras.' : '3 pruebas. Descansa lo que necesites entre una y otra.'}`;
   const btn = $('btn-hub');
   btn.textContent = next ? `${done ? 'Continuar' : 'Comenzar'} · ${TESTS[next].short}` : 'Ver mi estado de forma';
   btn.onclick = () => (next ? openIntro(next) : show('profile'));
@@ -4473,6 +4518,15 @@ function renderResult(test) {
     if (L?.demo) flags.push('Esto es una demostración con una persona simulada: no se guarda en tu perfil.');
     $('res-flags').innerHTML = flags.filter(Boolean).map((f) => `<div class="flag">${esc(f)}</div>`).join('');
     $('res-src').innerHTML = `${esc(cls.source.apa)} ${cls.source.url ? `<a href="${esc(cls.source.url)}" target="_blank" rel="noopener">${esc(cls.source.url)}</a>` : ''}`;
+  } else {
+    // Sin clasificación hay que decir por qué, en vez de dejar la tarjeta en blanco.
+    $('res-table').innerHTML = '';
+    $('res-src').innerHTML = '';
+    $('res-table-lbl').textContent = 'Sin tabla de referencia';
+    const porque = !coversAge(S.profile.age)
+      ? `Los baremos de esta versión van de ${AGE_RANGE.min} a ${AGE_RANGE.max} años, y la edad registrada es ${S.profile.age ?? '—'}. FitGram contó las repeticiones válidas y corrigió la técnica, pero no puede decir en qué nivel estás: inventar una categoría con una tabla de otra población sería un número falso.`
+      : 'No se pudo clasificar este resultado con las tablas disponibles.';
+    $('res-flags').innerHTML = `<div class="flag">${esc(porque)}</div>`;
   }
 
   const next = ORDER.find((x) => x !== test && !S.results[x]);
@@ -4731,7 +4785,10 @@ function renderProfile() {
   $('prof-sub').textContent = `${profileTag()}. ${done ? `${done} de 3 pruebas hechas.` : 'Todavía no haces ninguna prueba.'}`;
   const ov = $('prof-overall');
   if (prof?.position == null) {
-    ov.innerHTML = `<div class="lbl">Índice FitGram</div><p style="margin:0">Completa al menos una prueba para ver dónde te ubicas.</p>`;
+    const fuera = S.profile.age != null && !coversAge(S.profile.age);
+    ov.innerHTML = `<div class="lbl">Índice FitGram</div><p style="margin:0">${fuera
+      ? `Los baremos van de ${AGE_RANGE.min} a ${AGE_RANGE.max} años. Con ${S.profile.age} no hay tabla, así que no hay índice; abajo están tus resultados en bruto.`
+      : 'Completa al menos una prueba para ver dónde te ubicas.'}</p>`;
   } else {
     const bands = ['Muy bajo', 'Bajo', 'Medio', 'Alto', 'Muy alto'];
     ov.innerHTML = `<div class="lbl">Índice FitGram${done < 3 ? ` · con ${done} de 3 pruebas` : ''}</div>
@@ -4890,11 +4947,68 @@ function downloadText(name, text, type) {
   }
 }
 
+/* ------------------------------------------------------------------ modo stand */
+
+/* Para una feria: cualquiera toma el teléfono, prueba y se lo pasa al siguiente.
+   Tres problemas que resuelve:
+     1. Las tablas son de 18 a 21, y casi nadie en un jurado tiene esa edad. Sin
+        esto no se puede ni pasar de la primera pantalla.
+     2. Los resultados de una persona quedaban guardados y la siguiente veía un
+        "avance" que no era suyo.
+     3. El detector pesa varios MB y nadie quiere esperarlo con gente mirando.
+   En modo stand no se escribe nada en el teléfono: saveStore y saveValid salen
+   antes de tocar localStorage. */
+
+const STAND_IDLE_MS = 4 * 60 * 1000;
+let standIdleTimer = null;
+
+const standStatus = (msg) => { $('stand-status').textContent = msg; };
+
+/** Borra lo de la persona anterior. Solo en memoria: en modo stand nunca se guardó. */
+function nextPerson() {
+  S.profile = { age: null, sex: null };
+  S.history = Hist.emptyHistory(ORDER);
+  S.results = {};
+  S.last = null;
+  S.test = null;
+  renderOnb();
+  show('onb');
+}
+
+function touchStandIdle() {
+  clearTimeout(standIdleTimer);
+  if (!S.stand) return;
+  standIdleTimer = setTimeout(() => {
+    if (S.stand && !['run', 'onb'].includes(S.screen)) nextPerson();
+  }, STAND_IDLE_MS);
+}
+
+function enterStand() {
+  S.stand = true;
+  nextPerson();
+  touchStandIdle();
+  standStatus('Cargando el detector…');
+  Engine.load(S.settings.model, (stage, l, t) => {
+    standStatus(stage === 'model'
+      ? `Cargando el detector… ${num(l / 1e6, 0)} de ${t ? num(t / 1e6, 0) : '?'} MB`
+      : 'Iniciando el motor…');
+  }).then(() => standStatus('Detector listo. Nada se guarda en este teléfono.'))
+    .catch((e) => standStatus(`No se pudo cargar el detector: ${e?.message || e}`));
+}
+
+/** Salir recarga, para volver a leer los datos reales que había guardados. */
+function exitStand() {
+  S.stand = false;
+  clearTimeout(standIdleTimer);
+  location.replace(location.pathname);
+}
+
 /* ------------------------------------------------------------------ settings */
 
 function renderSettings() {
   $('set-voice').checked = !!S.settings.voice;
   $('set-angles').checked = !!S.settings.angles;
+  $('set-stand').checked = !!S.stand;
   $('set-valid').checked = !!S.settings.valid;
   $('btn-open-valid').hidden = !S.settings.valid;
   const box = $('model-pills');
@@ -4940,6 +5054,14 @@ function bind() {
   $('set-voice').addEventListener('change', (e) => { S.settings.voice = e.target.checked; saveStore(); });
   $('set-angles').addEventListener('change', (e) => { S.settings.angles = e.target.checked; saveStore(); });
   $('btn-edit-profile').addEventListener('click', () => { $('sheet').hidden = true; renderOnb(); show('onb'); });
+  $('set-stand').addEventListener('change', (e) => { $('sheet').hidden = true; if (e.target.checked) enterStand(); else exitStand(); });
+  $('btn-next-person').addEventListener('click', nextPerson);
+  $('onb-age-num').addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10);
+    S.profile.age = Number.isInteger(v) && v >= 10 && v <= 99 ? v : null;
+    renderOnb();
+  });
+  for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, touchStandIdle, { passive: true });
   $('set-valid').addEventListener('change', (e) => { S.settings.valid = e.target.checked; saveStore(); renderSettings(); });
   $('btn-open-valid').addEventListener('click', () => { $('sheet').hidden = true; show('valid'); });
   $('v-save').addEventListener('click', saveValidRecord);
@@ -4995,6 +5117,7 @@ function boot() {
   if (seed) { seedDemoHistory(seed === 'historial' ? 'profile' : seed); return; }
   let modo = null;
   try { modo = new URLSearchParams(location.search).get('modo'); } catch { /* ignore */ }
+  if (modo === 'stand') { enterStand(); return; }
   if (modo === 'validacion') { openValid(); return; }
   if (S.profile.age && S.profile.sex) show('hub'); else show('onb');
 }

@@ -4,22 +4,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { loadModule } from './_load.mjs';
 
-const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-
-function loadModule(name) {
-  const src = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  const open = `__mods["${name}"] = (() => {`;
-  const i = src.indexOf(open);
-  assert.notEqual(i, -1, `no encontre el modulo "${name}"`);
-  const lines = src.slice(i).split('\n');
-  const end = lines.findIndex((l, k) => k > 0 && l === '})();');
-  assert.notEqual(end, -1, `no encontre el cierre del modulo "${name}"`);
-  return new Function(lines.slice(1, end).join('\n'))();
-}
 
 const V = loadModule('validation');
 const near = (a, b, tol = 1e-3) => assert.ok(Math.abs(a - b) < tol, `${a} != ${b} (tol ${tol})`);

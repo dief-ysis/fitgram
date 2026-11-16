@@ -33,8 +33,9 @@ GitHub Pages sirve para eso.
 npm test
 ```
 
-Las pruebas recortan el pseudo-módulo `history` de `index.html` y lo evalúan en
-Node. No necesitan navegador porque ese módulo es lógica pura.
+`test/_load.mjs` recorta un pseudo-módulo de `index.html` y lo evalúa en Node.
+Solo sirve con módulos de lógica pura: los que tocan el DOM o `localStorage` no
+se pueden cargar así.
 
 ## Estructura
 
@@ -139,10 +140,36 @@ coma, para Excel) y JSON.
 El CCI está verificado contra el ejemplo publicado de Shrout y Fleiss (1979):
 6 sujetos, 4 jueces, CCI(2,1) = 0,29.
 
+## Modo stand
+
+Para una feria, donde el teléfono pasa de mano en mano. Se activa en Ajustes →
+«Modo stand», o en `index.html?modo=stand`. Resuelve tres cosas que hacían
+inusable la app en ese contexto:
+
+1. **Las tablas son de 18 a 21 años**, y la pantalla de inicio solo ofrecía esas
+   cuatro edades. Alguien de 40 no podía ni pasar de ahí. En modo stand se puede
+   escribir cualquier edad; fuera del rango la app **cuenta las repeticiones y
+   corrige la técnica igual, pero no muestra categoría**, y dice por qué. Nunca
+   clasifica con una tabla de otra población.
+2. **Los resultados de una persona quedaban guardados** y la siguiente veía un
+   «avance» que no era suyo. En modo stand `saveStore` y `saveValid` salen antes
+   de tocar `localStorage`: no se escribe nada. Hay un botón «Siguiente persona»
+   siempre visible, y a los 4 minutos sin tocar nada se reinicia solo.
+3. **El detector pesa varios MB.** Al entrar en modo stand se precarga, con el
+   avance a la vista, para que nadie espere con gente mirando.
+
+Al salir del modo stand la página se recarga, así que los datos reales que
+hubiera guardados en ese teléfono vuelven intactos.
+
 ## Qué falta
 
-- **Los baremos cubren solo 18 a 21 años.** El pitch menciona escolares y
-  mayores de 60; para eso hacen falta otras tablas.
+- **Los baremos cubren solo 18 a 21 años** (`AGE_RANGE` en el módulo `norms`, la
+  única fuente de verdad del rango). El pitch menciona escolares y mayores de
+  60; para eso hacen falta otras tablas. Dato para el equipo: la tabla CSEP de
+  flexiones **ya trae una banda 20–29**, y la de sentadillas de ACE dice
+  **18–25**; la que limita el conjunto es la de plancha, que es de
+  universitarios. Subir el rango es una decisión de ciencias del deporte, no del
+  código, y por eso no la tomé.
 - **La validación todavía no se corre.** La herramienta está; los datos no. Hay
   que medir a las 15 personas.
 - **No hay backend ni cuentas.** Todo vive en el `localStorage` de ese teléfono:
