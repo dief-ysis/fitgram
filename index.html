@@ -589,7 +589,10 @@ body.run-mode .stand-bar { display: none; }
       <div class="btn-row">
         <button class="btn quiet sm" id="v-csv" type="button">Exportar CSV</button>
         <button class="btn quiet sm" id="v-json" type="button">Exportar JSON</button>
+        <button class="btn quiet sm" id="v-load" type="button">Cargar respaldo</button>
       </div>
+      <input class="visually-hidden" type="file" id="v-file" accept=".json,application/json">
+      <div class="note small" id="v-loaded" hidden></div>
       <button class="link-btn" id="v-clear" type="button">Borrar todas las mediciones de validación</button>
       <div class="note warn small" id="v-clear-confirm" hidden>
         <p style="margin:0 0 10px">¿Borrar las <span id="v-clear-n"></span> mediciones de validación? No se puede deshacer. Exporta antes.</p>
@@ -3714,6 +3717,44 @@ function loadRecords(raw) {
 }
 
 /**
+ * Junta un respaldo con lo que ya hay en este teléfono.
+ *
+ * La regla de la que cuelga todo lo demás: **juntar, nunca reemplazar**. Las
+ * mediciones viven en el almacenamiento de un teléfono, y cargar un respaldo
+ * encima de un día de trabajo no puede borrarlo.
+ *
+ * - Una medición que ya está (mismo `id`) se deja como está y se cuenta aparte.
+ *   Así cargar dos veces el mismo archivo no duplica nada.
+ * - Una que choca —mismo participante y misma prueba, pero otra medición— se
+ *   **agrega igual** y se avisa. Perder una medición en silencio es peor que
+ *   tener dos: la pantalla ya sabe avisar de los duplicados, y cuál vale lo
+ *   decide quien tomó los datos, no esto.
+ * - Una fila rota se cuenta y se salta: un archivo con una línea mala no puede
+ *   costar las otras cuarenta.
+ *
+ * @returns {{records: object[], agregadas: number, yaEstaban: number,
+ *            chocan: {participant: string, test: string}[], invalidas: number}}
+ */
+function mergeRecords(actuales, entrantes) {
+  const out = { records: Array.isArray(actuales) ? actuales.slice() : [],
+    agregadas: 0, yaEstaban: 0, chocan: [], invalidas: 0 };
+  if (!Array.isArray(entrantes)) return out;
+  const ids = new Set(out.records.map((r) => r.id));
+  for (const cruda of entrantes) {
+    let rec;
+    try { rec = Object.assign(newRecord(cruda || {}), { id: (cruda && cruda.id) || newId() }); }
+    catch { out.invalidas++; continue; }
+    if (ids.has(rec.id)) { out.yaEstaban++; continue; }
+    const choque = findDuplicate(out.records, rec.participant, rec.test);
+    if (choque) out.chocan.push({ participant: rec.participant, test: rec.test });
+    out.records.push(rec);
+    ids.add(rec.id);
+    out.agregadas++;
+  }
+  return out;
+}
+
+/**
  * Coeficiente de correlación intraclase CCI(2,1).
  * `rows` es una matriz sujetos x evaluadores. null si no alcanza para calcularlo.
  */
@@ -3964,7 +4005,7 @@ function unexportedCount(records, exportedAt) {
   }).length;
 }
 
-return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, icc21, blandAltman,
+return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, mergeRecords, icc21, blandAltman,
   summary, statsFor, toCSV, numCL, toNum, mean, sd, SIN_VER_MIN,
   findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount, reglasUsadas,
   runFromResult, classifyRecord, breakdown, topReasons, mainReason, BREAKDOWN_KEYS };
@@ -6088,6 +6129,45 @@ function downloadText(name, text, type) {
 }
 
 /** Marca que hay respaldo, solo si la descarga partió. */
+/**
+ * Carga un respaldo exportado antes y lo junta con lo que ya hay.
+ *
+ * Exportar sin poder volver a cargar es una puerta de salida sin entrada: si
+ * el navegador limpia los datos o hay que seguir desde otro equipo, el archivo
+ * no sirve de nada. Nunca reemplaza lo que está en el teléfono; ver
+ * `Val.mergeRecords`.
+ */
+async function cargarRespaldo(file) {
+  const aviso = $('v-loaded');
+  const decir = (txt, mal) => { aviso.hidden = false; aviso.classList.toggle('warn', !!mal); aviso.textContent = txt; };
+  let datos;
+  try {
+    datos = JSON.parse(await file.text());
+  } catch {
+    decir('No pude leer ese archivo. Tiene que ser el JSON que exporta esta misma pantalla, no el CSV.', true);
+    return;
+  }
+  const r = Val.mergeRecords(S.valid, datos);
+  if (!r.agregadas && !r.yaEstaban && !r.invalidas) {
+    decir('Ese archivo no traía ninguna medición. No se tocó nada.', true);
+    return;
+  }
+  S.valid = r.records;
+  saveValid();
+  renderValid();
+  const partes = [];
+  if (r.agregadas) partes.push(`${r.agregadas} ${r.agregadas === 1 ? 'medición nueva' : 'mediciones nuevas'}`);
+  if (r.yaEstaban) partes.push(`${r.yaEstaban} que ya ${r.yaEstaban === 1 ? 'estaba' : 'estaban'}`);
+  if (r.invalidas) partes.push(`${r.invalidas} que no pude leer`);
+  let txt = `Cargado: ${partes.join(', ')}. No se borró nada de lo que ya había.`;
+  if (r.chocan.length) {
+    const lista = r.chocan.slice(0, 4).map((c) => `${c.participant} ${TESTS[c.test]?.short || c.test}`).join(', ');
+    txt += ` Ojo: ${r.chocan.length} ${r.chocan.length === 1 ? 'choca' : 'chocan'} con una medición que ya existía`
+      + ` del mismo participante y prueba (${lista}${r.chocan.length > 4 ? '…' : ''}). Quedaron las dos: revisa cuál vale.`;
+  }
+  decir(txt, r.chocan.length > 0 || r.invalidas > 0);
+}
+
 function exportValid(name, text, type) {
   if (!downloadText(name, text, type)) return;
   vExportedAt = new Date().toISOString();
@@ -6655,6 +6735,12 @@ function bind() {
   $('v-back').addEventListener('click', () => show(S.profile.age && S.profile.sex ? 'hub' : 'onb'));
   $('v-csv').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.csv`, '\ufeff' + Val.toCSV(S.valid, ORDER, unitsByTest()), 'text/csv'));
   $('v-json').addEventListener('click', () => exportValid(`fitgram-validacion-${stamp()}.json`, JSON.stringify(S.valid, null, 2), 'application/json'));
+  // El mismo archivo que exporta el botón de al lado, de vuelta.
+  $('v-load').addEventListener('click', () => { $('v-file').value = ''; $('v-file').click(); });
+  $('v-file').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) cargarRespaldo(f);
+  });
 
   // Escribir el código vuelve a mostrar qué le falta a esa persona.
   $('v-part').addEventListener('input', () => { vPending = null; $('v-dup').hidden = true; renderValidPerson(); });

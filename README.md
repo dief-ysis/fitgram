@@ -250,11 +250,40 @@ esperando al frente. Lo que se cambió con ese uso en mente:
   la última exportación. Después de exportar queda la hora a la vista, no un
   «listo»: que el navegador haya iniciado la descarga no prueba que el archivo
   quedó guardado, sobre todo en iOS.
+- **El respaldo se puede volver a cargar.** Ver abajo.
 
 Esto se verificó manejando la pantalla desde el navegador como lo haría un dedo
 —19 comprobaciones sobre el flujo completo: guardar con Enter, duplicado,
 reemplazo, borrado, deshacer, cambio de participante y exportación—, además de
 las pruebas de `node --test` sobre la lógica.
+
+### El respaldo tiene que poder volver
+
+Las 45 mediciones del estudio viven en el `localStorage` de un teléfono. Había
+cómo sacarlas (CSV y JSON) y no había cómo volver a meterlas: el respaldo era
+una puerta de salida sin entrada. Si el navegador limpia los datos del sitio,
+si alguien toca «borrar todo», si el teléfono se resetea o si hay que seguir
+desde otro equipo, el archivo exportado no servía de nada.
+
+«Cargar respaldo» lee el mismo JSON que exporta el botón de al lado. La regla
+de la que cuelga todo lo demás es **juntar, nunca reemplazar**: cargar un
+respaldo de ayer encima de un día de trabajo no puede borrarlo.
+
+| caso | qué hace |
+|---|---|
+| medición que ya está (mismo `id`) | la deja como está, así cargar dos veces el mismo archivo no duplica nada |
+| choque: mismo participante y prueba, otra medición | **la agrega igual** y avisa cuáles son |
+| fila rota | la cuenta y sigue: una línea mala no puede costar las otras cuarenta |
+| archivo que no es el JSON | lo dice y no toca nada |
+
+Lo del choque es la decisión que importa. Perder una medición en silencio es
+peor que tener dos: la pantalla ya sabe avisar de los duplicados, y cuál vale
+lo decide quien tomó los datos. El código no descarta nada.
+
+El viaje completo está verificado en el navegador —exportar, borrar todo,
+cargar, y que las mediciones vuelvan con su diagnóstico intacto (lo que la app
+descartó, el tiempo sin ver, la huella de las reglas)— además de
+`test/respaldo.test.mjs`.
 
 ## ¿Se puede confiar en esta medición?
 
