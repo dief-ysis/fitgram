@@ -259,6 +259,13 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .stand-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid var(--accent); padding: 8px 12px; margin-bottom: 4px; }
 .stand-bar .btn { width: auto; min-height: 40px; font-size: 15px; padding: 0 14px; }
 body.run-mode .stand-bar { display: none; }
+/* modo juego */
+.game-wrap { position: relative; width: 100%; aspect-ratio: 3 / 4; background: #101315; overflow: hidden; }
+.game-wrap video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: .3; }
+.game-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.game-hud { position: absolute; top: 10px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; font-family: var(--font-cd); font-size: 15px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #f2f2f3; text-shadow: 0 1px 3px rgba(0,0,0,.8); pointer-events: none; }
+.game-cue { position: absolute; left: 12px; right: 12px; bottom: 12px; text-align: center; font-family: var(--font-cd); font-size: 20px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #f2f2f3; text-shadow: 0 1px 4px rgba(0,0,0,.9); pointer-events: none; }
+.game-card { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); }
 .prof-val { font-family: var(--font-cd); font-size: 24px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* Bottom tabs */
@@ -338,6 +345,13 @@ body.run-mode .stand-bar { display: none; }
     </div>
     <div class="test-list" id="test-list"></div>
     <button class="btn" id="btn-hub" type="button"></button>
+    <button class="game-card" id="btn-open-game" type="button">
+      <span class="test-n" aria-hidden="true">★</span>
+      <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+        <span class="test-name">Juego · press militar</span>
+        <span class="test-q">Para entretenerse. No es parte de la evaluación.</span>
+      </span>
+    </button>
     <p class="small muted" style="margin:0">Resultados referenciales. No reemplazan una evaluación profesional.</p>
   </section>
 
@@ -481,6 +495,38 @@ body.run-mode .stand-bar { display: none; }
       <p style="margin:0 0 10px">¿Borrar edad, sexo y resultados guardados en este teléfono?</p>
       <div class="btn-row"><button class="btn sm" id="btn-reset-yes" type="button">Sí, borrar</button><button class="btn ghost sm" id="btn-reset-no" type="button">No</button></div>
     </div>
+  </section>
+
+  <!-- 8. Modo juego · idea de Elias Hermosilla (KineVision) -->
+  <section class="screen" id="scr-game" hidden>
+    <div>
+      <h1 class="screen-title">Juego · press militar</h1>
+      <p class="screen-sub">Tus muñecas mueven el avatar: subes los brazos y sube. Pasa por los corredores sin tocarlos.</p>
+    </div>
+    <div class="note small">No es parte de la evaluación. No entrega nivel, no usa baremos y no se guarda nada.</div>
+    <div class="card pad" id="game-setup" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field">
+        <div class="lbl" id="game-focus-lbl">Objetivo del entrenamiento</div>
+        <div class="pill-row" role="group" aria-labelledby="game-focus-lbl" id="game-focus"></div>
+        <div class="small muted" id="game-focus-desc"></div>
+      </div>
+      <div class="small muted">Necesitas espacio para estirar los brazos sobre la cabeza, y que la cámara te vea de frente de la cadera para arriba. Si tienes una barra o mancuernas, mejor.</div>
+      <button class="btn" id="btn-game-start" type="button">Calibrar y jugar</button>
+    </div>
+    <div class="card" id="game-stage" hidden style="padding:0;overflow:hidden">
+      <div class="game-wrap">
+        <video id="game-video" playsinline muted></video>
+        <canvas id="game-canvas"></canvas>
+        <div class="game-hud" id="game-hud"></div>
+        <div class="game-cue" id="game-cue"></div>
+      </div>
+      <div class="pad" style="display:flex;flex-direction:column;gap:10px">
+        <div class="small" id="game-msg"></div>
+        <button class="btn ghost sm" id="btn-game-stop" type="button">Terminar</button>
+      </div>
+    </div>
+    <div class="card marks pad" id="game-result" hidden style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="btn-row"><button class="btn ghost" id="btn-game-back" type="button">Volver</button></div>
   </section>
 
   <!-- 7. Modo validación (para el equipo, no para quien se evalúa) -->
@@ -3384,6 +3430,225 @@ return { newRecord, addRecord, removeRecord, loadRecords, icc21, blandAltman,
   summary, statsFor, toCSV, numCL, toNum, mean, sd };
 })();
 
+__mods["game"] = (() => {
+/* ====================================================================
+   FitGram — modo juego (idea de Elias Hermosilla, KineVision AI).
+
+   Un "flappy" manejado por la altura del press militar: el avatar sube y baja
+   con tus muñecas, y hay que pasar por corredores abiertos a alturas fijas.
+   Los tramos isométricos son corredores largos: no basta con tocar la altura,
+   hay que sostenerla mientras el corredor pasa.
+
+   Lo que aporta sobre un juego cualquiera es que las secuencias son
+   metodología de entrenamiento: hipertrofia pide isométricos largos y bajadas
+   controladas, potencia pide empujes rápidos, etc.
+
+   El pitch dice que el juego va en el stand "como gancho, no como parte de la
+   solución". Acá se respeta: no entrega baremo, no guarda resultados y no
+   entra en el historial.
+
+   Portado del original en React a la arquitectura de FitGram: lógica pura acá
+   (se prueba con node --test), dibujo y cámara en el módulo de la app, sin
+   duplicar el detector de pose que la app ya tiene.
+   ==================================================================== */
+
+/** Alturas del hueco, 0 = hombros, 1 = lockout. */
+const LEVELS = Object.freeze({ alto: 0.80, medioAlto: 0.60, medio: 0.45, hombros: 0.20 });
+
+/** Secuencias por objetivo. Vienen del diseño original de Elias. */
+const SEQUENCES = Object.freeze({
+  hipertrofia: Object.freeze([
+    { level: LEVELS.alto, sec: 1.5, iso: true, label: 'Arriba · sostén 1,5 s' },
+    { level: LEVELS.medioAlto, sec: 1.0, iso: false, label: 'Baja a medio alto' },
+    { level: LEVELS.medio, sec: 1.0, iso: false, label: 'Baja a medio' },
+    { level: LEVELS.hombros, sec: 1.0, iso: false, label: 'Hasta los hombros' },
+    { level: LEVELS.alto, sec: 1.2, iso: false, label: 'Empuja arriba' },
+  ]),
+  fuerza: Object.freeze([
+    { level: LEVELS.alto, sec: 2.0, iso: true, label: 'Arriba · sostén 2 s' },
+    { level: LEVELS.medio, sec: 1.5, iso: false, label: 'Baja a medio' },
+    { level: LEVELS.hombros, sec: 1.5, iso: false, label: 'Hasta los hombros' },
+    { level: LEVELS.alto, sec: 1.5, iso: false, label: 'Empuja arriba' },
+  ]),
+  potencia: Object.freeze([
+    { level: LEVELS.hombros, sec: 1.0, iso: false, label: 'Desde los hombros' },
+    { level: LEVELS.alto, sec: 0.8, iso: false, label: 'Empuje rápido' },
+    { level: LEVELS.medio, sec: 0.8, iso: false, label: 'Baja rápido' },
+    { level: LEVELS.hombros, sec: 0.8, iso: false, label: 'Vuelve abajo' },
+  ]),
+  resistencia: Object.freeze([
+    { level: LEVELS.medioAlto, sec: 1.0, iso: false, label: 'Medio alto' },
+    { level: LEVELS.hombros, sec: 1.0, iso: false, label: 'Hombros' },
+    { level: LEVELS.medioAlto, sec: 1.0, iso: false, label: 'Medio alto' },
+    { level: LEVELS.hombros, sec: 1.0, iso: false, label: 'Hombros' },
+    { level: LEVELS.alto, sec: 1.0, iso: true, label: 'Arriba · sostén 1 s' },
+  ]),
+});
+
+const FOCUS_LABEL = Object.freeze({
+  hipertrofia: 'Hipertrofia', fuerza: 'Fuerza máxima', potencia: 'Potencia', resistencia: 'Resistencia',
+});
+
+const DEFAULTS = Object.freeze({
+  speed: 105,        // px/s de desplazamiento
+  gap: 0.38,         // alto del hueco, en fracción de la banda jugable
+  minGap: 0.30,      // nunca menos que esto
+  gateWidth: 52,     // ancho de un corredor normal, en px
+  gapBetween: 150,   // separación entre corredores, en px
+  playerX: 90,       // x fija del avatar, en px
+  smooth: 0.28,      // suavizado exponencial de la altura
+  graciaSec: 0.12,   // hay que estar fuera del hueco este rato seguido para perder el corredor:
+                     // con tolerancia cero, un cuadro de ruido del detector arruinaría la partida
+  safety: 0.05,      // margen ergonómico: no exigir el lockout absoluto
+  loops: 3,          // cuántas veces se repite la secuencia
+});
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/**
+ * Altura de la muñeca a 0..1, donde 0 son los hombros y 1 el lockout.
+ * En la imagen el eje y crece hacia abajo, así que arriba es el valor menor.
+ */
+function normalizeHeight(wristY, bottomY, topY, safety = DEFAULTS.safety) {
+  const span = Math.max(0.12, bottomY - topY);
+  const effTop = topY + span * safety;
+  const den = bottomY - effTop;
+  if (!(Math.abs(den) > 1e-9)) return 0;
+  return clamp((bottomY - wristY) / den, 0, 1);
+}
+
+/** Suavizado exponencial, para que el avatar no salte con el ruido del detector. */
+function smoothNorm(prev, target, alpha = DEFAULTS.smooth) {
+  if (!Number.isFinite(prev)) return target;
+  return prev * (1 - alpha) + target * alpha;
+}
+
+/**
+ * Arma el recorrido: una lista de corredores con su posición en px.
+ * Un tramo isométrico es simplemente un corredor largo (ancho = duración × velocidad),
+ * así que sostener la altura y pasar un corredor son la misma regla.
+ */
+function buildCourse(focus, opts = {}) {
+  const o = { ...DEFAULTS, ...opts };
+  const seq = SEQUENCES[focus] || SEQUENCES.hipertrofia;
+  const gates = [];
+  let x = o.playerX + 260; // aire antes del primer corredor
+  for (let loop = 0; loop < o.loops; loop++) {
+    for (const s of seq) {
+      const w = s.iso ? Math.max(o.gateWidth, s.sec * o.speed) : o.gateWidth;
+      gates.push({
+        x, w,
+        level: s.level,
+        gap: Math.max(o.minGap, o.gap),
+        iso: !!s.iso,
+        label: s.label,
+        loop: loop + 1,
+        estado: 'pendiente', // 'pendiente' | 'limpio' | 'tocado'
+      });
+      x += w + o.gapBetween;
+    }
+  }
+  return { focus, gates, largo: x, opts: o };
+}
+
+function newGame(focus, opts = {}) {
+  const course = buildCourse(focus, opts);
+  return {
+    focus,
+    course,
+    t: 0,
+    scroll: 0,
+    norm: 0.2,
+    limpios: 0,
+    tocados: 0,
+    dentroMs: 0,
+    enCorredorMs: 0,
+    gateActual: null,
+    tocando: false,
+    terminado: false,
+  };
+}
+
+/** El primer corredor que todavía no se cruza, para anticiparlo en pantalla. */
+function proximoGate(state) {
+  const px = state.course.opts.playerX;
+  return state.course.gates.find((g) => g.x + g.w - state.scroll >= px) || null;
+}
+
+/** El corredor que el avatar está cruzando ahora, o null. */
+function gateEnCurso(state) {
+  const px = state.course.opts.playerX;
+  for (const g of state.course.gates) {
+    const x0 = g.x - state.scroll;
+    if (px >= x0 && px <= x0 + g.w) return g;
+  }
+  return null;
+}
+
+/**
+ * Avanza el juego un cuadro.
+ * @param {object} state  el estado que devuelve newGame (se modifica)
+ * @param {number} dt     segundos desde el cuadro anterior
+ * @param {number} norm   altura actual del avatar, 0..1
+ */
+function stepGame(state, dt, norm) {
+  if (state.terminado) return state;
+  const o = state.course.opts;
+  state.t += dt;
+  state.scroll += o.speed * dt;
+  state.norm = clamp(norm, 0, 1);
+
+  const g = gateEnCurso(state);
+  state.gateActual = g;
+  state.tocando = false;
+
+  if (g) {
+    state.enCorredorMs += dt * 1000;
+    const dentro = Math.abs(state.norm - g.level) <= g.gap / 2;
+    if (dentro) {
+      state.dentroMs += dt * 1000;
+      g.fueraSec = 0;
+    } else {
+      state.tocando = true;
+      g.fueraSec = (g.fueraSec || 0) + dt;
+      // Solo se pierde el corredor tras estar fuera un rato seguido.
+      if (g.fueraSec >= o.graciaSec) g.estado = 'tocado';
+    }
+  }
+
+  // Resolver los corredores que ya quedaron atrás.
+  for (const gate of state.course.gates) {
+    if (gate.estado === 'pendiente' && gate.x + gate.w - state.scroll < o.playerX) {
+      gate.estado = 'limpio';
+      state.limpios++;
+    } else if (gate.estado === 'tocado' && !gate.contado && gate.x + gate.w - state.scroll < o.playerX) {
+      gate.contado = true;
+      state.tocados++;
+    }
+  }
+
+  const ultimo = state.course.gates[state.course.gates.length - 1];
+  if (ultimo && ultimo.x + ultimo.w - state.scroll < -50) state.terminado = true;
+  return state;
+}
+
+/** Resumen para mostrar al final. Sin baremo: esto es un juego, no una evaluación. */
+function resumen(state) {
+  const total = state.course.gates.length;
+  const control = state.enCorredorMs > 0 ? (100 * state.dentroMs) / state.enCorredorMs : null;
+  return {
+    total,
+    limpios: state.limpios,
+    tocados: state.tocados,
+    control,
+    segundos: state.t,
+  };
+}
+
+return { LEVELS, SEQUENCES, FOCUS_LABEL, DEFAULTS, normalizeHeight, smoothNorm,
+  buildCourse, newGame, gateEnCurso, proximoGate, stepGame, resumen, clamp };
+})();
+
 __mods["app"] = (() => {
 // FitGram v0 — app shell: screens, camera, MediaPipe Pose Landmarker, test runner, results.
 // Modules are inlined by build.mjs; imports below are rewritten at build time.
@@ -3393,6 +3658,7 @@ const { synthSession } = __mods["synth"];
 const { toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } = __mods["skeleton"];
 const Hist = __mods["history"];
 const Val = __mods["validation"];
+const Gm = __mods["game"];
 const { AGE_RANGE, coversAge } = __mods["norms"];
 /* ------------------------------------------------------------------ config */
 
@@ -3682,7 +3948,7 @@ function normsFor(test) {
 
 /* ------------------------------------------------------------------ navigation */
 
-const SCREENS = ['onb', 'hub', 'intro', 'run', 'result', 'profile', 'valid'];
+const SCREENS = ['onb', 'hub', 'intro', 'run', 'result', 'profile', 'valid', 'game'];
 
 function show(name) {
   if (S.screen === 'run' && name !== 'run') Runner.teardown();
@@ -3703,6 +3969,7 @@ function show(name) {
   if (name === 'hub') renderHub();
   if (name === 'profile') renderProfile();
   if (name === 'valid') renderValid();
+  if (name !== 'game') Game.teardown();
 }
 
 function profileTag() {
@@ -3923,11 +4190,9 @@ const Runner = {
 
   /** @see cameraErrorMessage */
   async startCamera(sid = this.sid) {
-    const md = navigator.mediaDevices;
-    if (!md?.getUserMedia) throw new Error('getUserMedia no disponible');
     this.veil('Pidiendo acceso a la cámara', 'Acepta el permiso para ver tu esqueleto en vivo.');
     this.stopStream();
-    const stream = await md.getUserMedia({ audio: false, video: { facingMode: S.settings.facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
+    const stream = await openCameraStream(S.settings.facing);
     if (sid !== this.sid) { for (const tr of stream.getTracks()) tr.stop(); return; } // the user left while the prompt was open
     this.stream = stream;
     for (const tr of stream.getVideoTracks()) tr.addEventListener('ended', () => { if (this.stream === stream) this.cameraLost(); });
@@ -4972,6 +5237,16 @@ function downloadText(name, text, type) {
   }
 }
 
+/** Pide la cámara. Compartido por las pruebas y por el modo juego. */
+async function openCameraStream(facing) {
+  const md = navigator.mediaDevices;
+  if (!md?.getUserMedia) throw new Error('getUserMedia no disponible');
+  return md.getUserMedia({
+    audio: false,
+    video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+  });
+}
+
 /* --------------------------------------------------------- errores de cámara */
 
 const CAMERA_ERROR_NAMES = ['NotAllowedError', 'NotFoundError', 'NotReadableError', 'AbortError',
@@ -5109,6 +5384,282 @@ function registrarSW() {
   });
 }
 
+/* ------------------------------------------------------------------ modo juego */
+
+/* Idea de Elias Hermosilla (KineVision). La lógica del juego vive en el módulo
+   "game"; acá va la cámara, la calibración y el dibujo. Reusa el mismo detector
+   de pose que las pruebas, así que no hay un segundo motor ni una segunda forma
+   de medir lo mismo. */
+
+const FOCUS_DESC = {
+  hipertrofia: 'Sostenidos arriba y bajadas controladas.',
+  fuerza: 'Isométricos largos y recorridos completos.',
+  potencia: 'Empujes rápidos, sin pausa arriba.',
+  resistencia: 'Muchas repeticiones a media altura.',
+};
+
+const Game = {
+  focus: 'hipertrofia',
+  phase: 'idle',   // 'idle' | 'cal-abajo' | 'cal-arriba' | 'jugando' | 'fin'
+  stream: null, raf: 0, sid: 0, state: null, cal: null, norm: 0.2,
+  cw: 0, ch: 0, dpr: 1,
+
+  msg(t) { $('game-msg').textContent = t || ''; },
+  cue(t) { $('game-cue').textContent = t || ''; },
+  hud(izq, der) { $('game-hud').innerHTML = `<span>${esc(izq || '')}</span><span>${esc(der || '')}</span>`; },
+
+  open() {
+    this.teardown();
+    this.renderFocus();
+    $('game-setup').hidden = false;
+    $('game-stage').hidden = true;
+    $('game-result').hidden = true;
+    show('game');
+  },
+
+  renderFocus() {
+    const box = $('game-focus');
+    box.innerHTML = '';
+    for (const k of Object.keys(Gm.SEQUENCES)) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'pill'; b.textContent = Gm.FOCUS_LABEL[k];
+      b.setAttribute('aria-pressed', String(k === this.focus));
+      b.addEventListener('click', () => { this.focus = k; this.renderFocus(); });
+      box.appendChild(b);
+    }
+    $('game-focus-desc').textContent = FOCUS_DESC[this.focus] || '';
+  },
+
+  stopStream() {
+    try { for (const t of this.stream?.getTracks() || []) t.stop(); } catch { /* ignore */ }
+    this.stream = null;
+    const v = $('game-video');
+    if (v) { try { v.pause(); } catch { /* ignore */ } v.srcObject = null; }
+  },
+
+  teardown() {
+    this.sid++;
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.phase = 'idle';
+    this.state = null;
+    this.stopStream();
+    WakeLock.off();
+  },
+
+  resize() {
+    const c = $('game-canvas');
+    const r = c.getBoundingClientRect();
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.cw = Math.max(1, Math.round(r.width));
+    this.ch = Math.max(1, Math.round(r.height));
+    c.width = Math.round(this.cw * this.dpr);
+    c.height = Math.round(this.ch * this.dpr);
+  },
+
+  async start() {
+    const sid = ++this.sid;
+    $('game-setup').hidden = true;
+    $('game-stage').hidden = false;
+    $('game-result').hidden = true;
+    this.cue(''); this.hud('', '');
+    this.msg('Pidiendo la cámara…');
+    try {
+      this.stream = await openCameraStream('user');
+      if (sid !== this.sid) { this.stopStream(); return; }
+      const v = $('game-video');
+      v.srcObject = this.stream; v.muted = true; v.playsInline = true;
+      await v.play().catch(() => {});
+      await waitFor(() => v.videoWidth > 0, 4000);
+      if (sid !== this.sid) return;
+      this.msg('Cargando el detector…');
+      await Engine.load(S.settings.model, (stage, l, t) => {
+        this.msg(stage === 'model'
+          ? `Descargando el detector… ${num(l / 1e6, 0)} de ${t ? num(t / 1e6, 0) : '?'} MB`
+          : 'Iniciando el motor…');
+      });
+      if (sid !== this.sid) return;
+      WakeLock.on();
+      this.resize();
+      this.cal = { abajo: [], arriba: [] };
+      this.phase = 'cal-abajo';
+      this.msg('Dos pasos de calibración y empieza.');
+      this.loop();
+    } catch (e) {
+      console.warn(e);
+      const m = cameraErrorMessage(e, { secure: typeof window !== 'undefined' ? window.isSecureContext !== false : true });
+      this.msg(`${m.title}. ${m.detail}`);
+      this.cue('');
+      this.phase = 'idle';
+    }
+  },
+
+  loop() {
+    const sid = this.sid;
+    const v = $('game-video');
+    let last = performance.now();
+    const tick = () => {
+      if (sid !== this.sid) return;
+      this.raf = requestAnimationFrame(tick);
+      const now = performance.now();
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+      last = now;
+      let wrist = null, shoulder = null;
+      if (v.videoWidth) {
+        let frame = null;
+        try { frame = Engine.detect(v, now, v.videoWidth / v.videoHeight); } catch (e) { console.warn(e); }
+        if (frame) {
+          const { j2 } = toJoints(frame);
+          const lw = j2.l_wrist, rw = j2.r_wrist, ls = j2.l_shoulder, rs = j2.r_shoulder;
+          if ([lw, rw, ls, rs].every((q) => q && q.v >= 0.5 && Number.isFinite(q.y))) {
+            wrist = (lw.y + rw.y) / 2;
+            shoulder = (ls.y + rs.y) / 2;
+          }
+        }
+      }
+      this.step(dt, wrist, shoulder);
+      this.draw();
+    };
+    this.raf = requestAnimationFrame(tick);
+  },
+
+  /** Un paso de la máquina: calibrar abajo, calibrar arriba, jugar. */
+  step(dt, wrist, shoulder) {
+    if (wrist == null) {
+      this.cue('No te veo: ponte de frente, de la cadera para arriba');
+      return;
+    }
+    const c = this.cal;
+
+    if (this.phase === 'cal-abajo') {
+      // Manos a la altura de los hombros: la muñeca no debe estar por encima.
+      if (wrist > shoulder - 0.04) c.abajo.push(wrist); else c.abajo.length = 0;
+      const pct = Math.min(100, Math.round((c.abajo.length / 30) * 100));
+      this.cue(`Paso 1 de 2 · manos a la altura de los hombros  ${pct}%`);
+      if (c.abajo.length >= 30) {
+        c.bottomY = mediana(c.abajo);
+        this.phase = 'cal-arriba';
+      }
+      return;
+    }
+
+    if (this.phase === 'cal-arriba') {
+      // Brazos estirados sobre la cabeza: la muñeca bien por encima del hombro.
+      if (wrist < shoulder - 0.12) c.arriba.push(wrist); else c.arriba.length = 0;
+      const pct = Math.min(100, Math.round((c.arriba.length / 20) * 100));
+      this.cue(`Paso 2 de 2 · estira los brazos arriba  ${pct}%`);
+      if (c.arriba.length >= 20) {
+        c.topY = mediana(c.arriba);
+        this.comenzarPartida();
+      }
+      return;
+    }
+
+    if (this.phase !== 'jugando' || !this.state) return;
+
+    const objetivo = Gm.normalizeHeight(wrist, c.bottomY, c.topY);
+    this.norm = Gm.smoothNorm(this.norm, objetivo);
+    Gm.stepGame(this.state, dt, this.norm);
+
+    const st = this.state;
+    const g = st.gateActual || Gm.proximoGate(st);
+    this.cue(g ? g.label : '');
+    this.hud(`${Gm.FOCUS_LABEL[this.focus]}`, `${st.limpios} limpios · ${st.tocados} tocados`);
+    this.msg(st.tocando ? 'Fuera del corredor' : 'Vas bien');
+    if (st.terminado) this.finish();
+  },
+
+  comenzarPartida() {
+    // El recorrido se arma con el tamaño real del lienzo, para que la velocidad
+    // y la separación se vean igual en cualquier pantalla.
+    const W = this.cw || 320;
+    this.state = Gm.newGame(this.focus, {
+      playerX: Math.round(W * 0.22),
+      speed: Math.round(W * 0.33),
+      gapBetween: Math.round(W * 0.46),
+      gateWidth: Math.round(W * 0.16),
+      loops: 3,
+    });
+    this.norm = 0.2;
+    this.phase = 'jugando';
+    this.msg('');
+  },
+
+  finish() {
+    const r = Gm.resumen(this.state);
+    this.phase = 'fin';
+    cancelAnimationFrame(this.raf);
+    this.stopStream();
+    WakeLock.off();
+    $('game-stage').hidden = true;
+    const box = $('game-result');
+    box.hidden = false;
+    box.innerHTML = `<div class="lbl">Fin de la partida · ${esc(Gm.FOCUS_LABEL[this.focus])}</div>
+      <div class="result-head">
+        <div><span class="result-big">${r.limpios}</span><span class="result-unit">de ${r.total} corredores</span></div>
+        <div class="result-cat">${r.control == null ? '' : `${num(r.control, 0)} %`}</div>
+      </div>
+      <div class="small">${r.control == null ? '' : `Estuviste dentro del corredor el ${num(r.control, 0)} % del tiempo. `}Duró ${num(r.segundos, 0)} s.</div>
+      <div class="small muted">Esto es un juego: no es una medición ni entrega nivel, y no se guarda en tu perfil.</div>
+      <div class="btn-row">
+        <button class="btn" id="btn-game-again" type="button">Otra vez</button>
+        <button class="btn ghost" id="btn-game-change" type="button">Cambiar objetivo</button>
+      </div>`;
+    $('btn-game-again').onclick = () => this.start();
+    $('btn-game-change').onclick = () => this.open();
+  },
+
+  draw() {
+    const c = $('game-canvas');
+    if (!c || !this.cw) return;
+    const ctx = c.getContext('2d');
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, this.cw, this.ch);
+    const H = this.ch, W = this.cw;
+    const m = H * 0.1, bTop = m, bBot = H - m, bH = bBot - bTop;
+    const yFor = (n) => bBot - Gm.clamp(n, 0, 1) * bH;
+
+    ctx.strokeStyle = 'rgba(242,242,243,.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, bTop); ctx.lineTo(W, bTop);
+    ctx.moveTo(0, bBot); ctx.lineTo(W, bBot);
+    ctx.stroke();
+
+    if (this.phase === 'cal-abajo' || this.phase === 'cal-arriba') {
+      const y = this.phase === 'cal-abajo' ? bBot : bTop;
+      ctx.strokeStyle = '#7fa3c6';
+      ctx.setLineDash([8, 6]);
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+
+    const st = this.state;
+    if (!st) return;
+    for (const g of st.course.gates) {
+      const x = g.x - st.scroll;
+      if (x > W || x + g.w < 0) continue;
+      const top = yFor(g.level + g.gap / 2), bot = yFor(g.level - g.gap / 2);
+      ctx.fillStyle = g.estado === 'tocado' ? 'rgba(178,59,59,.8)'
+        : g.iso ? 'rgba(127,163,198,.95)' : 'rgba(89,128,166,.85)';
+      ctx.fillRect(x, bTop, g.w, Math.max(0, top - bTop));
+      ctx.fillRect(x, bot, g.w, Math.max(0, bBot - bot));
+    }
+    const px = st.course.opts.playerX, py = yFor(st.norm), s = 11;
+    ctx.fillStyle = st.tocando ? '#ec7b7b' : '#f2f2f3';
+    ctx.fillRect(px - s, py - s, s * 2, s * 2);
+  },
+};
+
+/** Mediana, para que un cuadro raro no arruine la calibración. */
+function mediana(xs) {
+  const a = xs.slice().sort((p, q) => p - q);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
 /* ------------------------------------------------------------------ modo stand */
 
 /* Para una feria: cualquiera toma el teléfono, prueba y se lo pasa al siguiente.
@@ -5218,6 +5769,11 @@ function bind() {
   $('btn-edit-profile').addEventListener('click', () => { $('sheet').hidden = true; renderOnb(); show('onb'); });
   $('set-stand').addEventListener('change', (e) => { $('sheet').hidden = true; if (e.target.checked) enterStand(); else exitStand(); });
   $('btn-next-person').addEventListener('click', nextPerson);
+  $('btn-open-game').addEventListener('click', () => Game.open());
+  $('btn-game-start').addEventListener('click', () => Game.start());
+  $('btn-game-stop').addEventListener('click', () => { if (Game.state) Game.finish(); else { Game.teardown(); Game.open(); } });
+  $('btn-game-back').addEventListener('click', () => show('hub'));
+  window.addEventListener('resize', () => { if (S.screen === 'game') Game.resize(); });
   $('btn-offline').addEventListener('click', () => {
     $('btn-offline').disabled = true;
     offlineInfo('Descargando…');

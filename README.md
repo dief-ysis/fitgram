@@ -49,6 +49,7 @@ Todo vive en `index.html`, en pseudo-módulos dentro de un solo `<script type="m
 | `exercises` | Máquinas de estado que validan y cuentan cada repetición. |
 | `history` | **Nuevo.** La serie de resultados de cada prueba y el cálculo del avance. |
 | `validation` | **Nuevo.** Comparación con evaluadores humanos: acuerdo, Bland-Altman y CCI(2,1). |
+| `game` | **Nuevo.** Modo juego: recorrido, corredores y puntaje. Idea de Elias Hermosilla. |
 | `app` | Pantallas, navegación y persistencia. |
 
 Las dependencias (`lib/`, `models/`, `wasm/`) están versionadas para que la app
@@ -182,6 +183,42 @@ cada visita con conexión refresca la copia guardada sola.
 
 Verificado de verdad: se instala, se apaga el servidor y la app sigue abriendo
 y mostrando todo, tipografías incluidas.
+
+## Modo juego
+
+Idea de **Elias Hermosilla**, del prototipo KineVision AI. Un «flappy» manejado
+por la altura del press militar: las muñecas mueven el avatar y hay que pasar
+por corredores abiertos a alturas fijas.
+
+Lo que lo hace algo más que un juego es que las secuencias son metodología de
+entrenamiento. Hipertrofia pide sostenidos arriba y bajadas controladas; fuerza
+máxima, isométricos largos; potencia, empujes rápidos. Un tramo isométrico es
+un corredor largo, así que sostener la altura y pasar el corredor son la misma
+regla.
+
+Se llega desde la tarjeta al final de la pantalla «Evaluar». El pitch dice que
+el juego va en el stand *«como gancho, no como parte de la solución»*, y acá se
+respeta: **no entrega nivel, no usa baremos y no se guarda nada** en el perfil.
+
+Detalles de la adaptación:
+
+- Portado de React/TypeScript a la arquitectura de un solo archivo, con la
+  lógica en un pseudo-módulo puro y probado, y el dibujo en el módulo de la app.
+- **Reusa el detector de pose que la app ya tiene.** No hay un segundo motor.
+- Calibración en dos pasos (manos en los hombros, brazos estirados arriba) con
+  mediana, en vez de los modales del original.
+- Tolerancia de 0,12 s fuera del corredor antes de perderlo: con tolerancia
+  cero, un solo cuadro de ruido del detector arruinaba la partida.
+- Aspecto de FitGram, no de KineVision: esquinas rectas, la misma paleta.
+
+### Lo que no se portó, y por qué
+
+| Del prototipo de Elias | Por qué no |
+|---|---|
+| Módulo de flexiones en 30 s | FitGram ya mide flexiones, pero con otro protocolo (hasta la fatiga, CSEP). Tener las dos daría dos números distintos para el mismo ejercicio, sin forma de compararlos. |
+| Motor de ROM | Se solapa con la validación angular que la app ya hace en cada repetición. |
+| Evaluadores de CMJ y FMS | Son código muerto en el original: no los importa nadie, pese a que la descripción los promete. |
+| `@google/genai` | Declarado en `package.json` con una variable de API, cero usos en el código. |
 
 ## Modo stand
 
