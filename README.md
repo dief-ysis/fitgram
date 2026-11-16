@@ -166,7 +166,8 @@ Con eso cada diferencia queda clasificada:
 |---|---|
 | `acuerdo` | el mismo conteo. Media repetición de diferencia solo aparece cuando los dos evaluadores no coinciden entre sí, así que tampoco es un fallo de la app |
 | `criterio` | la app contó menos, pero descartó al menos esa cantidad por técnica: las vio y las rechazó |
-| `noDetectadas` | contó menos y no descartó suficientes: se le escaparon |
+| `interrumpida` | contó menos y hubo un rato en que no estaba mirando (alguien se cruzó, se cortó la imagen) |
+| `noDetectadas` | contó menos sin ninguna de las dos excusas: se le escaparon |
 | `deMas` | contó más que los evaluadores |
 | `sinDato` | hay diferencia, pero la medición se tecleó sin la corrida |
 
@@ -260,6 +261,37 @@ Con eso la app:
   cualquier otra advertencia, porque cambia cómo hay que leer el número;
 - **guarda el temblor con la medición de validación**, en las columnas `temblor`
   y `calidad` del CSV.
+
+### Cuando la app no estaba mirando
+
+Otra cosa que medí, y esta sí dejaba un número malo sin avisar: **alguien que
+se cruza delante de la cámara**. Es el escenario del stand, con el teléfono en
+un trípode y gente pasando.
+
+Tapando a la persona en medio de una serie de 15 flexiones:
+
+| tapada | repeticiones contadas | cómo termina |
+|---|---|---|
+| 0,3 s | 15, siempre | normal |
+| 0,8 s | 13 a 15 | normal |
+| 1,5 s | 13 a 14 | normal |
+| 3 s | 12 a 14 | normal |
+| 5 s o más | la prueba se aborta (`not_visible`) | avisa |
+
+El problema no son las repeticiones perdidas —no se puede contar lo que no se
+ve— sino que **la prueba terminaba «normal»** y entregaba 12 de 15 con la misma
+seguridad de siempre.
+
+El analizador ya llevaba la cuenta de ese tiempo (`S.frozen`), nunca lo
+mostraba. Ahora sale en el resultado, en el aviso y en la columna `sin_ver`
+del CSV. Y la validación lo distingue: una diferencia con una interrupción de
+por medio se clasifica como `interrumpida`, no como `noDetectadas`; culpar al
+detector por algo que pasó delante de la cámara serían dos arreglos distintos.
+
+La plancha se comporta al revés y hay que decirlo así: su reloj corre sobre el
+tiempo real a propósito, de modo que un corte corto **no** le quita segundos —
+se los cuenta sin poder comprobar la posición. Aguanta hasta 3 s sin inmutarse
+y a los 5 s aborta. El aviso de la plancha dice eso, no lo otro.
 
 Para no tener que adivinar, Ajustes → «Mostrar la estabilidad de la detección»
 pone el número crudo en la imagen y en el resultado. Con eso se pueden comparar

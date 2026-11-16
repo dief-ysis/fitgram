@@ -150,7 +150,8 @@ function seriePerfecta(test, opts) {
     if (st.phase === 'ended') break;
   }
   const fin = an.stop(s.frames[s.frames.length - 1].t, 'manual');
-  return { contadas: fin.value, esperadas: s.meta.expectedValid, fin: fin.endReason, calidad: jt.resumen() };
+  return { contadas: fin.value, esperadas: s.meta.expectedValid, fin: fin.endReason,
+    calidad: jt.resumen(), sinVer: fin.sinVer };
 }
 
 test('la prueba no se corta por tecnica en una serie perfecta con la deteccion sana', () => {
@@ -180,4 +181,45 @@ test('cuando si se corta sola, la app ya venia avisando de la deteccion', () => 
     }
   }
   assert.ok(cortes > 0, 'si no cortara nunca, esta prueba no estaria comprobando nada');
+});
+
+/* ------------------------------------------- tiempo en que la app no miraba */
+
+test('sin ver: el analizador informa cuanto tiempo no estuvo mirando', () => {
+  // Alguien se cruza delante de la camara tres segundos.
+  const r = seriePerfecta('pushup', { reps: 15, noise: 0.003, seed: 1, hide: [{ t: 12, dur: 3 }] });
+  assert.ok(Math.abs(r.sinVer - 3) < 0.2, `informo ${r.sinVer} s`);
+});
+
+test('sin ver: sin interrupciones el tiempo es cero', () => {
+  const r = seriePerfecta('pushup', { reps: 15, noise: 0.003, seed: 1 });
+  assert.equal(r.sinVer, 0);
+});
+
+test('sin ver: una interrupcion corta ya cuesta repeticiones, por eso hay que avisarla', () => {
+  // Es lo que justifica el umbral: a 0,3 s no se pierde nada, de 0,8 s en
+  // adelante si, y la prueba termina normal sin que nada lo diga.
+  const corta = seriePerfecta('pushup', { reps: 15, noise: 0.003, seed: 1, hide: [{ t: 12, dur: 0.3 }] });
+  assert.equal(corta.contadas, corta.esperadas, 'a 0,3 s no se pierde nada');
+  assert.ok(corta.sinVer < C.SIN_VER_MIN, 'y queda bajo el umbral del aviso');
+
+  const larga = seriePerfecta('pushup', { reps: 15, noise: 0.003, seed: 1, hide: [{ t: 12, dur: 3 }] });
+  assert.ok(larga.contadas < larga.esperadas, 'a 3 s si se pierden');
+  assert.equal(larga.fin, 'manual', 'y la prueba termina como si nada hubiera pasado');
+  assert.ok(larga.sinVer >= C.SIN_VER_MIN, 'por eso tiene que pasar el umbral');
+});
+
+test('sin ver: el texto dice lo que corresponde a cada prueba', () => {
+  // En flexiones y sentadillas las repeticiones de ese rato se perdieron.
+  const reps = C.sinVerTexto('pushup', 3);
+  assert.ok(/3/.test(reps) && /no (te )?vi|sin verte/i.test(reps), reps);
+  // En la plancha el reloj sigue corriendo a proposito, asi que esos segundos
+  // se contaron sin poder comprobar la posicion. Es lo contrario y hay que
+  // decirlo distinto.
+  const plank = C.sinVerTexto('plank', 3);
+  assert.notEqual(plank, reps);
+  assert.ok(/cont/i.test(plank), plank);
+  // Bajo el umbral no se dice nada.
+  assert.equal(C.sinVerTexto('pushup', 0.2), null);
+  assert.equal(C.sinVerTexto('pushup', 0), null);
 });

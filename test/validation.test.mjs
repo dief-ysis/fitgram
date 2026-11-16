@@ -457,3 +457,63 @@ test('CSV: lleva el temblor y la calidad de la deteccion', () => {
   assert.ok(fila.includes('0,062'), fila);
   assert.ok(fila.includes('malo'), fila);
 });
+
+test('corrida: lleva el tiempo en que la app no estuvo mirando', () => {
+  const r = V.runFromResult({ invalid: 0, endReason: 'manual', log: [], sinVer: 3.2 });
+  assert.equal(r.sinVer, 3.2);
+  assert.equal(V.runFromResult({ invalid: 0, endReason: 'manual', log: [] }).sinVer, null);
+});
+
+test('CSV: lleva el tiempo sin ver, que explica un conteo corto sin culpar a la deteccion', () => {
+  const rs = [Object.assign(rec('P01', 'pushup', 12, [15, 15]), {
+    run: V.runFromResult({ invalid: 0, endReason: 'manual', log: [], sinVer: 3.2 }),
+  })];
+  const csv = V.toCSV(rs, ['pushup'], { pushup: 'rep' });
+  const [head, fila] = csv.trim().split('\n');
+  assert.ok(head.includes('sin_ver'), head);
+  assert.ok(fila.includes('3,2'), fila);
+});
+
+test('clasificar: si la app no estuvo mirando, la diferencia no es un fallo de deteccion', () => {
+  // Alguien se cruzo delante. Decir "no detectadas" culparia al detector por
+  // algo que paso delante de la camara, y son dos arreglos distintos.
+  const r = Object.assign(rec('P01', 'pushup', 12, [15, 15]), {
+    run: V.runFromResult({ invalid: 0, endReason: 'manual', log: [], sinVer: 3.2 }),
+  });
+  assert.equal(V.classifyRecord(r), 'interrumpida');
+});
+
+test('clasificar: una interrupcion corta no excusa la diferencia', () => {
+  const r = Object.assign(rec('P01', 'pushup', 12, [15, 15]), {
+    run: V.runFromResult({ invalid: 0, endReason: 'manual', log: [], sinVer: 0.2 }),
+  });
+  assert.equal(V.classifyRecord(r), 'noDetectadas');
+});
+
+test('clasificar: lo que la app descarto por tecnica manda sobre la interrupcion', () => {
+  // Si rechazo suficientes para explicar la diferencia, es criterio: no hace
+  // falta invocar la interrupcion.
+  const r = Object.assign(rec('P01', 'pushup', 13, [15, 15]), {
+    run: V.runFromResult({ invalid: 2, endReason: 'manual', sinVer: 3.2,
+      log: [{ valid: false, reason: 'Poca profundidad' }, { valid: false, reason: 'Poca profundidad' }] }),
+  });
+  assert.equal(V.classifyRecord(r), 'criterio');
+});
+
+test('el umbral de interrupcion es el mismo que usa el modulo de calidad', () => {
+  // Esta duplicado a proposito: los modulos no se referencian entre si para
+  // poder probarlos sueltos. Esta prueba es la que mantiene los dos iguales.
+  assert.equal(V.SIN_VER_MIN, loadModule('calidad').SIN_VER_MIN);
+});
+
+test('desglose: la interrupcion es su propia categoria', () => {
+  const rs = [
+    Object.assign(rec('P01', 'pushup', 15, [15, 15]), { run: V.runFromResult({ invalid: 0, log: [] }) }),
+    Object.assign(rec('P02', 'pushup', 12, [15, 15]), { run: V.runFromResult({ invalid: 0, log: [], sinVer: 3 }) }),
+  ];
+  const b = V.breakdown(rs, ['pushup'], {});
+  assert.equal(b.acuerdo, 1);
+  assert.equal(b.interrumpida, 1);
+  assert.equal(b.noDetectadas, 0);
+  assert.equal(b.total, 2);
+});
