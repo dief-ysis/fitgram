@@ -584,6 +584,7 @@ body.run-mode .stand-bar { display: none; }
         </div>
       </div>
       <div id="valid-list"></div>
+      <div class="note warn small" id="v-reglas" hidden></div>
       <div class="note small" id="v-backup" hidden></div>
       <div class="btn-row">
         <button class="btn quiet sm" id="v-csv" type="button">Exportar CSV</button>
@@ -3156,7 +3157,54 @@ function createAnalyzer(test, opts) {
   };
 }
 
-return { EX_CONFIG, createAnalyzer };
+/* ------------------------------------------------------------------------
+   Huella de las reglas de conteo.
+
+   Si un umbral cambia mientras se está tomando el estudio, las mediciones de
+   antes y las de después dejan de ser comparables, y hoy nada lo diría: el
+   CSV saldría con 45 filas que parecen una sola tanda. Un número de versión a
+   mano no sirve, porque lo que se olvida es justamente subirlo.
+
+   Esto sale de las reglas mismas: cualquier cambio en un umbral cambia la
+   huella sin que haya que acordarse de nada. Los textos de los avisos quedan
+   fuera a propósito: arreglar una falta de ortografía no vuelve incomparables
+   las mediciones de ayer.
+   ------------------------------------------------------------------------ */
+
+/**
+ * Las claves que NO afectan el conteo y por eso no entran en la huella:
+ * textos de los avisos, colores y parámetros de dibujo.
+ */
+const FUERA_DE_HUELLA = Object.freeze(['msg', 'colors', 'draw2D', 'view3D']);
+
+/** Serializa en orden de claves, para que reordenar el objeto no cambie nada. */
+function estable(v) {
+  if (Array.isArray(v)) return `[${v.map(estable).join(',')}]`;
+  if (v && typeof v === 'object') {
+    return `{${Object.keys(v).sort()
+      .filter((k) => !FUERA_DE_HUELLA.includes(k))
+      .map((k) => `${k}:${estable(v[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v);
+}
+
+/** FNV-1a de 32 bits en base 36. Corta, legible y suficiente: no es seguridad. */
+function huellaDe(reglas) {
+  const str = estable(reglas);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36).padStart(7, '0');
+}
+
+// La huella de esta copia de la app NO se arma acá: tiene que cubrir también
+// el suavizado (`SKELETON_CONFIG`), porque cambiar el filtro cambia qué se
+// cuenta igual que cambiar un umbral. Se arma en el módulo de la app, que ve
+// las dos configuraciones; acá va solo la función.
+
+return { EX_CONFIG, createAnalyzer, huellaDe };
 })();
 // ---- app.js ----
 __mods["history"] = (() => {
@@ -3464,6 +3512,7 @@ function normalizeRun(run) {
     calidad: run.calidad ? String(run.calidad) : null,
     temblor: Number.isNaN(temblor) ? null : temblor,
     sinVer: Number.isNaN(toNum(run.sinVer)) ? null : toNum(run.sinVer),
+    reglas: run.reglas ? String(run.reglas) : null,
     reasons,
   };
 }
@@ -3491,6 +3540,9 @@ function runFromResult(result) {
     // Segundos en que la app no estuvo mirando: explican un conteo corto sin
     // que la culpa sea de la detección.
     sinVer: Number.isFinite(result.sinVer) ? result.sinVer : null,
+    // Con qué reglas de conteo se tomó. Si el estudio mezcla dos, las
+    // mediciones no son comparables entre sí y hay que saberlo.
+    reglas: result.reglas ? String(result.reglas) : null,
     reasons,
   };
 }
@@ -3738,7 +3790,7 @@ function toCSV(records, order, units = {}) {
     .concat(Array.from({ length: maxR }, (_, i) => `evaluador${i + 1}`))
     .concat(['promedio_evaluadores', 'diferencia_app_menos_promedio',
       'descartadas', 'motivo_principal', 'termino', 'clasificacion',
-      'temblor', 'calidad', 'sin_ver', 'nota']);
+      'temblor', 'calidad', 'sin_ver', 'reglas', 'nota']);
   const rows = (records || []).slice().sort((a, b) => String(a.participant).localeCompare(String(b.participant))
     || String(a.test).localeCompare(String(b.test)));
   const body = rows.map((r) => {
@@ -3751,7 +3803,7 @@ function toCSV(records, order, units = {}) {
       mainReason(r.run), r.run?.endReason || '',
       classifyRecord(r, units[r.test] === 's') || '',
       r.run?.temblor != null ? numCL(r.run.temblor, 4) : '', r.run?.calidad || '',
-      r.run?.sinVer != null ? numCL(r.run.sinVer, 1) : '',
+      r.run?.sinVer != null ? numCL(r.run.sinVer, 1) : '', r.run?.reglas || '',
       r.note || '',
     ].map(csvCell).join(';');
   });
@@ -3811,6 +3863,11 @@ function nextPendingTest(records, participant, order, current) {
   return null;
 }
 
+/** Las versiones de las reglas de conteo presentes en las mediciones. */
+function reglasUsadas(records) {
+  return Array.from(new Set((records || []).map((r) => r.run?.reglas).filter(Boolean))).sort();
+}
+
 /** Los codigos ya ingresados, sin repetir y ordenados. */
 function participantCodes(records) {
   return Array.from(new Set((records || []).map((r) => r.participant))).sort((a, b) => a.localeCompare(b));
@@ -3834,7 +3891,7 @@ function unexportedCount(records, exportedAt) {
 
 return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, icc21, blandAltman,
   summary, statsFor, toCSV, numCL, toNum, mean, sd, SIN_VER_MIN,
-  findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount,
+  findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount, reglasUsadas,
   runFromResult, classifyRecord, breakdown, topReasons, mainReason, BREAKDOWN_KEYS };
 })();
 
@@ -4061,13 +4118,19 @@ __mods["app"] = (() => {
 // FitGram v0 — app shell: screens, camera, MediaPipe Pose Landmarker, test runner, results.
 // Modules are inlined by build.mjs; imports below are rewritten at build time.
 const { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } = __mods["norms"];
-const { createAnalyzer } = __mods["exercises"];
+const { createAnalyzer, huellaDe } = __mods["exercises"];
 const { synthSession } = __mods["synth"];
-const { toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } = __mods["skeleton"];
+const { SKELETON_CONFIG, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } = __mods["skeleton"];
 const Hist = __mods["history"];
 const Val = __mods["validation"];
 const Gm = __mods["game"];
 const Cal = __mods["calidad"];
+/**
+ * Con qué reglas cuenta esta copia de la app: umbrales y suavizado juntos.
+ * Va sellada en cada resultado, para que el estudio no mezcle dos versiones
+ * sin que nadie se entere.
+ */
+const REGLAS = huellaDe({ ex: __mods["exercises"].EX_CONFIG, sk: SKELETON_CONFIG });
 const { AGE_RANGE, coversAge } = __mods["norms"];
 /* ------------------------------------------------------------------ config */
 
@@ -5175,6 +5238,7 @@ const Runner = {
     const result = { value, invalid: st.invalid || 0, endReason, mode: this.mode, date: new Date().toISOString(), log: (st.log || []).slice(0, 200),
       calidad: this.jitter?.resumen() || null,
       sinVer: Number.isFinite(st.sinVer) ? st.sinVer : null,
+      reglas: REGLAS,
       profile: { age: S.profile.age, sex: S.profile.sex } };
     if (this.mode !== 'demo') {
       S.history = Hist.pushResult(S.history, this.test, result, ORDER);
@@ -5738,6 +5802,17 @@ function renderValid() {
     }
   }
   $('v-clear-n').textContent = String(S.valid.length);
+
+  // Si durante el estudio cambió algún umbral de conteo, las mediciones de
+  // antes y las de después no son comparables. Sin esto, el CSV parecería una
+  // sola tanda de 45 filas.
+  const reglas = Val.reglasUsadas(S.valid);
+  const rg = $('v-reglas');
+  rg.hidden = reglas.length < 2;
+  if (reglas.length >= 2) {
+    rg.textContent = `Ojo: hay mediciones tomadas con ${reglas.length} versiones distintas de las reglas de conteo`
+      + ` (${reglas.join(', ')}). No son comparables entre sí sin decirlo en el informe.`;
+  }
 
   $('v-undo').hidden = !vUndo;
   if (vUndo) $('v-undo-msg').textContent = `Se borró ${vUndo.label}.`;

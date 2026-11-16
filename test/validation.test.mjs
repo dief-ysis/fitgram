@@ -517,3 +517,41 @@ test('desglose: la interrupcion es su propia categoria', () => {
   assert.equal(b.noDetectadas, 0);
   assert.equal(b.total, 2);
 });
+
+/* --------------------------------- con que reglas se tomo cada medicion */
+
+const conReglas = (participant, test, app, raters, reglas) =>
+  Object.assign(rec(participant, test, app, raters), {
+    run: V.runFromResult({ invalid: 0, endReason: 'manual', log: [], reglas }),
+  });
+
+test('corrida: la medicion guarda con que reglas de conteo se tomo', () => {
+  assert.equal(V.runFromResult({ invalid: 0, log: [], reglas: 'abc1234' }).reglas, 'abc1234');
+  assert.equal(V.runFromResult({ invalid: 0, log: [] }).reglas, null);
+});
+
+test('reglas: con una sola version no hay nada que avisar', () => {
+  const rs = [conReglas('P01', 'pushup', 15, [15, 15], 'abc1234'),
+    conReglas('P02', 'pushup', 14, [14, 14], 'abc1234')];
+  assert.deepEqual(V.reglasUsadas(rs), ['abc1234']);
+});
+
+test('reglas: si el estudio mezcla dos versiones, se ven las dos', () => {
+  // Es lo que hace que 45 mediciones dejen de ser una sola tanda.
+  const rs = [conReglas('P01', 'pushup', 15, [15, 15], 'abc1234'),
+    conReglas('P02', 'pushup', 14, [14, 14], 'zzz9999')];
+  assert.deepEqual(V.reglasUsadas(rs), ['abc1234', 'zzz9999']);
+});
+
+test('reglas: las mediciones tecleadas a mano no cuentan como otra version', () => {
+  const rs = [conReglas('P01', 'pushup', 15, [15, 15], 'abc1234'),
+    rec('P02', 'pushup', 14, [14, 14])];
+  assert.deepEqual(V.reglasUsadas(rs), ['abc1234']);
+});
+
+test('CSV: lleva la huella de las reglas de cada medicion', () => {
+  const csv = V.toCSV([conReglas('P01', 'pushup', 15, [15, 15], 'abc1234')], ['pushup'], {});
+  const [head, fila] = csv.trim().split('\n');
+  assert.ok(head.includes('reglas'), head);
+  assert.ok(fila.includes('abc1234'), fila);
+});

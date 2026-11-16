@@ -33,6 +33,10 @@ GitHub Pages sirve para eso.
 npm test
 ```
 
+El script usa `test/*.test.mjs`, no la carpeta: `node --test test/` intenta
+resolver el directorio como módulo y falla. Con el comodín, un archivo de
+pruebas nuevo entra solo y no se queda sin correr por olvido.
+
 `test/_load.mjs` recorta un pseudo-módulo de `index.html` y lo evalúa en Node.
 Solo sirve con módulos de lógica pura: los que tocan el DOM o `localStorage` no
 se pueden cargar así.
@@ -50,7 +54,7 @@ Todo vive en `index.html`, en pseudo-módulos dentro de un solo `<script type="m
 | `history` | **Nuevo.** La serie de resultados de cada prueba y el cálculo del avance. |
 | `validation` | **Nuevo.** Comparación con evaluadores humanos: acuerdo, Bland-Altman y CCI(2,1). |
 | `game` | **Nuevo.** Modo juego: recorrido, corredores y puntaje. Idea de Elias Hermosilla. |
-| `calidad` | **Nuevo.** Mide el temblor de la detección para saber si se puede confiar en el conteo. |
+| `calidad` | **Nuevo.** Mide el temblor de la detección y el tiempo sin ver, para saber si se puede confiar en el conteo. |
 | `app` | Pantallas, navegación y persistencia. |
 
 Las dependencias (`lib/`, `models/`, `wasm/`) están versionadas para que la app
@@ -183,6 +187,30 @@ Esto hay que tenerlo **antes** de tomar los datos: si el estudio se corre sin
 adjuntar las corridas, después no hay forma de saber en qué consistía cada
 diferencia.
 
+Columnas que la corrida aporta al CSV: `descartadas`, `motivo_principal`,
+`termino`, `clasificacion`, `temblor`, `calidad`, `sin_ver` y `reglas`.
+
+### Con qué reglas se tomó cada medición
+
+Si cambio un umbral de conteo mientras el estudio se está tomando, las
+mediciones de antes y las de después dejan de ser comparables — y el CSV
+saldría con 45 filas que parecen una sola tanda. Un número de versión puesto a
+mano no sirve, porque lo que se olvida es justamente subirlo.
+
+Cada medición se sella con una **huella de las reglas**: un hash corto de
+`EX_CONFIG` (los umbrales con los que se cuenta) y de `SKELETON_CONFIG` (el
+suavizado). Van los dos porque cambiar el filtro cambia qué se cuenta igual
+que cambiar un umbral, y una huella que mirara solo los umbrales prometería
+algo que no es cierto. Cualquier cambio en cualquiera de ellos cambia la
+huella sin que nadie tenga que acordarse.
+
+Quedan fuera a propósito los textos de los avisos, los colores y los
+parámetros de dibujo: arreglar una falta de ortografía no vuelve incomparables
+las mediciones de ayer, y reordenar el objeto tampoco.
+
+La pantalla de validación avisa sola cuando entre las mediciones guardadas hay
+más de una huella, y el CSV la lleva en la columna `reglas`.
+
 ### Tomar los datos en terreno
 
 La pantalla se armó probándola con el mouse, y tomar los datos es otra cosa:
@@ -261,6 +289,21 @@ Con eso la app:
   cualquier otra advertencia, porque cambia cómo hay que leer el número;
 - **guarda el temblor con la medición de validación**, en las columnas `temblor`
   y `calidad` del CSV.
+
+### Lo que probé y resultó no ser problema
+
+Vale la pena dejarlo escrito, porque son las preguntas que hace cualquiera:
+
+- **Teléfono lento.** Conteo exacto a 30, 20, 15, 10 y hasta 6 fps.
+- **Orientación de la imagen.** Vertical, horizontal y cuadrada: idénticas.
+- **Hacia qué lado mira la persona.** Izquierda o derecha: idénticas.
+- **Variante de rodillas** (la que el protocolo CSEP usa con mujeres): cuenta
+  igual de bien que la de puntas, en los dos sentidos.
+
+Barridos con el analizador de verdad. Nada de esto necesitó un arreglo; lo que
+sí lo necesitaba son el temblor (arriba) y las interrupciones (abajo). Quedan
+fijados en `test/robustez.test.mjs`, para que la respuesta siga siendo cierta
+y no quede solo escrita acá.
 
 ### Cuando la app no estaba mirando
 
