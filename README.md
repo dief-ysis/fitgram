@@ -310,6 +310,40 @@ Esa fecha va también al CSV, en la columna `fecha_corrida`: para revisar un
 dato raro después hace falta saber a qué hora se tomó, no solo qué día se
 anotó.
 
+## Los baremos, contra las tablas publicadas
+
+`norms` produce la categoría que ve la persona y que va a ver el jurado. Un
+error ahí no se nota: la app sigue dando un número y una palabra con la misma
+seguridad de siempre, solo que la palabra no corresponde. Tenía cinco pruebas
+que casi no tocaban la clasificación.
+
+`test/baremos.test.mjs` escribe de nuevo los cortes de CSEP y de ACE a partir
+de las tablas publicadas —no copiados de lo que el código hace hoy, porque
+entonces no comprobarían nada— y verifica cada corte por los dos lados. Además:
+
+- La tabla que se muestra en pantalla y la categoría que se entrega se calculan
+  por separado, así que pueden contradecirse. Ahora se comprueba que no.
+- «Te faltan N repeticiones» lleva exactamente a la categoría siguiente, para
+  todos los valores de 0 a 60 de las cuatro tablas.
+- Hacer más nunca baja de categoría, y el percentil de la plancha nunca baja.
+- En cada decil publicado, el percentil da ese número exacto.
+- Los cortes de cada tabla suben siempre y todas las categorías se pueden
+  alcanzar: un número mal tecleado dejaría una categoría inalcanzable.
+- Las categorías marcadas como «no verificadas» existen de verdad. Si una se
+  escribiera mal, la advertencia desaparecería sin que nada fallara y un corte
+  sin confirmar se mostraría como firme.
+- Las sentadillas nunca salen sin la advertencia de la fuente dudosa.
+
+**Resultado: ningún error.** Los 26 casos pasan, cortes CSEP y ACE incluidos.
+El módulo estaba bien; lo que faltaba era poder afirmarlo.
+
+Lo que sí apareció fue al lado. La etiqueta de la tabla («Baremo CSEP/ACSM ·
+hombres 20–29 · desde los pies») se armaba con el perfil **actual**, mientras
+que la clasificación usa el perfil con el que se midió. Después de «Cambiar
+edad o sexo» en Ajustes, un resultado viejo podía mostrar «mujeres · con apoyo
+de rodillas» encima de una medición clasificada con la tabla de hombres. En
+flexiones no es un matiz: el protocolo de CSEP es físicamente otro ejercicio.
+
 ## ¿Se puede confiar en esta medición?
 
 La app contaba repeticiones con la misma seguridad, viera lo que viera. Midiendo

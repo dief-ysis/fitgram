@@ -5491,8 +5491,11 @@ function renderResult(test) {
   const t = TESTS[test];
   const r = L?.result || S.results[test];
   if (!r) { show('hub'); return; }
+  // El perfil con el que se midió, no el de ahora: «Cambiar edad o sexo» en
+  // Ajustes no puede reescribir con qué tabla se comparó una medición vieja.
+  const perfil = r.profile || S.profile;
   let cls = null;
-  try { cls = classify(test, r.value, r.profile || S.profile); } catch (e) { console.warn(e); }
+  try { cls = classify(test, r.value, perfil); } catch (e) { console.warn(e); }
   $('res-kicker').textContent = `Prueba ${t.n} · ${t.name}${L?.demo ? ' · demostración' : ''}`;
   $('res-title').textContent = L?.demo ? 'Resultado de la demostración' : 'Tu resultado';
   const shortPlank = t.unit === 's' && r.value < 60;
@@ -5513,9 +5516,13 @@ function renderResult(test) {
   renderDelta($('res-delta'), test, { demo: !!L?.demo });
 
   if (cls) {
-    const variant = test === 'pushup' ? (S.profile.sex === 'F' ? ' · con apoyo de rodillas' : ' · desde los pies') : '';
+    // La etiqueta tiene que describir la tabla que se usó de verdad. Con
+    // S.profile decía «mujeres · con apoyo de rodillas» sobre una medición
+    // clasificada con la tabla de hombres, y en flexiones no es un matiz: el
+    // protocolo de CSEP es físicamente otro ejercicio.
+    const variant = test === 'pushup' ? (perfil.sex === 'F' ? ' · con apoyo de rodillas' : ' · desde los pies') : '';
     const bandLabel = test === 'plank' ? 'universitarios' : cls.band;
-    $('res-table-lbl').textContent = `Baremo ${cls.source.short} · ${S.profile.sex === 'F' ? 'mujeres' : 'hombres'} ${bandLabel}${variant}`;
+    $('res-table-lbl').textContent = `Baremo ${cls.source.short} · ${perfil.sex === 'F' ? 'mujeres' : 'hombres'} ${bandLabel}${variant}`;
     const rows = [...cls.table].reverse();
     $('res-table').innerHTML = `<thead><tr><th>Categoría</th><th style="text-align:right">${t.unit === 's' ? 'Tiempo' : 'Repeticiones'}</th></tr></thead><tbody>${rows.map((row) => `<tr class="${row.key === cls.category.key ? 'hit' : ''}"><td>${esc(row.label)}${row.key === cls.category.key ? ' · tú' : ''}</td><td class="r">${esc(row.text)}</td></tr>`).join('')}</tbody>`;
     const flags = [];
@@ -5531,8 +5538,8 @@ function renderResult(test) {
     $('res-table').innerHTML = '';
     $('res-src').innerHTML = '';
     $('res-table-lbl').textContent = 'Sin tabla de referencia';
-    const porque = !coversAge(S.profile.age)
-      ? `Los baremos de esta versión van de ${AGE_RANGE.min} a ${AGE_RANGE.max} años, y la edad registrada es ${S.profile.age ?? '—'}. FitGram contó las repeticiones válidas y corrigió la técnica, pero no puede decir en qué nivel estás: inventar una categoría con una tabla de otra población sería un número falso.`
+    const porque = !coversAge(perfil.age)
+      ? `Los baremos de esta versión van de ${AGE_RANGE.min} a ${AGE_RANGE.max} años, y la edad registrada es ${perfil.age ?? '—'}. FitGram contó las repeticiones válidas y corrigió la técnica, pero no puede decir en qué nivel estás: inventar una categoría con una tabla de otra población sería un número falso.`
       : 'No se pudo clasificar este resultado con las tablas disponibles.';
     $('res-flags').innerHTML = `<div class="flag">${esc(porque)}</div>`;
   }
@@ -6897,7 +6904,7 @@ function boot() {
   bind();
   registrarSW();
   renderOnb();
-  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory, openValid }; // handy for debugging and automated tests
+  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory, openValid, renderResult, show }; // handy for debugging and automated tests
   // ?demo=historial abre el perfil; ?demo=pushup|squat|plank abre esa pantalla de resultado.
   let seed = null;
   try { seed = new URLSearchParams(location.search).get('demo'); } catch { /* ignore */ }
