@@ -134,3 +134,50 @@ test('textos: en vivo solo se avisa lo grave; en el resultado se explican los do
   assert.equal(C.MENSAJE.bien, undefined, 'con la detección estable no se dice nada');
   assert.equal(C.RESULTADO.bien, undefined);
 });
+
+/* ------------------- la regla de las dos seguidas y la calidad de la imagen */
+
+/** Una serie donde la persona hace TODO bien: nada que rechazar. */
+function seriePerfecta(test, opts) {
+  const s = synthSession(test, { fps: 30, ...opts });
+  const sm = new PoseSmoother();
+  const an = createAnalyzer(test, { sex: 'M' });
+  const jt = C.createJitterTracker();
+  an.start(s.frames[0].t);
+  for (const f of s.frames) {
+    jt.push(f.lm);
+    const st = an.update(toJoints(sm.smooth(f)));
+    if (st.phase === 'ended') break;
+  }
+  const fin = an.stop(s.frames[s.frames.length - 1].t, 'manual');
+  return { contadas: fin.value, esperadas: s.meta.expectedValid, fin: fin.endReason, calidad: jt.resumen() };
+}
+
+test('la prueba no se corta por tecnica en una serie perfecta con la deteccion sana', () => {
+  // La prueba termina con dos repeticiones mal hechas SEGUIDAS. Si la deteccion
+  // rechazara buenas, esa regla cortaria la prueba antes de tiempo y la persona
+  // se llevaria un numero muy por debajo de lo suyo. No pasa mientras la
+  // deteccion este sana.
+  for (const seed of [1, 2, 3, 4, 5]) {
+    for (const [prueba, opts] of [['pushup', { reps: 15 }], ['squat', { reps: 16 }]]) {
+      const r = seriePerfecta(prueba, { ...opts, noise: 0.008, seed });
+      assert.notEqual(r.fin, 'technique', `${prueba} semilla ${seed}: se corto sola`);
+      assert.equal(r.contadas, r.esperadas, `${prueba} semilla ${seed}`);
+    }
+  }
+});
+
+test('cuando si se corta sola, la app ya venia avisando de la deteccion', () => {
+  // Con ruido alto la regla de las dos seguidas si dispara sobre series
+  // perfectas. Lo que no puede pasar es que corte en silencio: si corta, el
+  // nivel de calidad tiene que estar en 'malo' y el aviso ya estuvo en pantalla.
+  let cortes = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const r = seriePerfecta('pushup', { reps: 15, noise: 0.020, seed });
+    if (r.fin === 'technique') {
+      cortes++;
+      assert.equal(r.calidad.nivel, 'malo', `semilla ${seed}: corto sin avisar`);
+    }
+  }
+  assert.ok(cortes > 0, 'si no cortara nunca, esta prueba no estaria comprobando nada');
+});
