@@ -224,6 +224,40 @@ juego, el historial. Reordenar un objeto tampoco cambia la huella.
 La pantalla de validación avisa sola cuando entre las mediciones guardadas hay
 más de una huella, y el CSV la lleva en la columna `reglas`.
 
+### El CCI no viene solo
+
+El CCI es el número con el que se defiende el estudio, y darlo solo —«CCI =
+0,89»— suena más firme de lo que es. La guía que se usa habitualmente (Koo y
+Li, 2016) juzga la reliabilidad por **el extremo bajo del intervalo de
+confianza**, no por la estimación puntual.
+
+La app ahora calcula ese intervalo: McGraw y Wong (1996), tabla 7, caso
+CCI(A,1) — el mismo que `irr::icc` en R con `model="twoway"`,
+`type="agreement"`, `unit="single"`. Hace falta el cuantil de la F, que no
+viene en JavaScript: son unas cuarenta líneas (beta incompleta por fracción
+continua, invertida por bisección), comprobadas contra las tablas publicadas.
+
+La prueba que de verdad lo valida no es ninguna de esas: una fórmula mal
+copiada da un intervalo que parece razonable y cubre el 70 % o el 100 % de las
+veces. Así que `test/intervalo.test.mjs` **simula 400 estudios** con un CCI
+conocido, del tamaño del real, y cuenta cuántas veces el intervalo acierta.
+Tiene que dar 95 %.
+
+Y lo que ese intervalo contesta, simulando 600 estudios de 15 personas con 3
+mediciones cada una:
+
+| Si el CCI de verdad es… | con 15 personas el piso queda en | con 30 |
+|---|---|---|
+| 0,95 | 0,88 | 0,91 |
+| 0,90 | 0,78 | 0,83 |
+| 0,85 | 0,68 | 0,74 |
+| 0,75 | 0,52 | 0,60 |
+
+Con los cortes habituales (0,75 «bueno», 0,90 «excelente»), 15 personas
+alcanzan **solo si el acuerdo sale muy alto**. Está anotado para decidirlo con
+el equipo antes de tomar los datos: cuánta gente medir es decisión de ellos,
+y decidirlo después de ver los números es lo que un jurado puede objetar.
+
 ### Tomar los datos en terreno
 
 La pantalla se armó probándola con el mouse, y tomar los datos es otra cosa:

@@ -3817,6 +3817,144 @@ function icc21(rows) {
   return Number.isFinite(v) ? v : null;
 }
 
+/* ------------------------------------------------------------------------
+   Intervalo de confianza del CCI.
+
+   El CCI es el número con el que se va a defender el estudio, y darlo solo
+   —«CCI = 0,89»— suena más firme de lo que es. Con quince personas por prueba
+   el intervalo es ancho, y eso conviene saberlo antes de que lo pregunte
+   alguien, no después.
+
+   Hace falta el cuantil de la F, que no viene en JavaScript. Es la beta
+   incompleta invertida: unas cuarenta líneas, todas comprobadas contra las
+   tablas publicadas en test/intervalo.test.mjs.
+   ------------------------------------------------------------------------ */
+
+/** log Γ(x) por la aproximación de Lanczos (g = 7, n = 9). */
+function lnGamma(x) {
+  const g = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
+    1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lnGamma(1 - x);
+  const z = x - 1;
+  let a = g[0];
+  const t = z + 7.5;
+  for (let i = 1; i < 9; i++) a += g[i] / (z + i);
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+/** Fracción continua de la beta incompleta (Lentz), como en Numerical Recipes. */
+function betacf(a, b, x) {
+  const TINY = 1e-300;
+  const qab = a + b, qap = a + 1, qam = a - 1;
+  let c = 1, d = 1 - (qab * x) / qap;
+  if (Math.abs(d) < TINY) d = TINY;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= 300; m++) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
+    d = 1 + aa * d; if (Math.abs(d) < TINY) d = TINY;
+    c = 1 + aa / c; if (Math.abs(c) < TINY) c = TINY;
+    d = 1 / d; h *= d * c;
+    aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
+    d = 1 + aa * d; if (Math.abs(d) < TINY) d = TINY;
+    c = 1 + aa / c; if (Math.abs(c) < TINY) c = TINY;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < 1e-14) break;
+  }
+  return h;
+}
+
+/** Beta incompleta regularizada I_x(a, b). */
+function betaInc(x, a, b) {
+  if (!(x > 0)) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  return x < (a + 1) / (a + b + 2) ? (bt * betacf(a, b, x)) / a : 1 - (bt * betacf(b, a, 1 - x)) / b;
+}
+
+/** Inversa de la beta incompleta, por bisección: lenta y sin sorpresas. */
+function betaIncInv(p, a, b) {
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    if (betaInc(mid, a, b) < p) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/**
+ * Cuantil de la distribución F: el valor que deja probabilidad `p` por debajo.
+ * @returns {number|null} null si los parámetros no sirven
+ */
+function qf(p, d1, d2) {
+  if (!(p > 0 && p < 1) || !(d1 > 0) || !(d2 > 0)) return null;
+  const x = betaIncInv(p, d1 / 2, d2 / 2);
+  if (!(x > 0) || x >= 1) return x >= 1 ? Infinity : 0;
+  const v = (d2 * x) / (d1 * (1 - x));
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Los cuadrados medios de un análisis de varianza de dos vías, o null si no se puede. */
+function mediasCuadraticas(rows) {
+  if (!Array.isArray(rows) || rows.length < 2) return null;
+  const n = rows.length;
+  const k = rows[0]?.length ?? 0;
+  if (k < 2 || rows.some((r) => r.length !== k || r.some((v) => !Number.isFinite(v)))) return null;
+  const grand = mean(rows.flat());
+  const rowMeans = rows.map(mean);
+  const colMeans = Array.from({ length: k }, (_, j) => mean(rows.map((r) => r[j])));
+  const SSR = k * rowMeans.reduce((a, m) => a + (m - grand) ** 2, 0);
+  const SSC = n * colMeans.reduce((a, m) => a + (m - grand) ** 2, 0);
+  const SST = rows.flat().reduce((a, x) => a + (x - grand) ** 2, 0);
+  return { n, k, MSR: SSR / (n - 1), MSC: SSC / (k - 1), MSE: (SST - SSR - SSC) / ((n - 1) * (k - 1)) };
+}
+
+/**
+ * CCI(2,1) con su intervalo de confianza.
+ *
+ * El intervalo es el de McGraw y Wong (1996), tabla 7, caso CCI(A,1): el mismo
+ * que calcula `irr::icc` en R con model="twoway", type="agreement",
+ * unit="single". Verificado por simulación: con 15 personas y 2 evaluadores
+ * cubre el valor verdadero el 95 % de las veces (test/intervalo.test.mjs).
+ *
+ * @param {number[][]} rows matriz sujetos x evaluadores
+ * @param {number} [conf] nivel de confianza (0,95 por omisión)
+ * @returns {{icc:number|null, lower:number|null, upper:number|null, n:number, k:number}|null}
+ */
+function icc21CI(rows, conf = 0.95) {
+  const m = mediasCuadraticas(rows);
+  if (!m) return null;
+  const { n, k, MSR, MSC, MSE } = m;
+  const icc = icc21(rows);
+  if (icc == null) return { icc: null, lower: null, upper: null, n, k };
+
+  // Acuerdo exacto: la fórmula se indetermina (1 − CCI = 0) y su límite es 1.
+  // Pasa solo con datos degenerados —por ejemplo, si un evaluador copió al
+  // otro— y por eso el resumen muestra siempre el n al lado.
+  if (!(icc < 1)) return { icc, lower: 1, upper: 1, n, k };
+
+  const alpha = 1 - conf;
+  // Grados de libertad de Satterthwaite: el denominador mezcla dos fuentes de
+  // error, así que no tiene unos grados de libertad enteros propios.
+  const a = (k * icc) / (n * (1 - icc));
+  const b = 1 + (k * icc * (n - 1)) / (n * (1 - icc));
+  const v = ((a * MSC + b * MSE) ** 2) / (((a * MSC) ** 2) / (k - 1) + ((b * MSE) ** 2) / ((n - 1) * (k - 1)));
+
+  const FL = qf(1 - alpha / 2, n - 1, v);
+  const FU = qf(1 - alpha / 2, v, n - 1);
+  if (FL == null || FU == null || !Number.isFinite(v) || v <= 0) return { icc, lower: null, upper: null, n, k };
+
+  const kn = k * n - k - n;
+  const lower = (n * (MSR - FL * MSE)) / (FL * (k * MSC + kn * MSE) + n * MSR);
+  const upper = (n * (FU * MSR - MSE)) / (k * MSC + kn * MSE + n * FU * MSR);
+  const acotar = (x) => (Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : null);
+  return { icc, lower: acotar(lower), upper: acotar(upper), n, k };
+}
+
 /** Bland y Altman: sesgo medio y límites de acuerdo al 95 %. */
 function blandAltman(a, b) {
   const diffs = a.map((x, i) => x - b[i]).filter(Number.isFinite);
@@ -3851,6 +3989,12 @@ const ICC_MIN_N = 5;
  * `timed` marca las pruebas cronometradas: en un sostenido de 60 s, acertar el
  * segundo exacto o quedar "dentro de ±1" no significa nada, así que no se informa.
  */
+/** Los dos extremos del intervalo, o null si no hay CCI que acompañar. */
+function ciDe(rows) {
+  const ic = icc21CI(rows);
+  return ic && ic.lower != null && ic.upper != null ? [ic.lower, ic.upper] : null;
+}
+
 function statsFor(records, timed = false) {
   if (!records.length) return null;
   const app = records.map((r) => r.app);
@@ -3875,6 +4019,7 @@ function statsFor(records, timed = false) {
         return Math.max(0, Math.min(100, 100 * (1 - Math.abs(r.raters[0] - r.raters[1]) / base)));
       })),
       icc: icc21(pairs.map((r) => [r.raters[0], r.raters[1]])),
+      iccCI: ciDe(pairs.map((r) => [r.raters[0], r.raters[1]])),
     };
   }
 
@@ -3890,6 +4035,9 @@ function statsFor(records, timed = false) {
     sd: ba.sd,
     loA: ba.loA,
     icc: icc21(records.map((r) => [r.app].concat(r.raters))),
+    // Un CCI sin intervalo suena más firme de lo que es. Con quince personas
+    // el intervalo es ancho, y eso es parte del resultado, no un detalle.
+    iccCI: ciDe(records.map((r) => [r.app].concat(r.raters))),
     iccReliable: people >= ICC_MIN_N,
     raters,
   };
@@ -4040,7 +4188,7 @@ function unexportedCount(records, exportedAt) {
   }).length;
 }
 
-return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, mergeRecords, icc21, blandAltman,
+return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, mergeRecords, icc21, icc21CI, qf, blandAltman,
   summary, statsFor, toCSV, numCL, toNum, mean, sd, SIN_VER_MIN,
   findDuplicate, testsDoneBy, nextPendingTest, participantCodes, unexportedCount, reglasUsadas, runYaUsada,
   runFromResult, classifyRecord, breakdown, topReasons, mainReason, BREAKDOWN_KEYS };
@@ -5965,10 +6113,24 @@ function statBlock(test, s) {
   return `<div class="stat">
     <div class="stat-head"><span class="lbl" style="color:var(--ink)">${esc(T.short)}</span><span class="stat-v">${Val.numCL(s.relAgreement, 1)} %</span></div>
     <div class="small">${s.n} ${s.n === 1 ? 'medición' : 'mediciones'} · ${s.people} ${s.people === 1 ? 'persona' : 'personas'}${s.within1 == null ? '' : ` · ${Val.numCL(s.within1, 0)} % dentro de ±1`}</div>
-    <div class="small">Sesgo ${s.bias > 0 ? '+' : ''}${Val.numCL(s.bias, 2)}${u} (${loa})${s.icc != null ? ` · CCI(2,1) ${Val.numCL(s.icc, 2)}${s.iccReliable ? '' : ' <span class="muted">(pocos sujetos: tómalo con pinzas)</span>'}` : ''}</div>
-    ${s.raters ? `<div class="small muted">Entre evaluadores: ${Val.numCL(s.raters.relAgreement, 1)} % de acuerdo${s.raters.icc != null ? `, CCI ${Val.numCL(s.raters.icc, 2)}` : ''}.</div>` : ''}
+    <div class="small">Sesgo ${s.bias > 0 ? '+' : ''}${Val.numCL(s.bias, 2)}${u} (${loa})${s.icc != null ? ` · CCI(2,1) ${Val.numCL(s.icc, 2)}${ic(s.iccCI)}${s.iccReliable ? '' : ' <span class="muted">(pocos sujetos: tómalo con pinzas)</span>'}` : ''}</div>
+    ${s.raters ? `<div class="small muted">Entre evaluadores: ${Val.numCL(s.raters.relAgreement, 1)} % de acuerdo${s.raters.icc != null ? `, CCI ${Val.numCL(s.raters.icc, 2)}${ic(s.raters.iccCI)}` : ''}.</div>` : ''}
     ${warn}
   </div>`;
+}
+
+/**
+ * El intervalo de confianza, al lado del CCI.
+ *
+ * Un CCI solo suena más firme de lo que es. Con quince personas el intervalo
+ * es ancho, y ese ancho es parte del resultado: es lo que responde «¿y cuánta
+ * gente harían falta?» con un número en vez de con una intuición.
+ */
+function ic(par) {
+  // Dos decimales fijos: «0,94–1» al lado de «0,94» se lee como si el extremo
+  // alto fuera otra cosa, y este es el número principal del estudio.
+  const dos = (v) => v.toFixed(2).replace('.', ',');
+  return Array.isArray(par) ? ` <span class="muted">(IC 95 %: ${dos(par[0])}–${dos(par[1])})</span>` : '';
 }
 
 const VALID_TARGET = 15; // la hoja de ruta compromete 15 personas
