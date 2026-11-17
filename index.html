@@ -1222,8 +1222,11 @@ class OneEuroFilter {
 /**
  * Smooths a PoseFrame per landmark and axis with 1€ filters: `lm` x,y,z (normalized image
  * units) and `world` x,y,z (meters) use separate settings. Defaults
- * (`SKELETON_CONFIG.smoother`) are tuned for ~30 fps MediaPipe output: steady at rest, about
- * one frame of lag in fast reps (see the PoseSmoother tests for the measured numbers).
+ * (`SKELETON_CONFIG.smoother`) are tuned for ~30 fps MediaPipe output. Medido en
+ * `test/esqueleto.test.mjs`: en reposo divide el ruido por 2,7, y en una bajada de flexión
+ * (0,6 unidades/s) se arrastra 0,35 cuadros. Tras un hueco largo —la cámara se queda
+ * pegada— el paso de tiempo grande hace que el filtro siga el dato nuevo casi sin promediar
+ * con el viejo, que es lo que corresponde cuando ya hay poca información.
  * `smooth()` never mutates its input; `visibility` and any other fields pass through.
  * A missing `world` (null) is passed through and its filters are left untouched. If time goes
  * backwards (new clip, demo loop) the smoother resets itself.

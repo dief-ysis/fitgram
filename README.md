@@ -344,6 +344,37 @@ edad o sexo» en Ajustes, un resultado viejo podía mostrar «mujeres · con apo
 de rodillas» encima de una medición clasificada con la tabla de hombres. En
 flexiones no es un matiz: el protocolo de CSEP es físicamente otro ejercicio.
 
+### El esqueleto, que alimenta a todo lo demás
+
+`skeleton` convierte los puntos de MediaPipe en articulaciones y los suaviza.
+Las pruebas sintéticas lo ejercitan de paso, pero solo verían un error grueso:
+si el filtro se arrastrara medio segundo, o si un `NaN` le envenenara el
+estado, lo que se ve después es un conteo raro, no un error, y la culpa parece
+del analizador.
+
+`test/esqueleto.test.mjs` lo mide en vez de suponerlo:
+
+| | medido | por qué importa |
+|---|---|---|
+| ruido en reposo | lo divide por **2,7** | menos que eso y el filtro no está haciendo su trabajo |
+| retraso en una bajada de flexión | **0,35 cuadros** | si se arrastrara, el fondo del movimiento llegaría tarde y la repetición podría no alcanzar el umbral de profundidad |
+| tras un hueco de 3 s | sigue el dato nuevo, error < 0,02 | el paso de tiempo grande hace que casi no promedie con lo viejo, que es lo correcto cuando ya hay poca información |
+
+Y las propiedades que, si se rompieran, no darían error sino números
+equivocados: un `NaN` pasa de largo sin quedarse guardado (si se guardara, ese
+punto quedaría ciego para siempre); cada punto se filtra por su cuenta (si se
+mezclaran, el temblor de una mano movería la cadera); `smooth()` no toca el
+cuadro que recibe (el temblor se mide sobre los puntos **sin** suavizar, así
+que mutarlo dejaría esa medición midiendo lo suavizado); la corrección de
+proporción va solo en el eje horizontal (en los dos, los ángulos dependerían
+de la forma de la imagen y el conteo dependería del teléfono); y mover a la
+persona entera mueve el esqueleto entero igual, que es la forma de comprobar
+que los pesos de cada articulación derivada suman 1.
+
+**Resultado: ningún error** en los 27 casos. Lo que sí corregí fue un
+comentario: decía «about one frame of lag» y la medición da 0,35 cuadros, y
+remitía a unas pruebas que en este repositorio no existían.
+
 ## ¿Se puede confiar en esta medición?
 
 La app contaba repeticiones con la misma seguridad, viera lo que viera. Midiendo
