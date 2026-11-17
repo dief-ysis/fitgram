@@ -1,9 +1,8 @@
 /** Lógica del modo juego (idea de Elias). node --test test/game.test.mjs */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as G from '../src/game.mjs';
 
-const G = loadModule('game');
 const near = (a, b, tol = 1e-6) => assert.ok(Math.abs(a - b) < tol, `${a} != ${b}`);
 
 /* ------------------------------------------------- altura normalizada */

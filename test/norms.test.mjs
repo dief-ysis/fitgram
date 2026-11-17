@@ -1,9 +1,8 @@
 /** Rango de edad que cubren los baremos. node --test test/norms.test.mjs */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as N from '../src/norms.mjs';
 
-const N = loadModule('norms');
 
 test('el rango de edad de los baremos está declarado y es 18 a 21', () => {
   assert.equal(N.AGE_RANGE.min, 18);

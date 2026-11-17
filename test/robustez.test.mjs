@@ -8,11 +8,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import { synthSession } from '../src/synth.mjs';
+import { toJoints, PoseSmoother } from '../src/skeleton.mjs';
+import { createAnalyzer } from '../src/exercises.mjs';
 
-const { synthSession } = loadModule('synth');
-const { toJoints, PoseSmoother } = loadModule('skeleton');
-const { createAnalyzer } = loadModule('exercises');
 
 function corre(prueba, opts) {
   const s = synthSession(prueba, { fps: 30, noise: 0.004, ...opts });

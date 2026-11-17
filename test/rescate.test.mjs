@@ -13,9 +13,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as V from '../src/validation.mjs';
 
-const V = loadModule('validation');
 
 const FECHA = '2026-11-17T15:42:00.000Z';
 

@@ -12,9 +12,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as V from '../src/validation.mjs';
 
-const V = loadModule('validation');
 
 const med = (participant, t = 'pushup', extra = {}) => Object.assign(
   { participant, test: t, app: 20, raters: [21, 21], date: '2026-11-17T10:00:00.000Z', note: '' }, extra);

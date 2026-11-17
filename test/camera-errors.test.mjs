@@ -9,9 +9,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadFunction } from './_load.mjs';
+import { cameraErrorMessage as msgFor, esErrorDeCamara } from '../src/camara-errores.mjs';
 
-const msgFor = loadFunction('index.html', 'cameraErrorMessage');
+
 const err = (name, message = '') => Object.assign(new Error(message), { name });
 
 test('sin HTTPS sí corresponde mandar a la versión segura', () => {
@@ -60,5 +60,17 @@ test('siempre devuelve título y detalle con texto', () => {
       const m = msgFor(e, { secure });
       assert.ok(m.title?.length > 0 && m.detail?.length > 0, `${e?.name} secure=${secure}`);
     }
+  }
+});
+
+test('reconoce si el fallo vino de la camara o de otra cosa', () => {
+  // Antes esto no se podia probar: estaba dentro del modulo de la app, que no
+  // se puede importar en Node porque toca el DOM.
+  for (const e of [{ name: 'NotAllowedError' }, { name: 'NotReadableError' },
+    new Error('getUserMedia no disponible'), new Error('no se pudo abrir la cámara')]) {
+    assert.equal(esErrorDeCamara(e), true, JSON.stringify(e.name || e.message));
+  }
+  for (const e of [new Error('WebAssembly no compila'), new Error('fallo al leer el modelo'), null]) {
+    assert.equal(esErrorDeCamara(e), false, String(e && e.message));
   }
 });

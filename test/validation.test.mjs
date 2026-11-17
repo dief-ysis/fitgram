@@ -4,10 +4,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as V from '../src/validation.mjs';
+import * as Cal from '../src/calidad.mjs';
 
 
-const V = loadModule('validation');
 const near = (a, b, tol = 1e-3) => assert.ok(Math.abs(a - b) < tol, `${a} != ${b} (tol ${tol})`);
 
 const rec = (participant, test, app, raters, date = '2026-11-15') =>
@@ -503,7 +503,7 @@ test('clasificar: lo que la app descarto por tecnica manda sobre la interrupcion
 test('el umbral de interrupcion es el mismo que usa el modulo de calidad', () => {
   // Esta duplicado a proposito: los modulos no se referencian entre si para
   // poder probarlos sueltos. Esta prueba es la que mantiene los dos iguales.
-  assert.equal(V.SIN_VER_MIN, loadModule('calidad').SIN_VER_MIN);
+  assert.equal(V.SIN_VER_MIN, Cal.SIN_VER_MIN);
 });
 
 test('desglose: la interrupcion es su propia categoria', () => {

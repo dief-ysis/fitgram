@@ -12,11 +12,11 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import { synthSession } from '../src/synth.mjs';
+import { toJoints, PoseSmoother } from '../src/skeleton.mjs';
+import { createAnalyzer, EX_CONFIG } from '../src/exercises.mjs';
+import * as Cal from '../src/calidad.mjs';
 
-const { synthSession } = loadModule('synth');
-const { toJoints, PoseSmoother } = loadModule('skeleton');
-const { createAnalyzer, EX_CONFIG } = loadModule('exercises');
 
 const CM = EX_CONFIG.common;
 
@@ -90,7 +90,6 @@ test('si la prueba se corto por no ver, el aviso no dice que el reloj siguio', (
   // En la plancha el reloj sigue corriendo a proposito durante un corte corto.
   // Pero si la prueba se corto por eso, el reloj se quedo en el ultimo momento
   // que pudo ver, y decir lo contrario haria creer que el numero vale.
-  const Cal = loadModule('calidad');
   const corto = Cal.sinVerTexto('plank', 40, 'not_visible');
   assert.ok(!/reloj siguió corriendo/i.test(corto), corto);
   assert.ok(/repetirla|no lo que hiciste/i.test(corto), corto);
@@ -100,11 +99,9 @@ test('si la prueba se corto por no ver, el aviso no dice que el reloj siguio', (
 });
 
 test('en flexiones el aviso tambien cambia si la prueba se corto', () => {
-  const Cal = loadModule('calidad');
   assert.notEqual(Cal.sinVerTexto('pushup', 40, 'not_visible'), Cal.sinVerTexto('pushup', 40, 'manual'));
 });
 
 test('bajo el umbral no se dice nada, pase lo que pase', () => {
-  const Cal = loadModule('calidad');
   assert.equal(Cal.sinVerTexto('plank', 0.2, 'not_visible'), null);
 });

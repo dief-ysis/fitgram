@@ -33,17 +33,34 @@ GitHub Pages sirve para eso.
 npm test
 ```
 
+`npm test` arma el archivo publicado y comprueba que coincida con `src/` antes
+de correr nada; si no coincide, falla ahí mismo y dice que corras `npm run
+build`.
+
 El script usa `test/*.test.mjs`, no la carpeta: `node --test test/` intenta
 resolver el directorio como módulo y falla. Con el comodín, un archivo de
 pruebas nuevo entra solo y no se queda sin correr por olvido.
 
-`test/_load.mjs` recorta un pseudo-módulo de `index.html` y lo evalúa en Node.
-Solo sirve con módulos de lógica pura: los que tocan el DOM o `localStorage` no
-se pueden cargar así.
+```bash
+npm run build     # escribe index.html desde src/
+```
 
 ## Estructura
 
-Todo vive en `index.html`, en pseudo-módulos dentro de un solo `<script type="module">`:
+El código se escribe en **módulos ES de verdad**, uno por archivo en `src/`,
+con `import` y `export`. Lo que se publica sigue siendo **un solo
+`index.html`**, que arma `build.mjs`.
+
+```
+src/                    el código fuente
+  index.template.html   el HTML y el CSS, con <!--MODULOS--> donde va el código
+  norms.mjs  skeleton.mjs  synth.mjs  calidad.mjs  exercises.mjs
+  history.mjs  validation.mjs  game.mjs  camara-errores.mjs
+  app.mjs               la entrada: pantallas, cámara, runner
+build.mjs               pega los módulos dentro del HTML
+index.html              GENERADO. No editar a mano.
+sw.js  manifest.webmanifest
+```
 
 | Módulo | Qué hace |
 |---|---|
@@ -51,19 +68,62 @@ Todo vive en `index.html`, en pseudo-módulos dentro de un solo `<script type="m
 | `skeleton` | Landmarks de MediaPipe a articulaciones, suavizado, dibujo 2D y 3D. |
 | `synth` | Personas sintéticas para probar el pipeline sin cámara. |
 | `exercises` | Máquinas de estado que validan y cuentan cada repetición. |
-| `history` | **Nuevo.** La serie de resultados de cada prueba y el cálculo del avance. |
-| `validation` | **Nuevo.** Comparación con evaluadores humanos: acuerdo, Bland-Altman y CCI(2,1). |
-| `game` | **Nuevo.** Modo juego: recorrido, corredores y puntaje. Idea de Elias Hermosilla. |
-| `calidad` | **Nuevo.** Mide el temblor de la detección y el tiempo sin ver, para saber si se puede confiar en el conteo. |
-| `app` | Pantallas, navegación y persistencia. |
+| `history` | La serie de resultados de cada prueba y el cálculo del avance. |
+| `validation` | Comparación con evaluadores humanos: acuerdo, Bland-Altman y CCI(2,1) con su intervalo. |
+| `game` | Modo juego: recorrido, corredores y puntaje. Idea de Elias Hermosilla. |
+| `calidad` | Mide el temblor de la detección y el tiempo sin ver, para saber si se puede confiar en el conteo. |
+| `camara-errores` | Qué decir cuando la cámara no abre. Puro, sin DOM. |
+| `app` | Pantallas, navegación, cámara y persistencia. |
+
+### Por qué un build y no módulos sueltos
+
+Servir `src/*.mjs` directamente sería más simple, pero el archivo único se gana
+tres cosas que acá importan: funciona abierto desde el disco (los módulos ES no,
+por CORS), el service worker no tiene que cachear diez rutas más para que la app
+ande sin conexión, y el pitch promete «todo ocurre en el teléfono», cosa que se
+comprueba abriendo un archivo.
+
+El build no minifica, no transpila y no reordena nada: solo traduce los
+`import`/`export` a la forma que ya usaba el archivo publicado y pega los
+módulos en orden de dependencias.
+
+```
+import { a } from './x.mjs';   ->  const { a } = __mods["x"];
+import * as N from './x.mjs';  ->  const N = __mods["x"];
+export { a, b };               ->  return { a, b };
+```
+
+Así el archivo publicado se puede leer y comparar con la fuente línea por
+línea. El orden lo calcula el build desde los `import`: cada módulo después de
+los que importa, y entre módulos independientes, alfabético —para que el
+archivo publicado no cambie de forma según el orden en que uno escriba los
+`import`—. Si hay un ciclo, falla.
+
+### Lo que no deja que esto se pudra
+
+Un archivo generado dentro del repositorio tiene un riesgo obvio: que alguien
+edite `index.html` a mano. El cambio funciona, se sube, y el siguiente build lo
+borra sin decir nada. `test/construccion.test.mjs` no lo permite —compara el
+`index.html` publicado con el que sale de `src/` y dice en qué línea
+difieren—, y `npm test` corre `build.mjs --check` antes que las pruebas.
+
+También falla si un módulo de `src/` no lo importa nadie: código que parece
+vivo y no corre.
+
+### Lo que esto arregló de las pruebas
+
+Antes, `test/_load.mjs` **recortaba el texto de un pseudo-módulo de
+`index.html`** y lo evaluaba con `new Function`. Funcionaba, pero se rompía con
+cualquier cambio de formato y no servía para nada que tocara el DOM. Ahora las
+pruebas hacen `import ... from '../src/x.mjs'`, como cualquiera.
+
+Queda `loadFunction` solo para lo que no es un módulo: `sw.js`, que es un
+service worker.
 
 Las dependencias (`lib/`, `models/`, `wasm/`) están versionadas para que la app
 funcione sin CDN. Las tipografías (`fonts/`, Barlow y Barlow Condensed, SIL OFL)
 están auto-hospedadas: antes venían de Google Fonts, así que sin conexión no
 cargaban y cada apertura de la app le avisaba a Google.
-
-Fuera de `index.html` hay solo dos archivos de código: `sw.js` (el service
-worker) y `manifest.webmanifest`.
 
 ## Qué cambió respecto del base
 

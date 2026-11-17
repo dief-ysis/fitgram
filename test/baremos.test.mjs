@@ -11,9 +11,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as N from '../src/norms.mjs';
 
-const N = loadModule('norms');
 
 /* Tabla CSEP de flexiones: banda -> sexo -> [categoria, desde, hasta]. */
 const CSEP = {

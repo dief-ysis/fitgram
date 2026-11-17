@@ -7,9 +7,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as E from '../src/exercises.mjs';
+import * as S from '../src/skeleton.mjs';
 
-const E = loadModule('exercises');
 
 test('la huella es corta y estable', () => {
   const a = E.huellaDe({ x: 1, y: [2, 3], z: { w: true } });
@@ -36,7 +36,6 @@ test('quitar o agregar una regla cambia la huella', () => {
 });
 
 test('la huella de las reglas de verdad es corta y reproducible', () => {
-  const S = loadModule('skeleton');
   // La misma combinacion que sella la app: umbrales, suavizado y el codigo que
   // decide que cuenta. Si esto deja de coincidir con la app, la huella del CSV
   // deja de significar lo que dice el README.
@@ -57,14 +56,12 @@ test('los textos de los avisos no cambian la huella: no cambian el conteo', () =
 test('la huella de la app cubre tambien el suavizado, no solo los umbrales', () => {
   // Cambiar el filtro cambia que se cuenta, igual que cambiar un umbral.
   // Si la huella solo mirara EX_CONFIG, la garantia seria falsa.
-  const S = loadModule('skeleton');
   const conFiltro = E.huellaDe({ ex: E.EX_CONFIG, sk: S.SKELETON_CONFIG });
   const otroFiltro = E.huellaDe({ ex: E.EX_CONFIG, sk: { ...S.SKELETON_CONFIG, minVisibility: 0.99 } });
   assert.notEqual(conFiltro, otroFiltro);
 });
 
 test('los colores y el dibujo no entran en la huella: no cambian el conteo', () => {
-  const S = loadModule('skeleton');
   const a = E.huellaDe({ sk: S.SKELETON_CONFIG });
   const b = E.huellaDe({ sk: { ...S.SKELETON_CONFIG, colors: { nuevo: '#fff' }, draw2D: { grosor: 9 } } });
   assert.equal(a, b);
@@ -105,7 +102,6 @@ test('la huella de las reglas cubre el codigo, no solo la configuracion', () => 
   // Esto es lo que fallaba: arreglar como se cierra una prueba cuando la camara
   // se queda pegada cambio lo que mide la plancha sin tocar una sola constante,
   // y la huella anterior no se habria movido.
-  const S = loadModule('skeleton');
   const con = E.huellaDe({ ex: E.EX_CONFIG, sk: S.SKELETON_CONFIG, cod: E.codigoDeConteo() });
   const sin = E.huellaDe({ ex: E.EX_CONFIG, sk: S.SKELETON_CONFIG });
   assert.notEqual(con, sin);

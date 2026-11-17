@@ -3,12 +3,11 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as C from '../src/calidad.mjs';
+import { synthSession } from '../src/synth.mjs';
+import { toJoints, PoseSmoother } from '../src/skeleton.mjs';
+import { createAnalyzer } from '../src/exercises.mjs';
 
-const C = loadModule('calidad');
-const { synthSession } = loadModule('synth');
-const { toJoints, PoseSmoother } = loadModule('skeleton');
-const { createAnalyzer } = loadModule('exercises');
 
 /** 33 puntos, todos en (x, y). */
 const cuadro = (x, y) => Array.from({ length: 33 }, () => ({ x, y, z: 0, visibility: 1 }));

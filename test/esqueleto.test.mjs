@@ -11,9 +11,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as S from '../src/skeleton.mjs';
 
-const S = loadModule('skeleton');
 const { PoseSmoother, OneEuroFilter, toJoints, blazeposeToH36M,
   normalizeScreenCoordinates, imageCoordinates, BP, SKELETON_CONFIG } = S;
 

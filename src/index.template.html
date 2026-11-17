@@ -1,0 +1,677 @@
+<!doctype html>
+<!--
+  ARCHIVO GENERADO. No editar a mano: lo reescribe `npm run build`.
+
+  El código fuente está en src/*.mjs, como módulos ES normales. Este archivo es
+  lo que se publica: un solo HTML, para que la app funcione abierta desde el
+  disco y para que el service worker no tenga que cachear una ruta por módulo.
+
+  Para cambiar algo: edita src/, corre `npm run build` y sube los dos.
+  `npm test` falla si este archivo no corresponde a src/.
+-->
+<html lang="es-CL">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f3">
+<script>window.FITGRAM_CONFIG={lib:'./lib/vision_bundle.mjs',wasmLoader:'./lib/vision_wasm_internal.js'};</script>
+<title>FitGram</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="icon" href="icono.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icono-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f2f2f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131516" media="(prefers-color-scheme: dark)">
+<style>
+/* Barlow y Barlow Condensed, auto-hospedadas (SIL OFL; el texto de la licencia
+   esta en fonts/OFL.txt). Antes venian de Google Fonts: sin conexion no
+   cargaban, y cada apertura de la app le avisaba a Google. Solo el subconjunto
+   latino, que es el que necesita el castellano. */
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 400; font-display: swap; src: url('fonts/barlow-400.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/barlow-500.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/barlow-600.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/barlow-condensed-500.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/barlow-condensed-600.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/barlow-condensed-700.woff2') format('woff2'); }
+/* Layout: one mobile column (max 560px) with a sticky header; the test runner is a full-width camera stage.
+   Visual language inherited from the FitGram MVP: square corners, crop marks on cards, condensed uppercase labels. */
+:root {
+  --bg: #f2f2f3; --surface: #f8f8f9; --surface-2: #ffffff; --ink: #1d1f20; --muted: #565b61;
+  --line: #c5c9ce; --line-soft: #dfe1e4; --accent: #5980a6; --accent-ink: #44678a; --on-accent: #ffffff;
+  --good: #2e7d5b; --warn: #a86b12; --bad: #b23b3b; --mark: #1d1f20;
+  --stage: #0e1011; --stage-ink: #f2f4f5; --stage-muted: #a9b1b8; --stage-veil: rgba(14,16,17,.72);
+  --sk-left: #2f9bd3; --sk-right: #e8613c; --sk-axis: #8a96a3;
+  --font-body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  --font-cd: 'Barlow Condensed', 'Arial Narrow', 'Helvetica Neue', sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131516; --surface: #1a1d1f; --surface-2: #212528; --ink: #e8ebee; --muted: #9ba4ac;
+    --line: #3b4147; --line-soft: #2a2f33; --accent: #7fa3c6; --accent-ink: #a2c0dc; --on-accent: #0e1418;
+    --good: #5cc495; --warn: #e2ac4f; --bad: #ec7b7b; --mark: #e8ebee;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131516; --surface: #1a1d1f; --surface-2: #212528; --ink: #e8ebee; --muted: #9ba4ac;
+  --line: #3b4147; --line-soft: #2a2f33; --accent: #7fa3c6; --accent-ink: #a2c0dc; --on-accent: #0e1418;
+  --good: #5cc495; --warn: #e2ac4f; --bad: #ec7b7b; --mark: #e8ebee;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); }
+body { margin: 0; font-family: var(--font-body); font-size: 16px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; border-radius: 0; margin: 0; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cd { font-family: var(--font-cd); }
+.tab-num { font-variant-numeric: tabular-nums; }
+.lbl { font-family: var(--font-cd); font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.wrap { width: 100%; max-width: 560px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Header */
+.app-head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--ink); }
+.app-head .wrap { height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { font-family: var(--font-cd); font-size: 26px; font-weight: 700; letter-spacing: .14em; background: none; border: 0; padding: 0; }
+.head-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.icon-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: transparent; }
+.ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* Screens */
+main { padding-block: 20px 112px; }
+.screen { display: flex; flex-direction: column; gap: 18px; }
+.screen-title { margin: 0; font-family: var(--font-cd); font-size: 40px; line-height: 1; font-weight: 700; text-transform: uppercase; text-wrap: balance; }
+.screen-sub { margin: 4px 0 0; color: var(--muted); max-width: 60ch; }
+
+/* Cards with crop marks (FitGram MVP signature) */
+.card { position: relative; border: 1px solid var(--line); background: var(--surface); }
+.card.marks::before { content: ""; position: absolute; inset: -5px; pointer-events: none; background:
+  linear-gradient(var(--mark), var(--mark)) 0 4px/9px 1px no-repeat, linear-gradient(var(--mark), var(--mark)) 4px 0/1px 9px no-repeat,
+  linear-gradient(var(--mark), var(--mark)) 100% 4px/9px 1px no-repeat, linear-gradient(var(--mark), var(--mark)) calc(100% - 4px) 0/1px 9px no-repeat,
+  linear-gradient(var(--mark), var(--mark)) 0 calc(100% - 4px)/9px 1px no-repeat, linear-gradient(var(--mark), var(--mark)) 4px 100%/1px 9px no-repeat,
+  linear-gradient(var(--mark), var(--mark)) 100% calc(100% - 4px)/9px 1px no-repeat, linear-gradient(var(--mark), var(--mark)) calc(100% - 4px) 100%/1px 9px no-repeat; }
+.pad { padding: 16px; }
+
+/* Buttons */
+.btn { min-height: 52px; width: 100%; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); font-family: var(--font-cd); font-size: 20px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 16px; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--ink); }
+.btn.quiet { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn.sm { min-height: 44px; font-size: 17px; }
+.link-btn { min-height: 44px; border: 0; background: transparent; color: var(--muted); text-decoration: underline; font-size: 15px; padding: 0; align-self: flex-start; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-row > * { flex: 1 1 140px; }
+.pill-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill { min-height: 48px; flex: 1 1 0; min-width: 64px; border: 1px solid var(--line); background: transparent; font-family: var(--font-cd); font-size: 20px; font-weight: 600; padding: 0 8px; }
+.pill[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+/* Onboarding */
+.field { display: flex; flex-direction: column; gap: 8px; }
+
+/* Test list */
+.test-list { display: flex; flex-direction: column; gap: 12px; }
+.test-card { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 14px; text-align: left; width: 100%; color: inherit; }
+.test-card.next { border-color: var(--accent); }
+.test-n { font-family: var(--font-cd); font-size: 28px; line-height: 1; font-weight: 700; color: var(--accent); }
+.test-name { font-weight: 600; }
+.test-q { font-size: 14px; color: var(--muted); }
+.test-status { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.test-val { font-family: var(--font-cd); font-size: 24px; font-weight: 600; line-height: 1; }
+.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 2px 8px; border: 1px solid var(--line); font-family: var(--font-cd); font-size: 14px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.chip.cat { border-color: var(--accent); color: var(--accent-ink); }
+
+/* Intro */
+.steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.steps li { display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 10px; }
+.steps .k { font-family: var(--font-cd); font-size: 18px; font-weight: 700; color: var(--accent-ink); }
+.placement svg { width: 100%; height: auto; display: block; }
+.note { border: 1px solid var(--ink); padding: 10px 12px; font-size: 14px; }
+.note.warn { border-color: var(--warn); }
+.mode-list { display: flex; flex-direction: column; gap: 10px; }
+.mode-hint { font-size: 14px; color: var(--muted); }
+
+/* Runner */
+/* Run mode: header hidden, the camera stage fills the screen minus the control bar (portrait and landscape). */
+body.run-mode .app-head { display: none; }
+body.run-mode main { padding-block: 0 32px; }
+#scr-run { gap: 12px; }
+.run-bar { display: flex; gap: 8px; align-items: stretch; }
+.run-bar .btn { flex: 1 1 auto; }
+.run-close { width: 52px; height: auto; min-height: 52px; flex: none; }
+@media (max-width: 480px) { .run-tag { display: none; } }
+body.run-mode main.wrap { max-width: 960px; }
+@media (max-height: 520px) {
+  .hud-tl .hud-big { font-size: 34px; }
+  .hud-tr .hud-big { font-size: 56px; }
+  .cue-bar { min-height: 40px; font-size: 22px; }
+  .inset3d { bottom: 58px; }
+}
+.run-tag { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-cd); font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--stage-muted); text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none; }
+.stage-wrap { margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px))); }
+.stage { position: relative; width: 100%; height: calc(100vh - 76px); height: calc(100svh - 76px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); min-height: 260px; max-height: 900px; background: var(--stage); color: var(--stage-ink); overflow: hidden; touch-action: manipulation; }
+.stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--stage); }
+.stage video.mirror { transform: scaleX(-1); }
+.stage canvas.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.stage .grid-bg { position: absolute; inset: 0; background-color: var(--stage); background-image: linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px); background-size: 32px 32px; }
+.hud-tl, .hud-tr { position: absolute; top: max(10px, env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.hud-tl { left: max(12px, env(safe-area-inset-left, 0px)); }
+.hud-tr { right: max(12px, env(safe-area-inset-right, 0px)); align-items: flex-end; }
+.hud-lbl { font-family: var(--font-cd); font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--stage-muted); }
+.hud-big { font-family: var(--font-cd); font-weight: 700; line-height: .9; font-variant-numeric: tabular-nums; }
+.hud-tl .hud-big { font-size: 44px; }
+.hud-tr .hud-big { font-size: 88px; }
+.hud-sub { font-size: 14px; color: var(--stage-muted); }
+.cue-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; min-height: 48px; display: flex; align-items: center; justify-content: center; padding: 6px 12px; font-family: var(--font-cd); font-size: 26px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; text-align: center; color: #fff; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.25); }
+.cue-bar[data-level="good"] { background: #2e7d5b; border-color: #2e7d5b; }
+.cue-bar[data-level="warn"] { background: #9a5b07; border-color: #9a5b07; }
+.cue-bar[data-level="bad"] { background: #a32f2f; border-color: #a32f2f; }
+.inset3d { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); bottom: 68px; width: min(150px, 30%); height: min(200px, calc(100% - 210px)); min-height: 90px; border: 1px solid rgba(255,255,255,.3); background: rgba(10,12,13,.72); }
+.inset3d canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.inset3d .tag { position: absolute; left: 6px; top: 4px; font-family: var(--font-cd); font-size: 12px; font-weight: 600; letter-spacing: .1em; color: var(--stage-muted); pointer-events: none; }
+.veil { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: var(--stage-veil); }
+.veil .count { font-family: var(--font-cd); font-size: 150px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
+.veil .msg { font-family: var(--font-cd); font-size: 24px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; max-width: 22ch; }
+.veil .sub { font-size: 15px; color: var(--stage-muted); max-width: 36ch; }
+.progress { width: min(260px, 80%); height: 6px; background: rgba(255,255,255,.18); }
+.progress > i { display: block; height: 100%; width: 0%; background: var(--stage-ink); transition: width .2s; }
+.pos-chip { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: var(--surface); }
+.pos-chip .dot { width: 10px; height: 10px; flex: none; background: var(--muted); }
+.pos-chip[data-ok="true"] .dot { background: var(--good); }
+.pos-chip[data-ok="false"] .dot { background: var(--warn); }
+.cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cell { border: 1px solid var(--line); padding: 6px 8px; }
+.cell .v { font-family: var(--font-cd); font-size: 26px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.replog { display: flex; flex-wrap: wrap; gap: 4px; min-height: 14px; }
+.replog i { width: 12px; height: 12px; border: 1px solid var(--ink); }
+.replog i.ok { background: var(--accent); border-color: var(--accent); }
+.replog i.bad { background: transparent; border-color: var(--bad); }
+
+/* Result */
+.result-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.result-big { font-family: var(--font-cd); font-size: 72px; line-height: .9; font-weight: 700; font-variant-numeric: tabular-nums; }
+.result-unit { font-family: var(--font-cd); font-size: 24px; font-weight: 600; color: var(--muted); margin-left: 4px; }
+.result-cat { font-family: var(--font-cd); font-size: 30px; font-weight: 700; text-transform: uppercase; color: var(--accent-ink); line-height: 1; text-align: right; }
+.meter { display: flex; gap: 3px; }
+.meter i { flex: 1; height: 10px; border: 1px solid var(--accent); }
+.meter i.on { background: var(--accent); }
+.norm-table-wrap { overflow-x: auto; }
+table.norm { width: 100%; border-collapse: collapse; font-size: 15px; }
+table.norm th { text-align: left; font-family: var(--font-cd); font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--ink); }
+table.norm td { padding: 8px; border-bottom: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; }
+table.norm tr.hit td { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18px; }
+.flag { font-size: 14px; border-left: 3px solid var(--warn); padding: 4px 0 4px 10px; }
+.src { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.src a { color: var(--accent-ink); }
+.review { display: flex; flex-direction: column; gap: 10px; }
+.review .viewer { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--stage); }
+.review .viewer canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.review .viewer .tag { position: absolute; left: 10px; top: 8px; font-family: var(--font-cd); font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--stage-muted); pointer-events: none; }
+.scrub { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: center; gap: 10px; }
+.scrub input[type=range] { width: 100%; accent-color: var(--accent); }
+.seg { display: flex; border: 1px solid var(--line); }
+.seg button { flex: 1; min-height: 40px; border: 0; background: transparent; font-family: var(--font-cd); font-size: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+/* Profile */
+.overall { display: flex; flex-direction: column; gap: 10px; }
+.overall-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.overall-val { font-family: var(--font-cd); font-size: 56px; font-weight: 700; line-height: .9; font-variant-numeric: tabular-nums; }
+.overall-lbl { font-family: var(--font-cd); font-size: 30px; font-weight: 700; text-transform: uppercase; color: var(--accent-ink); }
+.scale { position: relative; height: 34px; }
+.scale .track { position: absolute; left: 0; right: 0; top: 10px; height: 10px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
+.scale .track i { border: 1px solid var(--line); background: var(--surface-2); }
+.scale .pin { position: absolute; top: 2px; width: 3px; height: 26px; background: var(--ink); transform: translateX(-1px); }
+.scale-lbls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; font-family: var(--font-cd); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.prof-row { display: grid; grid-template-columns: minmax(0,1fr) auto 70px; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.prof-row:last-child { border-bottom: 0; }
+/* avance (historial) */
+.delta { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.delta-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.delta-big { font-family: var(--font-cd); font-size: 34px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.delta.up .delta-big { color: var(--good); }
+.delta.down .delta-big { color: var(--bad); }
+.delta.same .delta-big { color: var(--muted); }
+.delta-unit { color: var(--muted); font-size: 14px; }
+.delta-inline { font-family: var(--font-cd); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.delta-inline.up { color: var(--good); }
+.delta-inline.down { color: var(--bad); }
+.delta-inline.same { color: var(--muted); }
+.spark { width: 100%; height: 46px; display: block; overflow: visible; margin: 2px 0; }
+.spark path { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.spark circle { fill: var(--accent); }
+.spark circle.last { fill: var(--mark); }
+.hist-test { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.hist-list { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
+.hist-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; padding: 4px 0; border-bottom: 1px solid var(--line-soft); }
+.hist-list li:last-child { border-bottom: 0; }
+.hist-list .d { color: var(--muted); }
+.hist-list li.cur { font-weight: 600; }
+.due { border: 1px solid var(--line); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.due.now { border-color: var(--accent); }
+/* modo validacion */
+.inp { min-height: 48px; width: 100%; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-family: inherit; font-size: 17px; padding: 0 10px; }
+.inp::placeholder { color: var(--muted); opacity: .7; }
+.v-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.v-counts .lbl { font-size: 12px; letter-spacing: .04em; }
+.stat { border: 1px solid var(--line-soft); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.stat + .stat { margin-top: 8px; }
+.stat-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.stat-v { font-family: var(--font-cd); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.vrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; font-variant-numeric: tabular-nums; }
+.vrow:last-child { border-bottom: 0; }
+/* La diferencia iba pegada al conteo del segundo evaluador: "70 / 70 0". */
+.vrow .delta-inline { margin-left: 8px; }
+.v-after { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.v-after .small { flex: 1 1 auto; min-width: 0; }
+.vrow .x { border: 1px solid var(--line); background: transparent; color: var(--muted); min-height: 34px; min-width: 34px; font-size: 16px; }
+/* modo stand */
+.err-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 60; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 12px; background: var(--bad); color: #fff; font-size: 13px; line-height: 1.35;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
+.err-bar .btn { width: auto; min-height: 36px; font-size: 14px; padding: 0 12px; background: transparent; color: #fff; border-color: #fff; flex: none; }
+.stand-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid var(--accent); padding: 8px 12px; margin-bottom: 4px; }
+.stand-bar .btn { width: auto; min-height: 40px; font-size: 15px; padding: 0 14px; }
+body.run-mode .stand-bar { display: none; }
+/* modo juego */
+.game-wrap { position: relative; width: 100%; aspect-ratio: 3 / 4; background: #101315; overflow: hidden; }
+.game-wrap video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: .3; }
+.game-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.game-hud { position: absolute; top: 10px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; font-family: var(--font-cd); font-size: 15px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #f2f2f3; text-shadow: 0 1px 3px rgba(0,0,0,.8); pointer-events: none; }
+.game-cue { position: absolute; left: 12px; right: 12px; bottom: 12px; text-align: center; font-family: var(--font-cd); font-size: 20px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #f2f2f3; text-shadow: 0 1px 4px rgba(0,0,0,.9); pointer-events: none; }
+.game-card { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); }
+.prof-val { font-family: var(--font-cd); font-size: 24px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Bottom tabs */
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg); border-top: 1px solid var(--ink); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.tabs .wrap { display: flex; }
+.tabs button { flex: 1; height: 62px; border: 0; border-top: 3px solid transparent; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); }
+.tabs button[aria-current="page"] { border-top-color: var(--accent); color: var(--ink); }
+.tabs span { font-family: var(--font-cd); font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+
+/* Settings sheet */
+.sheet { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.45); }
+.sheet .panel { width: 100%; max-width: 560px; background: var(--bg); border-top: 1px solid var(--ink); padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 14px; max-height: 88vh; overflow-y: auto; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.toggle-row input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<div class="err-bar" id="error-bar" hidden role="alert">
+  <span style="min-width:0"><strong>Algo falló dentro de la app.</strong> <span id="error-bar-msg"></span></span>
+  <button class="btn" id="btn-error-close" type="button">Cerrar</button>
+</div>
+<header class="app-head">
+  <div class="wrap">
+    <button class="brand" id="brand" type="button" aria-label="FitGram, ir al inicio">FITGRAM</button>
+    <div class="head-right">
+      <span class="lbl" id="head-right"></span>
+      <button class="icon-btn" id="btn-settings" type="button" aria-label="Ajustes">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <div class="stand-bar" id="update-bar" hidden>
+    <span class="lbl" style="color:var(--accent-ink)">Hay una versión nueva de la app</span>
+    <button class="btn" id="btn-update" type="button">Actualizar</button>
+  </div>
+  <div class="stand-bar" id="stand-bar" hidden>
+    <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+      <span class="lbl" style="color:var(--accent-ink)">Modo stand · no se guarda nada en este teléfono</span>
+      <span class="small muted" id="stand-status"></span>
+    </span>
+    <button class="btn" id="btn-next-person" type="button">Siguiente persona</button>
+  </div>
+
+  <!-- 1. Datos -->
+  <section class="screen" id="scr-onb" hidden>
+    <div>
+      <h1 class="screen-title">Tus datos</h1>
+      <p class="screen-sub">Con tu edad y tu sexo elegimos la tabla de referencia de cada prueba. Las tablas son para jóvenes de 18 a 21 años.</p>
+    </div>
+    <div class="card marks pad" style="display:flex;flex-direction:column;gap:18px">
+      <div class="field">
+        <div class="lbl" id="lbl-age">Edad</div>
+        <div class="pill-row" role="group" aria-labelledby="lbl-age" id="age-pills"></div>
+        <div id="onb-other" hidden style="display:flex;flex-direction:column;gap:8px">
+          <label class="lbl" for="onb-age-num" style="color:var(--ink)">U otra edad</label>
+          <input class="inp" id="onb-age-num" type="number" min="10" max="99" inputmode="numeric" placeholder="por ejemplo, 42">
+          <div class="small muted">Fuera de 18 a 21 no hay tabla de referencia. FitGram igual cuenta las repeticiones y corrige la técnica, pero no puede decir en qué nivel estás.</div>
+        </div>
+      </div>
+      <div class="field">
+        <div class="lbl" id="lbl-sex">Sexo</div>
+        <div class="pill-row" role="group" aria-labelledby="lbl-sex" id="sex-pills"></div>
+        <div class="small muted">Las tablas publicadas separan a hombres y mujeres. En flexiones, el protocolo CSEP evalúa a las mujeres con apoyo de rodillas.</div>
+      </div>
+    </div>
+    <button class="btn" id="btn-onb" type="button" disabled>Continuar</button>
+    <div class="small muted" id="onb-hint" aria-live="polite"></div>
+  </section>
+
+  <!-- 2. Evaluación -->
+  <section class="screen" id="scr-hub" hidden>
+    <div>
+      <h1 class="screen-title" id="hub-title">Tu evaluación</h1>
+      <p class="screen-sub" id="hub-sub"></p>
+    </div>
+    <div class="test-list" id="test-list"></div>
+    <button class="btn" id="btn-hub" type="button"></button>
+    <button class="game-card" id="btn-open-game" type="button">
+      <span class="test-n" aria-hidden="true">★</span>
+      <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+        <span class="test-name">Juego · press militar</span>
+        <span class="test-q">Para entretenerse. No es parte de la evaluación.</span>
+      </span>
+    </button>
+    <p class="small muted" style="margin:0">Resultados referenciales. No reemplazan una evaluación profesional.</p>
+  </section>
+
+  <!-- 3. Antes de la prueba -->
+  <section class="screen" id="scr-intro" hidden>
+    <div>
+      <div class="lbl" id="intro-kicker"></div>
+      <h1 class="screen-title" id="intro-title"></h1>
+      <p class="screen-sub" id="intro-sub"></p>
+    </div>
+    <div class="card marks pad placement" style="display:flex;flex-direction:column;gap:14px">
+      <div class="lbl">Cómo ubicar el teléfono</div>
+      <div id="intro-diagram"></div>
+      <ol class="steps" id="intro-setup"></ol>
+    </div>
+    <div class="card pad" style="display:flex;flex-direction:column;gap:10px">
+      <div class="lbl" id="intro-proto-lbl">Protocolo</div>
+      <ul class="steps" id="intro-proto"></ul>
+      <div class="small muted" id="intro-measure"></div>
+    </div>
+    <div class="mode-list">
+      <button class="btn" id="btn-live" type="button">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+        Cámara en vivo</button>
+      <label class="btn ghost" for="file-record" id="lbl-record">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="14" height="12"/><path d="m16 10 6-3v10l-6-3"/></svg>
+        Grabar video</label>
+      <input class="visually-hidden" type="file" id="file-record" accept="video/*" capture="user">
+      <label class="btn quiet sm" for="file-pick">Elegir un video de la galería</label>
+      <input class="visually-hidden" type="file" id="file-pick" accept="video/*">
+      <button class="btn quiet sm" id="btn-demo" type="button">Ver demostración</button>
+      <div class="mode-hint" id="mode-hint" aria-live="polite"></div>
+    </div>
+    <button class="link-btn" id="btn-intro-back" type="button">Volver a la evaluación</button>
+  </section>
+
+  <!-- 4. Prueba -->
+  <section class="screen" id="scr-run" hidden>
+    <h1 class="visually-hidden" id="run-h1">Prueba en curso</h1>
+    <div class="stage-wrap">
+      <div class="stage" id="stage">
+        <div class="grid-bg" id="stage-grid" hidden></div>
+        <video id="video" playsinline muted></video>
+        <canvas class="overlay" id="overlay"></canvas>
+        <div class="hud-tl"><span class="hud-lbl" id="hud-tl-lbl">Tiempo</span><span class="hud-big" id="hud-tl">0:00</span><span class="hud-sub" id="hud-cal" hidden></span></div>
+        <div class="hud-tr"><span class="hud-lbl" id="hud-tr-lbl">Válidas</span><span class="hud-big" id="hud-tr">0</span><span class="hud-sub" id="hud-tr-sub"></span></div>
+        <div class="run-tag" aria-hidden="true"><span id="run-title"></span> · <span id="run-mode"></span></div>
+        <div class="inset3d" id="inset3d"><canvas id="canvas3d"></canvas><span class="tag">3D</span></div>
+        <div class="cue-bar" id="cue-bar" aria-live="assertive" hidden></div>
+        <div class="veil" id="veil" hidden>
+          <div class="count" id="veil-count" hidden></div>
+          <div class="msg" id="veil-msg"></div>
+          <div class="progress" id="veil-progress" hidden><i id="veil-bar"></i></div>
+          <div class="sub" id="veil-sub"></div>
+        </div>
+      </div>
+    </div>
+    <div class="run-bar">
+      <button class="icon-btn run-close" id="btn-close" type="button" aria-label="Salir de la prueba"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <button class="btn" id="btn-start" type="button">Iniciar · cuenta de 10 s</button>
+      <button class="btn ghost" id="btn-stop" type="button" hidden>Terminar prueba</button>
+    </div>
+    <div class="pos-chip" id="pos-chip" data-ok=""><span class="dot" aria-hidden="true"></span><span id="pos-msg">Preparando…</span></div>
+    <div class="cells" id="cells"></div>
+    <div class="field" id="replog-wrap">
+      <div class="lbl" style="font-size:12px">Repeticiones · lleno = válida · borde rojo = no válida</div>
+      <div class="replog" id="replog"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn quiet sm" id="btn-flip" type="button">Cambiar cámara</button>
+      <button class="btn quiet sm" id="btn-3d" type="button" aria-pressed="true">Ocultar 3D</button>
+    </div>
+    <button class="link-btn" id="btn-cancel" type="button">Cancelar y volver</button>
+  </section>
+
+  <!-- 5. Resultado -->
+  <section class="screen" id="scr-result" hidden>
+    <div>
+      <div class="lbl" id="res-kicker"></div>
+      <h1 class="screen-title" id="res-title"></h1>
+    </div>
+    <div class="card marks pad" style="display:flex;flex-direction:column;gap:12px">
+      <div class="result-head">
+        <div><span class="result-big" id="res-value"></span><span class="result-unit" id="res-unit"></span></div>
+        <div class="result-cat" id="res-cat"></div>
+      </div>
+      <div class="meter" id="res-meter" aria-hidden="true"></div>
+      <div class="small" id="res-detail"></div>
+      <div class="small" id="res-next"></div>
+      <div id="res-delta"></div>
+    </div>
+    <div class="card pad" id="res-table-card" style="display:flex;flex-direction:column;gap:10px">
+      <div class="lbl" id="res-table-lbl"></div>
+      <div class="norm-table-wrap"><table class="norm" id="res-table"></table></div>
+      <div id="res-flags" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div class="src" id="res-src"></div>
+    </div>
+    <div class="card pad review" id="review">
+      <div class="lbl">Tu movimiento en 3D</div>
+      <div class="viewer"><canvas id="review3d"></canvas><span class="tag" id="review-tag">Frente</span></div>
+      <div class="scrub">
+        <button class="icon-btn" id="review-play" type="button" aria-label="Reproducir">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" id="review-play-ic"><polygon points="7 4 20 12 7 20 7 4"/></svg>
+        </button>
+        <input type="range" id="review-range" min="0" max="0" value="0" aria-label="Momento de la prueba">
+        <span class="small tab-num" id="review-time">0:00</span>
+      </div>
+      <div class="seg" role="group" aria-label="Vista 3D">
+        <button type="button" data-view="front" aria-pressed="true">Frente</button>
+        <button type="button" data-view="side" aria-pressed="false">Lado</button>
+        <button type="button" data-view="top" aria-pressed="false">Arriba</button>
+      </div>
+      <div class="small muted">Arrastra sobre la figura para girarla. Toca dos veces para volver al frente.</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="btn-res-next" type="button"></button>
+      <button class="btn ghost" id="btn-res-retry" type="button">Repetir</button>
+    </div>
+    <button class="link-btn" id="btn-res-valid" type="button" hidden>Registrar el conteo de los evaluadores</button>
+  </section>
+
+  <!-- 6. Perfil -->
+  <section class="screen" id="scr-profile" hidden>
+    <div>
+      <h1 class="screen-title">Tu estado de forma</h1>
+      <p class="screen-sub" id="prof-sub"></p>
+    </div>
+    <div class="card marks pad overall" id="prof-overall"></div>
+    <div class="card pad" id="prof-rows"></div>
+    <div class="card pad" id="prof-progress" style="display:flex;flex-direction:column;gap:14px" hidden></div>
+    <div class="note small" id="prof-note"></div>
+    <div class="card pad" style="display:flex;flex-direction:column;gap:6px">
+      <div class="lbl">Fuentes</div>
+      <div class="src" id="prof-src"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="btn-prof-eval" type="button">Ir a evaluar</button>
+    </div>
+    <button class="link-btn" id="btn-reset" type="button">Borrar mis datos de este teléfono</button>
+    <div class="note warn small" id="reset-confirm" hidden>
+      <p style="margin:0 0 10px">¿Borrar edad, sexo y resultados guardados en este teléfono?</p>
+      <div class="btn-row"><button class="btn sm" id="btn-reset-yes" type="button">Sí, borrar</button><button class="btn ghost sm" id="btn-reset-no" type="button">No</button></div>
+    </div>
+  </section>
+
+  <!-- 8. Modo juego · idea de Elias Hermosilla (KineVision) -->
+  <section class="screen" id="scr-game" hidden>
+    <div>
+      <h1 class="screen-title">Juego · press militar</h1>
+      <p class="screen-sub">Tus muñecas mueven el avatar: subes los brazos y sube. Pasa por los corredores sin tocarlos.</p>
+    </div>
+    <div class="note small">No es parte de la evaluación. No entrega nivel, no usa baremos y no se guarda nada.</div>
+    <div class="card pad" id="game-setup" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field">
+        <div class="lbl" id="game-focus-lbl">Objetivo del entrenamiento</div>
+        <div class="pill-row" role="group" aria-labelledby="game-focus-lbl" id="game-focus"></div>
+        <div class="small muted" id="game-focus-desc"></div>
+      </div>
+      <div class="small muted">Necesitas espacio para estirar los brazos sobre la cabeza, y que la cámara te vea de frente de la cadera para arriba. Si tienes una barra o mancuernas, mejor.</div>
+      <button class="btn" id="btn-game-start" type="button">Calibrar y jugar</button>
+    </div>
+    <div class="card" id="game-stage" hidden style="padding:0;overflow:hidden">
+      <div class="game-wrap">
+        <video id="game-video" playsinline muted></video>
+        <canvas id="game-canvas"></canvas>
+        <div class="game-hud" id="game-hud"></div>
+        <div class="game-cue" id="game-cue"></div>
+      </div>
+      <div class="pad" style="display:flex;flex-direction:column;gap:10px">
+        <div class="small" id="game-msg"></div>
+        <button class="btn ghost sm" id="btn-game-stop" type="button">Terminar</button>
+      </div>
+    </div>
+    <div class="card marks pad" id="game-result" hidden style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="btn-row"><button class="btn ghost" id="btn-game-back" type="button">Volver</button></div>
+  </section>
+
+  <!-- 7. Modo validación (para el equipo, no para quien se evalúa) -->
+  <section class="screen" id="scr-valid" hidden>
+    <div>
+      <h1 class="screen-title">Modo validación</h1>
+      <p class="screen-sub">Comparar el conteo de FitGram con el de dos evaluadores humanos sobre las mismas repeticiones. Meta de la etapa 1: 15 personas, 95 % de acuerdo.</p>
+    </div>
+    <div class="card marks pad" id="valid-summary" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="card pad" style="display:flex;flex-direction:column;gap:14px">
+      <div class="lbl">Agregar una medición</div>
+      <div class="field">
+        <label class="lbl" for="v-part" style="color:var(--ink)">Código del participante</label>
+        <input class="inp" id="v-part" type="text" autocomplete="off" placeholder="P01" maxlength="12" list="v-codes">
+        <datalist id="v-codes"></datalist>
+        <div class="small muted" id="v-part-done">Un código, no el nombre: el protocolo es anónimo.</div>
+      </div>
+      <div class="field">
+        <div class="lbl" id="v-test-lbl" style="color:var(--ink)">Prueba</div>
+        <div class="seg" role="group" aria-labelledby="v-test-lbl" id="v-test"></div>
+      </div>
+      <div class="v-counts">
+        <div class="field"><label class="lbl" for="v-app">FitGram</label><input class="inp" id="v-app" type="text" inputmode="decimal" autocomplete="off"></div>
+        <div class="field"><label class="lbl" for="v-r1">Evaluador 1</label><input class="inp" id="v-r1" type="text" inputmode="decimal" autocomplete="off"></div>
+        <div class="field"><label class="lbl" for="v-r2">Evaluador 2</label><input class="inp" id="v-r2" type="text" inputmode="decimal" autocomplete="off"></div>
+      </div>
+      <div class="small muted" id="v-unit-hint"></div>
+      <div class="note small" id="v-run" hidden></div>
+      <div class="note small" id="v-rescate" hidden>
+        <div class="v-after">
+          <span class="small" id="v-rescate-msg"></span>
+          <button class="btn sm" id="v-rescate-si" type="button">Adjuntarla</button>
+        </div>
+      </div>
+      <div class="field"><label class="lbl" for="v-note">Nota (opcional)</label><input class="inp" id="v-note" type="text" autocomplete="off" placeholder="de lado, poca luz, polera suelta…"></div>
+      <div class="note warn small" id="v-error" hidden></div>
+      <div class="note warn small" id="v-dup" hidden>
+        <p style="margin:0 0 10px" id="v-dup-msg"></p>
+        <div class="btn-row">
+          <button class="btn sm" id="v-dup-replace" type="button">Reemplazar</button>
+          <button class="btn ghost sm" id="v-dup-both" type="button">Guardar las dos</button>
+          <button class="btn quiet sm" id="v-dup-cancel" type="button">Cancelar</button>
+        </div>
+      </div>
+      <button class="btn" id="v-save" type="button">Guardar medición</button>
+      <div class="v-after" id="v-saved" hidden>
+        <span class="small" id="v-saved-msg"></span>
+        <button class="btn quiet sm" id="v-next-person" type="button">Otro participante</button>
+      </div>
+    </div>
+    <div class="card pad" style="display:flex;flex-direction:column;gap:12px">
+      <div class="lbl">Mediciones guardadas</div>
+      <div class="note warn small" id="v-undo" hidden>
+        <div class="v-after">
+          <span class="small" id="v-undo-msg"></span>
+          <button class="btn sm" id="v-undo-yes" type="button">Deshacer</button>
+        </div>
+      </div>
+      <div id="valid-list"></div>
+      <div class="note warn small" id="v-reglas" hidden></div>
+      <div class="note small" id="v-backup" hidden></div>
+      <div class="btn-row">
+        <button class="btn quiet sm" id="v-csv" type="button">Exportar CSV</button>
+        <button class="btn quiet sm" id="v-json" type="button">Exportar JSON</button>
+        <button class="btn quiet sm" id="v-load" type="button">Cargar respaldo</button>
+      </div>
+      <input class="visually-hidden" type="file" id="v-file" accept=".json,application/json">
+      <div class="note small" id="v-loaded" hidden></div>
+      <button class="link-btn" id="v-clear" type="button">Borrar todas las mediciones de validación</button>
+      <div class="note warn small" id="v-clear-confirm" hidden>
+        <p style="margin:0 0 10px">¿Borrar las <span id="v-clear-n"></span> mediciones de validación? No se puede deshacer. Exporta antes.</p>
+        <div class="btn-row"><button class="btn sm" id="v-clear-yes" type="button">Sí, borrar</button><button class="btn ghost sm" id="v-clear-no" type="button">No</button></div>
+      </div>
+    </div>
+    <div class="note small">Estos datos se guardan aparte de los resultados personales, y «Borrar mis datos de este teléfono» no los toca. Igual viven solo en este navegador: exporta seguido.</div>
+    <div class="btn-row"><button class="btn ghost" id="v-back" type="button">Volver</button></div>
+  </section>
+</main>
+
+<nav class="tabs" id="tabs" aria-label="Secciones" hidden>
+  <div class="wrap">
+    <button type="button" data-tab="hub"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg><span>Evaluar</span></button>
+    <button type="button" data-tab="profile"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Perfil</span></button>
+  </div>
+</nav>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="result-head"><h2 class="screen-title" id="sheet-title" style="font-size:30px">Ajustes</h2><button class="icon-btn" id="sheet-close" type="button" aria-label="Cerrar ajustes"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <label class="toggle-row" for="set-voice"><span>Voz: cuenta las repeticiones y avisa la técnica</span><input type="checkbox" id="set-voice"></label>
+    <label class="toggle-row" for="set-angles"><span>Mostrar ángulos sobre el esqueleto</span><input type="checkbox" id="set-angles"></label>
+    <label class="toggle-row" for="set-calidad"><span>Mostrar la estabilidad de la detección</span><input type="checkbox" id="set-calidad"></label>
+    <div class="small muted">Un número en la imagen y en el resultado. Sirve para comparar condiciones —luz, ropa, distancia, teléfono— y ajustar con datos cuándo la app debería avisar. Los umbrales actuales salen de pruebas sintéticas y son provisorios.</div>
+    <div class="field">
+      <div class="lbl" id="lbl-model">Modelo de pose</div>
+      <div class="pill-row" role="group" aria-labelledby="lbl-model" id="model-pills"></div>
+      <div class="small muted">Preciso usa el modelo completo de MediaPipe (9 MB). Rápido usa el liviano (6 MB) y anda mejor en teléfonos antiguos.</div>
+    </div>
+    <div class="field">
+      <div class="lbl">Sin conexión</div>
+      <div class="small" id="offline-info">Comprobando…</div>
+      <button class="btn quiet sm" id="btn-offline" type="button">Preparar para usar sin conexión</button>
+      <div class="small muted">Guarda el detector y los dos modelos (unos 29 MB) en este teléfono. Después la app abre y mide en modo avión, sin pedirle nada a ningún servidor.</div>
+    </div>
+    <div class="field">
+      <div class="lbl">Motor</div>
+      <div class="small" id="engine-info">Sin cargar todavía.</div>
+      <button class="btn quiet sm" id="btn-engine-test" type="button">Cargar el detector ahora</button>
+    </div>
+    <div class="field">
+      <div class="lbl">Elevador 3D</div>
+      <div class="small">MediaPipe world, convertido al esqueleto Human3.6M de 17 articulaciones. VideoPose3D queda listo para conectarse en la fase 2.</div>
+    </div>
+    <label class="toggle-row" for="set-stand"><span>Modo stand: cualquier edad, nada se guarda</span><input type="checkbox" id="set-stand"></label>
+    <label class="toggle-row" for="set-valid"><span>Modo validación: comparar con evaluadores humanos</span><input type="checkbox" id="set-valid"></label>
+    <button class="btn quiet sm" id="btn-open-valid" type="button" hidden>Abrir modo validación</button>
+    <button class="btn ghost sm" id="btn-edit-profile" type="button">Cambiar edad o sexo</button>
+  </div>
+</div>
+
+<script type="module">
+const __mods = {};
+<!--MODULOS-->
+</script>
+</body>
+</html>

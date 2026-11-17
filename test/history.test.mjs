@@ -9,10 +9,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadModule } from './_load.mjs';
+import * as H from '../src/history.mjs';
 
 
-const H = loadModule('history');
 const ORDER = ['pushup', 'squat', 'plank'];
 
 const res = (value, date, extra = {}) => ({
