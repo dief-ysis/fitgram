@@ -420,22 +420,40 @@ function renderHub() {
 /* ------------------------------------------------------------------ intro */
 
 function placementSVG(test) {
-  // Side view: phone on the floor at left, person at right, distance marker.
-  const person = test === 'squat'
-    ? `<circle cx="262" cy="28" r="8"/><path d="M262 36 L262 70 M262 44 L284 52 M262 70 L276 86 L262 104 M262 70 L250 88 L264 104"/>`
-    : test === 'pushup'
-      ? `<circle cx="300" cy="72" r="7"/><path d="M292 76 L196 96 M286 78 L286 104 M196 96 L188 104"/>`
-      : `<circle cx="300" cy="78" r="7"/><path d="M292 82 L196 98 M286 84 L280 104 L300 104 M196 98 L188 104"/>`;
+  // Flexiones y plancha: vista desde arriba. De costado, el teléfono quedaba
+  // alineado con los pies y parecía que la cámara miraba a la persona desde atrás.
+  if (test !== 'squat') return placementTopSVG(test);
+  // Sentadillas: vista de costado, teléfono en el suelo a la izquierda.
+  const person = `<circle cx="262" cy="26" r="8"/><path d="M262 34 L262 68 M262 42 L284 42 M262 68 L264 86 L262 104 L274 104 M262 68 L258 86 L256 104 L268 104"/>`; // de pie, de perfil, brazos al frente
   const phone = TESTS[test].landscape
     ? '<rect x="14" y="90" width="26" height="14" fill="none" stroke="currentColor" stroke-width="1.5"/>'
     : '<rect x="22" y="78" width="12" height="26" fill="none" stroke="currentColor" stroke-width="1.5"/>';
   return `<svg viewBox="0 0 326 124" role="img" aria-label="Teléfono ${TESTS[test].landscape ? 'en horizontal' : 'en vertical'} en el suelo, a unos 2,5 a 3 metros, viéndote de lado">
     <line x1="0" y1="104" x2="326" y2="104" stroke="currentColor" stroke-width="1"/>
     ${phone}
-    <path d="M34 86 L170 40 M34 98 L170 104" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4 4"/>
+    <path d="M34 86 L300 0 M34 98 L292 106" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4 4"/>
     <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${person}</g>
-    <path d="M34 116 L230 116 M34 112 L34 120 M230 112 L230 120" stroke="var(--muted)" stroke-width="1"/>
-    <text x="132" y="112" text-anchor="middle" style="font:600 13px var(--font-cd);fill:currentColor">2,5–3 m</text>
+    <path d="M34 116 L262 116 M34 112 L34 120 M262 112 L262 120" stroke="var(--muted)" stroke-width="1"/>
+    <text x="148" y="112" text-anchor="middle" style="font:600 13px var(--font-cd);fill:currentColor">2,5–3 m</text>
+  </svg>`;
+}
+
+function placementTopSVG(test) {
+  // Vista desde arriba: la persona acostada a lo largo, el teléfono al costado,
+  // mirándola de lado. Cabeza a la derecha, pies a la izquierda.
+  const arms = test === 'pushup'
+    ? 'M236 40 L236 26 M236 40 L236 54' // brazos extendidos: manos bajo los hombros
+    : 'M234 40 L234 28 L252 28 M234 40 L234 52 L252 52'; // antebrazos apoyados hacia adelante
+  return `<svg viewBox="0 0 326 124" role="img" aria-label="Vista desde arriba: teléfono en horizontal en el suelo, a unos 2,5 a 3 metros, al costado de tu cuerpo, viéndote de lado">
+    <text x="0" y="12" style="font:600 11px var(--font-cd);fill:var(--muted);letter-spacing:.08em">VISTA DESDE ARRIBA</text>
+    <path d="M196 102 L150 30 M214 102 L280 30" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4 4"/>
+    <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="256" cy="40" r="8"/>
+      <path d="M248 40 L172 40 M172 40 L160 34 M172 40 L160 46 ${arms}"/>
+    </g>
+    <rect x="192" y="102" width="26" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <path d="M120 40 L120 108 M116 40 L124 40 M116 108 L124 108" stroke="var(--muted)" stroke-width="1"/>
+    <text x="112" y="78" text-anchor="end" style="font:600 13px var(--font-cd);fill:currentColor">2,5–3 m</text>
   </svg>`;
 }
 
@@ -1369,6 +1387,9 @@ function setupReview(rec) {
     $('review-time').textContent = mmss(r.t / 1000);
   };
   let playing = false, raf = 0, t0 = 0, i0 = 0;
+  // Se abre en el cuadro del medio como vista previa; la primera vez que se
+  // reproduce parte desde el inicio, no desde ahí.
+  let preview = true;
   const icon = (p) => { $('review-play-ic').innerHTML = p ? '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>' : '<polygon points="7 4 20 12 7 20 7 4"/>'; $('review-play').setAttribute('aria-label', p ? 'Pausar' : 'Reproducir'); };
   const step = () => {
     if (!playing) return;
@@ -1381,10 +1402,10 @@ function setupReview(rec) {
   };
   $('review-play').onclick = () => {
     playing = !playing; icon(playing);
-    if (playing) { if (Number(range.value) >= rec.length - 1) range.value = '0'; i0 = Number(range.value); t0 = performance.now(); raf = requestAnimationFrame(step); }
+    if (playing) { if (preview || Number(range.value) >= rec.length - 1) range.value = '0'; preview = false; i0 = Number(range.value); t0 = performance.now(); raf = requestAnimationFrame(step); }
     else cancelAnimationFrame(raf);
   };
-  range.oninput = () => { playing = false; icon(false); cancelAnimationFrame(raf); showAt(Number(range.value)); };
+  range.oninput = () => { preview = false; playing = false; icon(false); cancelAnimationFrame(raf); showAt(Number(range.value)); };
   for (const b of box.querySelectorAll('.seg button')) {
     b.onclick = () => {
       for (const o of box.querySelectorAll('.seg button')) o.setAttribute('aria-pressed', String(o === b));
