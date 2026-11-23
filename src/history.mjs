@@ -123,7 +123,21 @@ function deltaOf(history, test) {
     days: Math.round((tOf(curr) - tOf(prev)) / DAY),
     count: arr.length,
     isBest: best == null || Number(curr.value) >= Number(best.value),
+    noComparable: noComparable(test, prev, curr),
   };
+}
+
+/**
+ * Por qué dos mediciones de la misma prueba no se pueden comparar, o null.
+ * - 'protocolo': flexiones con perfiles de distinto sexo. CSEP mide a los
+ *   hombres desde los pies y a las mujeres con rodillas: es otro ejercicio.
+ * - 'reglas': se contaron con reglas de conteo distintas (otra huella).
+ */
+function noComparable(test, prev, curr) {
+  const sp = prev?.profile?.sex, sc = curr?.profile?.sex;
+  if (test === 'pushup' && sp && sc && sp !== sc) return 'protocolo';
+  if (prev?.reglas && curr?.reglas && prev.reglas !== curr.reglas) return 'reglas';
+  return null;
 }
 
 /**
@@ -192,5 +206,40 @@ function sparkPoints(history, test, w, h, pad = 3) {
   }));
 }
 
-export { MAX_PER_TEST, CYCLE_DAYS, emptyHistory, trim, latestOf, latestMap,
+/** Quita una medición (por prueba y fecha exacta). Devuelve un historial nuevo. */
+function removeResult(history, test, date) {
+  const out = { ...history };
+  out[test] = (history?.[test] || []).filter((r) => r.date !== date);
+  return out;
+}
+
+const csvCell = (v) => {
+  const t = v == null ? '' : String(v);
+  return /[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+
+/**
+ * El historial personal en CSV (separador ;, coma decimal: Excel en Chile).
+ * `describe(test, r)` entrega { categoria, tabla, unidad } (lo pone la app,
+ * que es la que sabe clasificar); así este módulo sigue sin depender de norms.
+ */
+function toCSV(history, order, describe = () => ({})) {
+  const head = ['fecha', 'prueba', 'valor', 'unidad', 'no_validas', 'categoria', 'tabla', 'edad', 'sexo',
+    'termino', 'calidad', 'inclinacion', 'telefono_movido', 'modo'];
+  const rows = [];
+  for (const t of order) {
+    for (const r of history?.[t] || []) {
+      const d = describe(t, r) || {};
+      const roll = r.captura && Number.isFinite(r.captura.roll) ? String(r.captura.roll).replace('.', ',') : '';
+      rows.push([String(r.date || '').slice(0, 16).replace('T', ' '), t, String(r.value ?? '').replace('.', ','),
+        d.unidad || '', r.invalid ?? '', d.categoria || '', d.tabla || '', r.profile?.age ?? '', r.profile?.sex ?? '',
+        r.endReason || '', r.calidad?.nivel || '', roll, r.captura ? (r.captura.movido ? 'sí' : 'no') : '', r.mode || '']
+        .map(csvCell).join(';'));
+    }
+  }
+  rows.sort();
+  return [head.join(';')].concat(rows).join('\n') + '\n';
+}
+
+export { removeResult, toCSV, noComparable, MAX_PER_TEST, CYCLE_DAYS, emptyHistory, trim, latestOf, latestMap,
   migrateStore, pushResult, bestOf, deltaOf, roundsOf, dueInfo, deltaText, sparkPoints };

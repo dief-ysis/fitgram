@@ -555,3 +555,11 @@ test('CSV: lleva la huella de las reglas de cada medicion', () => {
   assert.ok(head.includes('reglas'), head);
   assert.ok(fila.includes('abc1234'), fila);
 });
+
+test('CSV: la inclinación del teléfono y si se movió viajan con la corrida', () => {
+  const r = V.newRecord({ participant: 'P01', test: 'squat', app: 20, raters: [20, 21],
+    run: V.runFromResult({ value: 20, log: [], date: '2026-11-22T10:00:00Z', captura: { fuente: 'sensor', roll: -7.5, movido: true } }) });
+  const [head, line] = V.toCSV([r]).trim().split('\n');
+  assert.ok(head.includes('inclinacion;inclinacion_fuente;telefono_movido'), head);
+  assert.ok(line.includes('-7,5;sensor;sí'), line);
+});

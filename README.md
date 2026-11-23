@@ -45,7 +45,21 @@ pruebas nuevo entra solo y no se queda sin correr por olvido.
 npm run build     # escribe index.html desde src/
 ```
 
+Prueba completa en Chrome sin pantalla (demos de las 3 pruebas, cámara en vivo
+falsa, ajustes y sensores simulados; opcionalmente analiza videos):
+
+```bash
+pip install playwright && playwright install chromium
+python3 tools/e2e.py /tmp/fitgram-e2e [sentadillas.mp4 flexiones.mp4 plancha.mp4 ...]
+```
+
+El nombre del video elige la prueba (`flex`, `planch`, si no, sentadillas). En
+Chrome sin pantalla los sensores llegan demasiado lento mientras corre
+MediaPipe, así que la inclinación por sensores se revisa en el teléfono.
+
 ## Estructura
+
+Documentación del producto en `docs/`: `ALCANCE_MVP.md`, `HISTORIAS_DE_USUARIO.md` (auditadas contra el código) y `ARQUITECTURA.md`, adaptadas de las de Jose (originales en `docs/jose-v1/`).
 
 El código se escribe en **módulos ES de verdad**, uno por archivo en `src/`,
 con `import` y `export`. Lo que se publica sigue siendo **un solo
@@ -55,6 +69,7 @@ con `import` y `export`. Lo que se publica sigue siendo **un solo
 src/                    el código fuente
   index.template.html   el HTML y el CSS, con <!--MODULOS--> donde va el código
   norms.mjs  skeleton.mjs  synth.mjs  calidad.mjs  exercises.mjs
+  orientation.mjs  sensors.mjs
   history.mjs  validation.mjs  game.mjs  camara-errores.mjs
   app.mjs               la entrada: pantallas, cámara, runner
 build.mjs               pega los módulos dentro del HTML
@@ -71,6 +86,8 @@ sw.js  manifest.webmanifest
 | `history` | La serie de resultados de cada prueba y el cálculo del avance. |
 | `validation` | Comparación con evaluadores humanos: acuerdo, Bland-Altman y CCI(2,1) con su intervalo. |
 | `game` | Modo juego: recorrido, corredores y puntaje. Idea de Elias Hermosilla. |
+| `orientation` | Inclinación del teléfono: sensores, estimación por postura, fusión y corrección de la pose. Traído de v1 de Jose. |
+| `sensors` | Permiso de movimiento en iOS y eventos de los sensores. Traído de v1 de Jose. |
 | `calidad` | Mide el temblor de la detección y el tiempo sin ver, para saber si se puede confiar en el conteo. |
 | `camara-errores` | Qué decir cuando la cámara no abre. Puro, sin DOM. |
 | `app` | Pantallas, navegación, cámara y persistencia. |

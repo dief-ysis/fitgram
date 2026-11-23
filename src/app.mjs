@@ -8,6 +8,8 @@ import * as Hist from './history.mjs';
 import * as Val from './validation.mjs';
 import * as Gm from './game.mjs';
 import * as Cal from './calidad.mjs';
+import { ORIENT_CONFIG, createPoseLevelEstimator, createTiltEstimator, fuseTilt, correctFrame, describeTilt, isCorrectable } from './orientation.mjs';
+import { Sensors } from './sensors.mjs';
 import { esErrorDeCamara, cameraErrorMessage } from './camara-errores.mjs';
 /**
  * Con qué reglas cuenta esta copia de la app: los umbrales, el suavizado y el
@@ -292,7 +294,7 @@ const S = {
   // `results` es solo el ultimo de cada serie, porque las pantallas ya lo usan asi.
   history: restored.history,
   results: restored.results,
-  settings: Object.assign({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false }, stored.settings || {}),
+  settings: Object.assign({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true }, stored.settings || {}),
   valid: loadValid(), // mediciones del modo validación, en su propia llave
   screen: null,
   stand: false, // modo stand: efímero, no toca el almacenamiento
@@ -368,6 +370,8 @@ function renderOnb() {
     b.addEventListener('click', () => { S.profile.sex = k; renderOnb(); });
     sexes.appendChild(b);
   }
+  // Bienvenida: solo la primera vez (HU-05). Después vive en Ajustes.
+  $('onb-welcome').hidden = !!S.settings.welcomed || S.stand;
   $('onb-other').hidden = !S.stand;
   if (S.stand) {
     const inp = $('onb-age-num');
@@ -514,6 +518,17 @@ const Runner = {
     this.jitter = Cal.createJitterTracker();
     this.avisoCalidad = 0;
     this.lifter = createLifter('mediapipe');
+    // Inclinación del teléfono (orientation.mjs, de Jose): se estima con la postura
+    // de partida antes de empezar y queda fija durante la prueba. Sin esto, una
+    // cámara ladeada ladea el esqueleto 3D y los ángulos respecto de la vertical.
+    this.level = createPoseLevelEstimator(test); this.tilt = null; this.tiltLocked = false; this.sensorLock = null; this.avisoMovido = false; this.movido = false; this.chipKey = ''; this.tiltDicho = '';
+    $('level-chip').hidden = mode === 'demo'; $('level-chip').dataset.level = ''; $('level-msg').textContent = 'Inclinación del teléfono'; $('level-src').textContent = '';
+    // En vivo se suman el giroscopio y el acelerómetro: dicen la inclinación
+    // aunque la persona todavía no esté en posición, y avisan si el teléfono se mueve.
+    this.tiltEst = null;
+    if (mode === 'live' && Sensors.permission !== 'denied') {
+      try { this.tiltEst = createTiltEstimator({ facing: S.settings.facing }); Sensors.start(this.tiltEst, { facing: S.settings.facing }); } catch { this.tiltEst = null; }
+    }
     this.rec = []; this.lastRecT = -1e9; this.st = null; this.frame = null; this.lastRaw = null; this.phase = 'preview';
     this.huboCuadro = false; this.fallosSeguidos = 0; this.fallosTotal = 0;
     this.lastCount = 0;
@@ -637,6 +652,7 @@ const Runner = {
     if (this.vfc && v.cancelVideoFrameCallback) { try { v.cancelVideoFrameCallback(this.vfc); } catch { /* ignore */ } }
     this.vfc = 0;
     this.stopStream();
+    Sensors.stop(); this.tiltEst = null;
     try { v.pause(); } catch { /* ignore */ }
     v.removeAttribute('src'); v.srcObject = null;
     try { v.load(); } catch { /* ignore */ }
@@ -698,6 +714,7 @@ const Runner = {
       this.demoT0 = performance.now();
       this.analyzer = createAnalyzer(this.test, { sex: S.profile.sex });
       this.smoother.reset?.();
+      this.level?.reset(); this.tilt = null; this.tiltLocked = false;
       this.countdown(3, () => { this.demoT0 = performance.now(); this.beginActive(this.demo.frames[0]?.t ?? 0, true); });
       return;
     }
@@ -781,7 +798,58 @@ const Runner = {
     this.finish(st, 'not_visible');
   },
 
+  sensorState() { return this.tiltEst ? this.tiltEst.state(performance.now()) : null; },
+
+  /** Una vez fijada la inclinación: si el sensor dice que el teléfono se movió más de 5°, se avisa (una vez). */
+  revisarMovido() {
+    if (this.avisoMovido || !this.sensorLock) return;
+    const ss = this.sensorState(), cur = ss?.tilt;
+    if (!cur || cur.source !== 'sensor' || !Number.isFinite(cur.roll)) return;
+    const d = Math.abs(((cur.roll - this.sensorLock.roll + 540) % 360) - 180);
+    if (d > 5) { this.avisoMovido = true; this.movido = true; this.cue({ level: 'warn', msg: 'Se movió el teléfono' }); Voice.say('Se movió el teléfono. No lo toques', true); }
+  },
+
+  /** Aviso bajo la imagen: cuánto está inclinado el teléfono y de dónde sale el dato (Jose, runner.js#renderLevel). */
+  renderLevel() {
+    const chip = $('level-chip');
+    if (!chip) return;
+    chip.hidden = this.mode === 'demo';   // la persona de la demo es sintética: no hay teléfono
+    const t = this.tilt, off = !S.settings.tiltCorrection;
+    let d = describeTilt(t);
+    if (!t && this.mode === 'live' && !this.tiltEst) d = { level: 'warn', msg: 'Sin sensores: pon el teléfono derecho' };
+    else if (!t && this.tiltLocked) d = { level: 'warn', msg: 'No alcancé a medir la inclinación' };
+    else if (!t) d = { level: 'warn', msg: 'Midiendo la inclinación con tu postura…' };
+    else if (off && d.level !== 'bad' && Math.round(Math.abs(t.roll)) > ORIENT_CONFIG.okDeg) {
+      d = { level: 'warn', msg: ORIENT_CONFIG.msg.straighten.replace('{n}', String(Math.round(Math.abs(t.roll)))) };
+    }
+    const conf = Number.isFinite(t?.confidence) ? ` · confianza ${Math.round(t.confidence * 100)} %` : '';
+    let src = off ? 'Corrección desactivada' : !t || !isCorrectable(t) ? 'Sin corrección'
+      : t.source === 'sensor' ? 'Sensores del teléfono' : `Estimado por tu postura${conf}`;
+    // iPhone con el permiso rechazado: decirlo, para que se sepa por qué no hay sensores (HU-18).
+    if (this.mode === 'live' && Sensors.permission === 'denied') src = 'Sin permiso de sensores · ' + src;
+    const key = `${d.level}|${d.msg}|${src}|${this.tiltLocked}`;
+    if (key === this.chipKey) return;
+    this.chipKey = key;
+    chip.dataset.level = d.level;
+    $('level-msg').textContent = d.msg;
+    $('level-src').textContent = src + (this.tiltLocked ? ' · fijada' : '');
+    // Lo que obliga a mover el teléfono también se dice: desde 2–3 m no se lee.
+    if (d.level === 'bad' && !this.tiltLocked && d.msg !== this.tiltDicho) { this.tiltDicho = d.msg; Voice.say(d.msg); }
+  },
+
+  /** Lo que se sabe de la cámara en esta serie; se guarda con el resultado. */
+  capturaAhora() {
+    const t = this.tilt, r1 = (v) => (Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
+    return {
+      fuente: t?.source || 'none', roll: r1(t?.roll), pitch: r1(t?.pitch),
+      corregida: !!(S.settings.tiltCorrection && isCorrectable(t)), movido: !!this.movido,
+    };
+  },
+
   beginActive(t, immediate = false) {
+    this.tiltLocked = true;
+    const ss = this.sensorState();
+    this.sensorLock = ss?.lastStill?.source === 'sensor' ? ss.lastStill : null;
     this.analyzer.start(t);
     this.phase = 'active';
     this.startT = t;
@@ -891,6 +959,9 @@ const Runner = {
   /** A video frame in which MediaPipe found nobody: clears the overlay and lets the analyzer count unseen time. */
   processEmpty(t) {
     this.anotarCuadro();
+    // Sin persona a la vista igual se informa la inclinación (los sensores la saben).
+    if (!this.tiltLocked && this.tiltEst) this.tilt = fuseTilt(this.sensorState()?.lastStill ?? null, this.level.state().tilt);
+    this.renderLevel();
     this.draw(null);
     if (this.phase === 'active') {
       const st = this.analyzer.update(blankJoints(t));
@@ -927,6 +998,7 @@ const Runner = {
     $('btn-start').hidden = true; $('btn-stop').hidden = false;
     this.phase = 'arming'; this.armOkSince = null;
     this.smoother.reset?.();
+    this.level?.reset(); this.tilt = null; this.tiltLocked = false;
     this.jitter?.reset();
     this.videoOffset = Engine.lastTs + 1000;
     this.detectMs = [];
@@ -1014,7 +1086,13 @@ const Runner = {
     this.mostrarCalidad();
     const frame = this.smoother.smooth(raw);
     this.frame = frame;
-    const joints = toJoints(frame);
+    if (!this.tiltLocked) {
+      this.level.push(toJoints(frame));
+      this.tilt = fuseTilt(this.sensorState()?.lastStill ?? null, this.level.state().tilt);
+    } else this.revisarMovido();
+    this.renderLevel();
+    const fc = correctFrame(frame, S.settings.tiltCorrection ? this.tilt : null);
+    const joints = toJoints(fc);
 
     if (this.phase === 'preview' || this.phase === 'countdown') {
       const c = this.analyzer.check(joints);
@@ -1024,7 +1102,7 @@ const Runner = {
       // posición: la posición puede estar bien y la detección igual temblar, y
       // decir que la posición está mal sería mentira. Solo en 'malo': los
       // umbrales todavía son provisorios y avisar de más desgasta el aviso.
-      if (c.ok && this.jitter?.nivel() === 'malo') this.cue({ level: 'warn', msg: Cal.MENSAJE.malo });
+      if (c.ok && this.jitter?.nivel() === 'malo') this.cue({ level: "warn", msg: Cal.MENSAJE.malo });
     } else if (this.phase === 'arming' && this.test === 'plank') {
       this.beginActive(frame.t); // the plank analyzer itself waits for the 1 s hold before starting the clock
     } else if (this.phase === 'arming') {
@@ -1041,12 +1119,12 @@ const Runner = {
       // Una sola vez cada 12 s: avisar más seguido sería ruido encima del ruido.
       if (this.jitter?.nivel() === 'malo' && frame.t - this.avisoCalidad > 12000) {
         this.avisoCalidad = frame.t;
-        this.cue({ level: 'warn', msg: Cal.MENSAJE.malo });
+        { this.cue({ level: 'warn', msg: Cal.MENSAJE.malo }); Voice.say(Cal.MENSAJE.malo); }
       }
       this.handleEvents(st);
       this.updateHud(st);
       if (st.phase === 'ended') { this.finish(st, st.endReason); return; }
-      if (frame.t - this.lastRecT >= 50) { this.record(frame); this.lastRecT = frame.t; }
+      if (frame.t - this.lastRecT >= 50) { this.record(fc); this.lastRecT = frame.t; }
     }
     this.draw(frame);
   },
@@ -1165,7 +1243,19 @@ const Runner = {
     // Before the test runs, short position messages also go to the big bar inside the image (readable from 2.5 m).
     if (ok != null && msg && msg.length <= 44 && this.phase !== 'active' && this.phase !== 'ended') {
       this.cue({ level: ok ? 'good' : 'warn', msg });
+      this.decirPosicion(ok, msg);
     }
+  },
+
+  // A 2–3 m el texto casi no se lee: lo que el modelo ve también se dice. Solo
+  // cuando el mensaje cambia y se mantiene, y no más de uno cada 3 s, para no
+  // hablar encima de la persona mientras se acomoda.
+  decirPosicion(ok, msg) {
+    const now = performance.now();
+    if (msg !== this.posPend) { this.posPend = msg; this.posDesde = now; return; }
+    if (msg === this.posDicho || now - this.posDesde < 700 || now - (this.posDichoAt || 0) < 3000) return;
+    this.posDicho = msg; this.posDichoAt = now;
+    Voice.say(msg);
   },
 
   veil(msg, sub = '', progress) {
@@ -1237,6 +1327,7 @@ const Runner = {
     const value = this.test === 'plank' ? Math.round((st.value || 0) * 10) / 10 : (st.value || 0);
     const result = { value, invalid: st.invalid || 0, endReason, mode: this.mode, date: new Date().toISOString(), log: (st.log || []).slice(0, 200),
       calidad: this.jitter?.resumen() || null,
+      captura: this.capturaAhora(),
       sinVer: Number.isFinite(st.sinVer) ? st.sinVer : null,
       reglas: REGLAS,
       profile: { age: S.profile.age, sex: S.profile.sex } };
@@ -1357,6 +1448,19 @@ function renderResult(test) {
   if (avisoSinVer) $('res-flags').insertAdjacentHTML('afterbegin', `<div class="flag">${esc(avisoSinVer)}</div>`);
   const avisoCal = Cal.RESULTADO[r.calidad?.nivel];
   if (avisoCal) $('res-flags').insertAdjacentHTML('afterbegin', `<div class="flag">${esc(avisoCal)}</div>`);
+  // La inclinación del teléfono: si se movió, va arriba de todo (HU-22); si
+  // estaba ladeada, se dice cuánto y si se corrigió, para leer bien el número.
+  const cap = r.captura;
+  if (cap && !L?.demo) {
+    const g = Number.isFinite(cap.roll) ? Math.round(Math.abs(cap.roll)) : null;
+    const fuente = cap.fuente === 'sensor' ? 'con los sensores' : cap.fuente === 'image' ? 'con tu postura' : '';
+    let txt = '';
+    if (g != null && g > 2) txt = cap.corregida
+      ? `El teléfono estaba inclinado ${g}° (medido ${fuente}) y se corrigió antes de contar.`
+      : `El teléfono estaba inclinado ${g}° y no se corrigió: el conteo puede estar afectado.`;
+    if (txt) $('res-flags').insertAdjacentHTML('afterbegin', `<div class="flag">${esc(txt)}</div>`);
+    if (cap.movido) $('res-flags').insertAdjacentHTML('afterbegin', `<div class="flag">El teléfono se movió durante la prueba. Si el conteo no te calza, repítela sin tocarlo.</div>`);
+  }
 
   const next = ORDER.find((x) => x !== test && !S.results[x]);
   const bn = $('btn-res-next');
@@ -1477,6 +1581,9 @@ function renderDelta(box, test, { demo = false } = {}) {
     </div>
     <p class="small" style="margin:0">${esc(dateLabel(d.prev.date))}: ${esc(valText(test, d.prev.value))}. Ahora: ${esc(valText(test, d.curr.value))}. ${esc(Hist.deltaText(d, T))}</p>
     ${d.isBest && d.count > 1 ? '<p class="small" style="margin:0">Es tu mejor marca hasta ahora.</p>' : ''}
+    ${d.noComparable ? `<div class="note warn small" style="margin:4px 0 0">${d.noComparable === 'protocolo'
+      ? 'Ojo: estas dos mediciones se hicieron con protocolos distintos (desde los pies y con rodillas). No son comparables.'
+      : 'Ojo: estas dos mediciones se contaron con versiones distintas de las reglas de la app. La diferencia puede venir de ahí.'}</div>` : ''}
     <p class="small muted" style="margin:0">${d.count} ${d.count === 1 ? 'medición' : 'mediciones'} guardadas en este teléfono.</p>
     ${hasDemoData() ? `<div class="note warn small" style="margin:4px 0 0">${esc(DEMO_WARN)}</div>` : ''}
   </div>`;
@@ -1637,8 +1744,30 @@ function renderProfile() {
   const srcs = ORDER.map((t) => sourceOf(t)).filter((s) => s.apa);
   $('prof-src').innerHTML = srcs.map((s) => `<div style="margin-bottom:8px">${esc(s.apa)} ${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>` : ''}</div>`).join('');
   renderProgress();
+  renderHistList();
   $('btn-prof-eval').textContent = nextPending() ? `Seguir · ${TESTS[nextPending()].short}` : 'Repetir una prueba';
   $('btn-prof-eval').onclick = () => (nextPending() ? openIntro(nextPending()) : show('hub'));
+}
+
+/** Todas las mediciones guardadas, la más nueva primero, con su botón de borrar (HU-38). */
+function renderHistList() {
+  const rows = [];
+  for (const t of ORDER) for (const r of S.history?.[t] || []) rows.push({ t, r });
+  rows.sort((a, b) => String(b.r.date).localeCompare(String(a.r.date)));
+  $('prof-hist-list').innerHTML = rows.length
+    ? rows.map(({ t, r }) => `<div class="prof-row" style="grid-template-columns:1fr auto auto">
+        <div style="min-width:0"><div style="font-weight:600">${esc(TESTS[t].short)}</div><div class="small muted">${esc(dateLabel(r.date))}</div></div>
+        <div class="prof-val">${esc(resultText(t, r.value))}</div>
+        <button class="icon-btn" type="button" data-del-test="${esc(t)}" data-del-date="${esc(r.date)}" aria-label="Borrar ${esc(TESTS[t].short)} del ${esc(dateLabel(r.date))}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>`).join('')
+    : '<p class="small muted" style="margin:0">Todavía no hay mediciones guardadas.</p>';
+  $('btn-exp-csv').disabled = $('btn-exp-json').disabled = !rows.length;
+}
+
+function describeForCsv(t, r) {
+  let c = null;
+  try { c = classify(t, r.value, r.profile || S.profile); } catch { c = null; }
+  return { unidad: TESTS[t].unit === 's' ? 's' : 'rep', categoria: c?.category.label || '', tabla: c ? c.source.short : '' };
 }
 
 /* ------------------------------------------------------------------ validación */
@@ -2471,6 +2600,7 @@ function renderSettings() {
   $('set-voice').checked = !!S.settings.voice;
   $('set-angles').checked = !!S.settings.angles;
   $('set-calidad').checked = !!S.settings.calidad;
+  $('set-tilt').checked = !!S.settings.tiltCorrection;
   $('set-stand').checked = !!S.stand;
   $('set-valid').checked = !!S.settings.valid;
   $('btn-open-valid').hidden = !S.settings.valid;
@@ -2490,10 +2620,10 @@ function renderSettings() {
 
 function bind() {
   $('brand').addEventListener('click', () => (S.profile.age && S.profile.sex ? show('hub') : show('onb')));
-  $('btn-onb').addEventListener('click', () => { saveStore(); show('hub'); });
+  $('btn-onb').addEventListener('click', () => { S.settings.welcomed = true; saveStore(); show('hub'); });
   for (const b of $('tabs').querySelectorAll('button')) b.addEventListener('click', () => show(b.dataset.tab));
   $('btn-intro-back').addEventListener('click', () => show('hub'));
-  $('btn-live').addEventListener('click', () => { Voice.unlock(); Sound.unlock(); Runner.open(S.test, 'live'); });
+  $('btn-live').addEventListener('click', () => { Sensors.requestPermission(); Voice.unlock(); Sound.unlock(); Runner.open(S.test, 'live'); });
   $('btn-demo').addEventListener('click', () => { Voice.unlock(); Sound.unlock(); Runner.open(S.test, 'demo'); });
   for (const id of ['file-record', 'file-pick']) {
     $(id).addEventListener('change', (e) => {
@@ -2517,6 +2647,26 @@ function bind() {
   $('set-voice').addEventListener('change', (e) => { S.settings.voice = e.target.checked; saveStore(); });
   $('set-angles').addEventListener('change', (e) => { S.settings.angles = e.target.checked; saveStore(); });
   $('set-calidad').addEventListener('change', (e) => { S.settings.calidad = e.target.checked; saveStore(); });
+  $('set-tilt').addEventListener('change', (e) => { S.settings.tiltCorrection = e.target.checked; saveStore(); });
+  $('btn-probe').addEventListener('click', async () => {
+    const out = $('probe-out');
+    out.textContent = 'Escuchando los sensores 1,5 s… deja el teléfono quieto.';
+    await Sensors.requestPermission();
+    // Igual que Sensors.probe, pero además lee la inclinación medida (HU-17).
+    const est = createTiltEstimator({ facing: S.settings.facing });
+    Sensors.start(est, { facing: S.settings.facing });
+    await new Promise((res) => setTimeout(res, 1500));
+    const st = est.state(performance.now());
+    Sensors.stop();
+    const r = st.sensors, si = (b) => (b ? 'sí' : 'no');
+    const t = st.lastStill || st.tilt;
+    const incl = t && Number.isFinite(t.roll)
+      ? ` Inclinación: ${Math.round(t.roll)}° de lado${Number.isFinite(t.pitch) ? `, ${Math.round(t.pitch)}° hacia ${t.pitch >= 0 ? 'arriba' : 'abajo'}` : ''}${st.still === false ? ' (el teléfono se estaba moviendo)' : ''}.`
+      : '';
+    out.textContent = `Orientación: ${si(r.orientation)} · Acelerómetro: ${si(r.accelerometer)} · Giroscopio: ${si(r.gyroscope)}.`
+      + (Sensors.permission === 'denied' ? ' Permiso rechazado.' : '')
+      + (!r.orientation && !r.accelerometer ? ' Sin sensores: la inclinación se estima con tu postura.' : incl);
+  });
   $('btn-edit-profile').addEventListener('click', () => { $('sheet').hidden = true; renderOnb(); show('onb'); });
   $('set-stand').addEventListener('change', (e) => { $('sheet').hidden = true; if (e.target.checked) enterStand(); else exitStand(); });
   $('btn-next-person').addEventListener('click', nextPerson);
@@ -2623,6 +2773,19 @@ function bind() {
       info.textContent = `No se pudo cargar: ${e?.message || e}`;
     } finally { btn.disabled = false; }
   });
+  $('prof-hist-list').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-del-test]');
+    if (!b) return;
+    const t = b.dataset.delTest, d = b.dataset.delDate;
+    if (!window.confirm(`¿Borrar ${TESTS[t].short.toLowerCase()} del ${dateLabel(d)}? No se puede deshacer.`)) return;
+    S.history = Hist.removeResult(S.history, t, d);
+    S.results = Hist.latestMap(S.history, ORDER);
+    saveStore();
+    renderProfile();
+  });
+  $('btn-exp-csv').addEventListener('click', () => downloadText(`fitgram-mis-resultados-${stamp()}.csv`, '\ufeff' + Hist.toCSV(S.history, ORDER, describeForCsv), 'text/csv'));
+  $('btn-exp-json').addEventListener('click', () => downloadText(`fitgram-mis-resultados-${stamp()}.json`,
+    JSON.stringify({ schema: 1, app: 'fitgram', exportado: new Date().toISOString(), profile: S.profile, history: S.history }, null, 2), 'application/json'));
   $('btn-reset').addEventListener('click', () => { $('reset-confirm').hidden = false; });
   $('btn-reset-no').addEventListener('click', () => { $('reset-confirm').hidden = true; });
   $('btn-reset-yes').addEventListener('click', () => {
@@ -2678,6 +2841,11 @@ function boot() {
   window.addEventListener('error', (e) => avisarErrorSuelto('error', e.error || e.message));
   window.addEventListener('unhandledrejection', (e) => avisarErrorSuelto('rejection', e.reason));
   registrarSW();
+  // Sin WebAssembly no hay detector de pose: avisar de entrada (HU-47).
+  if (typeof WebAssembly === 'undefined') {
+    $('error-bar').hidden = false;
+    $('error-bar-msg').textContent = 'Este navegador no puede correr el detector de pose. Usa Chrome (Android o computador) o Safari 16.4 o superior (iPhone).';
+  }
   renderOnb();
   window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory, openValid, renderResult, show }; // handy for debugging and automated tests
   // ?demo=historial abre el perfil; ?demo=pushup|squat|plank abre esa pantalla de resultado.

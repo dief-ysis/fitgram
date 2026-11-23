@@ -190,3 +190,28 @@ test('texto del avance: segundos de la plancha con un decimal', () => {
   const txt = H.deltaText(H.deltaOf(h, 'plank'), { unit: 's' });
   assert.match(txt, /13,8 s/);
 });
+
+test('avance: flexiones con perfiles de distinto sexo o con otras reglas no se comparan', () => {
+  const mk = (sex, reglas, value) => ({ value, date: '2026-11-01T10:00:00Z', profile: { age: 20, sex }, reglas });
+  assert.equal(H.noComparable('pushup', mk('M', 'a', 10), mk('F', 'a', 12)), 'protocolo');
+  assert.equal(H.noComparable('squat', mk('M', 'a', 10), mk('F', 'a', 12)), null);
+  assert.equal(H.noComparable('squat', mk('M', 'a', 10), mk('M', 'b', 12)), 'reglas');
+  assert.equal(H.noComparable('pushup', mk('M', 'a', 10), mk('M', 'a', 12)), null);
+});
+
+test('borrar: quita solo la medición de esa prueba y esa fecha', () => {
+  const h = { pushup: [{ value: 1, date: 'a' }, { value: 2, date: 'b' }], squat: [{ value: 3, date: 'a' }], plank: [] };
+  const n = H.removeResult(h, 'pushup', 'a');
+  assert.deepEqual(n.pushup.map((r) => r.value), [2]);
+  assert.equal(n.squat.length, 1);
+  assert.equal(h.pushup.length, 2, 'no modifica el original');
+});
+
+test('CSV personal: una fila por medición, ; y coma decimal', () => {
+  const h = { pushup: [{ value: 12, invalid: 2, date: '2026-11-20T10:00:00Z', profile: { age: 20, sex: 'M' } }],
+    squat: [], plank: [{ value: 61.5, date: '2026-11-21T10:00:00Z', captura: { roll: -4.5, movido: true } }] };
+  const lines = H.toCSV(h, ORDER, (t) => ({ unidad: t === 'plank' ? 's' : 'rep', categoria: 'Promedio' })).trim().split('\n');
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^fecha;prueba;valor/);
+  assert.ok(lines.some((l) => l.includes(';plank;61,5;s;') && l.includes(';-4,5;sí;')), lines.join('\n'));
+});

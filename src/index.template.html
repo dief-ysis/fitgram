@@ -178,6 +178,13 @@ body.run-mode main.wrap { max-width: 960px; }
 .veil .sub { font-size: 15px; color: var(--stage-muted); max-width: 36ch; }
 .progress { width: min(260px, 80%); height: 6px; background: rgba(255,255,255,.18); }
 .progress > i { display: block; height: 100%; width: 0%; background: var(--stage-ink); transition: width .2s; }
+.level-chip { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: var(--surface); flex-wrap: wrap; }
+.level-chip .dot { width: 10px; height: 10px; flex: none; background: var(--muted); }
+.level-chip[data-level="ok"] .dot { background: var(--good); }
+.level-chip[data-level="warn"] .dot { background: var(--warn); }
+.level-chip[data-level="bad"] .dot { background: var(--bad); }
+.level-chip[data-level="bad"] { border-color: var(--bad); }
+.level-chip .src { margin-left: auto; font-size: 13px; color: var(--muted); }
 .pos-chip { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: var(--surface); }
 .pos-chip .dot { width: 10px; height: 10px; flex: none; background: var(--muted); }
 .pos-chip[data-ok="true"] .dot { background: var(--good); }
@@ -339,6 +346,14 @@ body.run-mode .stand-bar { display: none; }
       <h1 class="screen-title">Tus datos</h1>
       <p class="screen-sub">Con tu edad y tu sexo elegimos la tabla de referencia de cada prueba. Las tablas son para jóvenes de 18 a 21 años.</p>
     </div>
+    <div class="card pad" id="onb-welcome" style="display:flex;flex-direction:column;gap:8px" hidden>
+      <div class="lbl">Qué hace FitGram</div>
+      <ul class="small" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
+        <li>Cuenta tus repeticiones válidas (o tus segundos de plancha) con la cámara y te compara con tablas publicadas para tu edad y sexo.</li>
+        <li>Es una orientación: no es una evaluación médica ni reemplaza a un profesional de la salud.</li>
+        <li>Todo ocurre en tu teléfono: el video no se guarda ni se envía a ninguna parte.</li>
+      </ul>
+    </div>
     <div class="card marks pad" style="display:flex;flex-direction:column;gap:18px">
       <div class="field">
         <div class="lbl" id="lbl-age">Edad</div>
@@ -437,6 +452,7 @@ body.run-mode .stand-bar { display: none; }
       <button class="btn ghost" id="btn-stop" type="button" hidden>Terminar prueba</button>
     </div>
     <div class="pos-chip" id="pos-chip" data-ok=""><span class="dot" aria-hidden="true"></span><span id="pos-msg">Preparando…</span></div>
+    <div class="level-chip" id="level-chip" data-level="" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="level-msg">Inclinación del teléfono</span><span class="src" id="level-src"></span></div>
     <div class="cells" id="cells"></div>
     <div class="field" id="replog-wrap">
       <div class="lbl" style="font-size:12px">Repeticiones · lleno = válida · borde rojo = no válida</div>
@@ -504,6 +520,15 @@ body.run-mode .stand-bar { display: none; }
     <div class="card marks pad overall" id="prof-overall"></div>
     <div class="card pad" id="prof-rows"></div>
     <div class="card pad" id="prof-progress" style="display:flex;flex-direction:column;gap:14px" hidden></div>
+    <div class="card pad" id="prof-hist" style="display:flex;flex-direction:column;gap:10px">
+      <div class="lbl">Mis mediciones</div>
+      <div id="prof-hist-list"></div>
+      <div class="btn-row">
+        <button class="btn quiet sm" id="btn-exp-csv" type="button">Exportar CSV</button>
+        <button class="btn quiet sm" id="btn-exp-json" type="button">Exportar JSON</button>
+      </div>
+      <div class="small muted">Tus resultados viven solo en este teléfono. Exporta para guardarlos o pasarlos a otro equipo. Solo números y fechas: nunca video.</div>
+    </div>
     <div class="note small" id="prof-note"></div>
     <div class="card pad" style="display:flex;flex-direction:column;gap:6px">
       <div class="lbl">Fuentes</div>
@@ -643,6 +668,13 @@ body.run-mode .stand-bar { display: none; }
     <label class="toggle-row" for="set-calidad"><span>Mostrar la estabilidad de la detección</span><input type="checkbox" id="set-calidad"></label>
     <div class="small muted">Un número en la imagen y en el resultado. Sirve para comparar condiciones —luz, ropa, distancia, teléfono— y ajustar con datos cuándo la app debería avisar. Los umbrales actuales salen de pruebas sintéticas y son provisorios.</div>
     <div class="field">
+      <div class="lbl">Inclinación del teléfono</div>
+      <label class="toggle-row" for="set-tilt"><span>Corregir la inclinación del teléfono</span><input type="checkbox" id="set-tilt"></label>
+      <button class="btn quiet sm" id="btn-probe" type="button">Probar sensores</button>
+      <div class="small" id="probe-out" aria-live="polite"></div>
+      <div class="small muted">La app mide cuánto está ladeado el teléfono (con los sensores y con tu postura de partida) y endereza el esqueleto antes de contar. Más de 30° no se corrige: hay que enderezarlo.</div>
+    </div>
+    <div class="field">
       <div class="lbl" id="lbl-model">Modelo de pose</div>
       <div class="pill-row" role="group" aria-labelledby="lbl-model" id="model-pills"></div>
       <div class="small muted">Preciso usa el modelo completo de MediaPipe (9 MB). Rápido usa el liviano (6 MB) y anda mejor en teléfonos antiguos.</div>
@@ -659,6 +691,14 @@ body.run-mode .stand-bar { display: none; }
       <button class="btn quiet sm" id="btn-engine-test" type="button">Cargar el detector ahora</button>
     </div>
     <div class="field">
+      <div class="lbl">Qué hace FitGram</div>
+      <ul class="small" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
+        <li>Cuenta tus repeticiones válidas (o tus segundos de plancha) con la cámara y te compara con tablas publicadas para tu edad y sexo.</li>
+        <li>Es una orientación: no es una evaluación médica ni reemplaza a un profesional de la salud.</li>
+        <li>Todo ocurre en tu teléfono: el video no se guarda ni se envía a ninguna parte.</li>
+      </ul>
+    </div>
+    <div class="field">
       <div class="lbl">Elevador 3D</div>
       <div class="small">MediaPipe world, convertido al esqueleto Human3.6M de 17 articulaciones. VideoPose3D queda listo para conectarse en la fase 2.</div>
     </div>
@@ -669,6 +709,10 @@ body.run-mode .stand-bar { display: none; }
   </div>
 </div>
 
+<script nomodule>
+  // Navegador demasiado antiguo para módulos: la app no corre. Decirlo en vez de dejar la pantalla en blanco (HU-47).
+  document.body.insertAdjacentHTML('afterbegin', '<div style="padding:16px;font:16px sans-serif;background:#b23b3b;color:#fff">Este navegador es demasiado antiguo para FitGram. Ábrela en Chrome (Android o computador) o en Safari 16.4 o superior (iPhone).</div>');
+</script>
 <script type="module">
 const __mods = {};
 <!--MODULOS-->
