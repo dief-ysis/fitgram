@@ -34,6 +34,7 @@ const URLS = {
   model: (variant) => (CFG.modelBase || './models/') + `pose_landmarker_${variant}${CFG.modelExt || '.task'}`,
 };
 const STORE_KEY = 'fitgram.v0';
+const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true });
 const ORDER = ['pushup', 'squat', 'plank'];
 const COLORS = { left: '#2f9bd3', right: '#e8613c', axial: '#8a96a3', axis: '#8a96a3' };
 
@@ -107,7 +108,12 @@ function loadValid() {
 }
 function saveValid() {
   if (S.stand) return; // modo stand: no se escribe nada en este teléfono
-  try { localStorage.setItem(VALID_KEY, JSON.stringify(S.valid)); } catch { /* storage unavailable */ }
+  try { localStorage.setItem(VALID_KEY, JSON.stringify(S.valid)); return true; } catch (e) {
+    // Perder mediciones del estudio sin enterarse sería lo peor: se avisa y se pide exportar.
+    console.warn('saveValid', e);
+    try { validError('No se pudo guardar en este teléfono (memoria llena o navegación privada). Exporta el CSV o el JSON ahora para no perder las mediciones.'); } catch { /* pantalla no lista */ }
+    return false;
+  }
 }
 
 function loadStore() {
@@ -294,7 +300,7 @@ const S = {
   // `results` es solo el ultimo de cada serie, porque las pantallas ya lo usan asi.
   history: restored.history,
   results: restored.results,
-  settings: Object.assign({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true }, stored.settings || {}),
+  settings: Object.assign({}, DEFAULT_SETTINGS, stored.settings || {}),
   valid: loadValid(), // mediciones del modo validación, en su propia llave
   screen: null,
   stand: false, // modo stand: efímero, no toca el almacenamiento
@@ -354,7 +360,9 @@ function profileTag() {
 function renderOnb() {
   const ages = $('age-pills');
   ages.innerHTML = '';
-  for (const a of [18, 19, 20, 21]) {
+  // El rango sale de un solo lugar (AGE_RANGE en norms.mjs): botones y textos lo leen de ahí.
+  for (const el of document.querySelectorAll('.age-range')) el.textContent = `${AGE_RANGE.min} a ${AGE_RANGE.max}`;
+  for (let a = AGE_RANGE.min; a <= AGE_RANGE.max; a++) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'pill'; b.textContent = String(a);
     b.setAttribute('aria-pressed', String(S.profile.age === a));
@@ -1767,7 +1775,7 @@ function renderHistList() {
 function describeForCsv(t, r) {
   let c = null;
   try { c = classify(t, r.value, r.profile || S.profile); } catch { c = null; }
-  return { unidad: TESTS[t].unit === 's' ? 's' : 'rep', categoria: c?.category.label || '', tabla: c ? c.source.short : '' };
+  return { unidad: TESTS[t].unit === 's' ? 's' : 'rep', categoria: c?.category.label || '', tabla: c ? c.source.short : '', banda: c ? (t === 'plank' ? 'universitarios' : c.band || '') : '' };
 }
 
 /* ------------------------------------------------------------------ validación */
@@ -2791,6 +2799,8 @@ function bind() {
   $('btn-reset-yes').addEventListener('click', () => {
     try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
     S.profile = { age: null, sex: null }; S.results = {}; S.history = Hist.emptyHistory(ORDER); S.last = null;
+    // «Borrar todos mis datos» incluye los ajustes (HU-38): vuelven a los de fábrica.
+    S.settings = Object.assign({}, DEFAULT_SETTINGS);
     $('reset-confirm').hidden = true;
     renderOnb(); show('onb');
   });

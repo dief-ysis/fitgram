@@ -210,8 +210,9 @@ test('borrar: quita solo la medición de esa prueba y esa fecha', () => {
 test('CSV personal: una fila por medición, ; y coma decimal', () => {
   const h = { pushup: [{ value: 12, invalid: 2, date: '2026-11-20T10:00:00Z', profile: { age: 20, sex: 'M' } }],
     squat: [], plank: [{ value: 61.5, date: '2026-11-21T10:00:00Z', captura: { roll: -4.5, movido: true } }] };
-  const lines = H.toCSV(h, ORDER, (t) => ({ unidad: t === 'plank' ? 's' : 'rep', categoria: 'Promedio' })).trim().split('\n');
+  const lines = H.toCSV(h, ORDER, (t) => ({ unidad: t === 'plank' ? 's' : 'rep', categoria: 'Promedio', banda: '20-29' })).trim().split('\n');
   assert.equal(lines.length, 3);
   assert.match(lines[0], /^fecha;prueba;valor/);
-  assert.ok(lines.some((l) => l.includes(';plank;61,5;s;') && l.includes(';-4,5;sí;')), lines.join('\n'));
+  assert.ok(lines[0].includes(';banda;') && lines[0].includes(';inclinacion_fuente;'), lines[0]);
+  assert.ok(lines.some((l) => l.includes(';plank;61,5;s;') && l.includes(';-4,5;;sí;')), lines.join('\n'));
 });

@@ -220,20 +220,20 @@ const csvCell = (v) => {
 
 /**
  * El historial personal en CSV (separador ;, coma decimal: Excel en Chile).
- * `describe(test, r)` entrega { categoria, tabla, unidad } (lo pone la app,
+ * `describe(test, r)` entrega { categoria, tabla, banda, unidad } (lo pone la app,
  * que es la que sabe clasificar); así este módulo sigue sin depender de norms.
  */
 function toCSV(history, order, describe = () => ({})) {
-  const head = ['fecha', 'prueba', 'valor', 'unidad', 'no_validas', 'categoria', 'tabla', 'edad', 'sexo',
-    'termino', 'calidad', 'inclinacion', 'telefono_movido', 'modo'];
+  const head = ['fecha', 'prueba', 'valor', 'unidad', 'no_validas', 'categoria', 'tabla', 'banda', 'edad', 'sexo',
+    'termino', 'calidad', 'inclinacion', 'inclinacion_fuente', 'telefono_movido', 'modo'];
   const rows = [];
   for (const t of order) {
     for (const r of history?.[t] || []) {
       const d = describe(t, r) || {};
       const roll = r.captura && Number.isFinite(r.captura.roll) ? String(r.captura.roll).replace('.', ',') : '';
       rows.push([String(r.date || '').slice(0, 16).replace('T', ' '), t, String(r.value ?? '').replace('.', ','),
-        d.unidad || '', r.invalid ?? '', d.categoria || '', d.tabla || '', r.profile?.age ?? '', r.profile?.sex ?? '',
-        r.endReason || '', r.calidad?.nivel || '', roll, r.captura ? (r.captura.movido ? 'sí' : 'no') : '', r.mode || '']
+        d.unidad || '', r.invalid ?? '', d.categoria || '', d.tabla || '', d.banda || '', r.profile?.age ?? '', r.profile?.sex ?? '',
+        r.endReason || '', r.calidad?.nivel || '', roll, r.captura?.fuente || '', r.captura ? (r.captura.movido ? 'sí' : 'no') : '', r.mode || '']
         .map(csvCell).join(';'));
     }
   }

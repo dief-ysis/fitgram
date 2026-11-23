@@ -344,7 +344,7 @@ body.run-mode .stand-bar { display: none; }
   <section class="screen" id="scr-onb" hidden>
     <div>
       <h1 class="screen-title">Tus datos</h1>
-      <p class="screen-sub">Con tu edad y tu sexo elegimos la tabla de referencia de cada prueba. Las tablas son para jóvenes de 18 a 21 años.</p>
+      <p class="screen-sub">Con tu edad y tu sexo elegimos la tabla de referencia de cada prueba. Las tablas son para jóvenes de <span class="age-range">18 a 21</span> años.</p>
     </div>
     <div class="card pad" id="onb-welcome" style="display:flex;flex-direction:column;gap:8px" hidden>
       <div class="lbl">Qué hace FitGram</div>
@@ -361,7 +361,7 @@ body.run-mode .stand-bar { display: none; }
         <div id="onb-other" hidden style="display:flex;flex-direction:column;gap:8px">
           <label class="lbl" for="onb-age-num" style="color:var(--ink)">U otra edad</label>
           <input class="inp" id="onb-age-num" type="number" min="10" max="99" inputmode="numeric" placeholder="por ejemplo, 42">
-          <div class="small muted">Fuera de 18 a 21 no hay tabla de referencia. FitGram igual cuenta las repeticiones y corrige la técnica, pero no puede decir en qué nivel estás.</div>
+          <div class="small muted">Fuera de <span class="age-range">18 a 21</span> no hay tabla de referencia. FitGram igual cuenta las repeticiones y corrige la técnica, pero no puede decir en qué nivel estás.</div>
         </div>
       </div>
       <div class="field">
