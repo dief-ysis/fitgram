@@ -17,7 +17,7 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 | Área | Qué hace |
 |---|---|
 | Usuarios | Personas de **18 a 21 años** que ya entrenan: es el rango vigente de la app. 🔎 La v1 decía 18 a 30; si se amplía está abierto (pregunta B2). El rango vive en un solo lugar del código (`AGE_RANGE`, `src/norms.mjs`). |
-| Pruebas | Flexiones (CSEP/ACSM; hombres desde los pies, mujeres con rodillas), sentadillas (ACE), plancha en antebrazos (Strand 2014). 🔎 Sin dominadas ni fondos (están en la v1; pregunta B11). |
+| Pruebas | Flexiones (CSEP/ACSM; hombres desde los pies, mujeres con rodillas), sentadillas (ACE), plancha en antebrazos (Strand 2014). 🔎 Sin dominadas ni fondos (están en la v1; pregunta F2). |
 | Protocolo | Todas «hasta el fallo» (sin pruebas de 1 minuto). Se cuentan solo las repeticiones válidas. |
 | Cámara y video | Cámara en vivo, video grabado o subido, y demostración con persona sintética. Esqueleto 2D sobre la imagen, vista 3D en vivo y reproducción 3D después de la prueba. Dibujo de dónde poner el teléfono para cada prueba. |
 | Inclinación | Traída de la v1 de José: sensores del teléfono + estimación por postura, corrección de la pose, aviso bajo la imagen, aviso si el teléfono se mueve, interruptor y «Probar sensores» en Ajustes. |
@@ -26,7 +26,7 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 | Confiabilidad | Mide qué tan estable fue la detección en cada serie y lo guarda con el resultado. |
 | Historial | Hasta 50 resultados por prueba en el teléfono, avance contra el intento anterior (con aviso cuando dos mediciones no son comparables) y aviso dentro de la app cada 4 semanas (sin notificaciones). Lista «Mis mediciones» con borrar cada una, y exportación CSV/JSON de los resultados personales. |
 | Validación | Modo validación: app + 2 evaluadores por participante y prueba, acuerdo, Bland-Altman y CCI con intervalo, exportación CSV/JSON y recarga del JSON. |
-| Modo stand | Para ferias y el pitch: cualquier edad, no guarda nada. 🔎 Acepta menores; si se pone un límite es decisión del equipo (pregunta B12). |
+| Modo stand | Para ferias y el pitch: cualquier edad, no guarda nada. 🔎 Acepta menores; si se pone un límite es decisión del equipo (pregunta F3). |
 | Privacidad | Todo se procesa en el teléfono. No se envía ningún dato de la persona a internet (comprobado revisando el código; falta mirar el tráfico en un teléfono); solo se descargan la app y el modelo la primera vez. El video nunca se guarda. |
 | Plataforma | Una sola app web (Android, iPhone y computador) en GitHub Pages, instalable y usable sin conexión después de tocar «Preparar para usar sin conexión». Bienvenida corta la primera vez y aviso si el navegador no sirve. |
 
@@ -70,8 +70,8 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 | R11 | Licencias: VideoPose3D no comercial | No se puede usar en producto de pago | No incluirlo; revisar antes de la fase 2. |
 | R12 | Protección legal: el software se protege por derecho de autor | Idea copiable | Registrar marca y derecho de autor (mar–jun 2027). El código base es del equipo y el repositorio original no declara licencia: definirla. |
 | R13 | Datos de salud sensibles | Riesgo reputacional y legal | No se envía ningún dato de la persona; consentimiento explícito antes de cualquier base central. |
-| R14 | Validación con personas sin los resguardos éticos y de datos | El estudio no se puede publicar ni presentar | 🔎 Averiguar si la UNAB exige comité de ética; definir quién guarda los CSV y los videos, dónde y cómo se seudonimizan (Ley 19.628 y su reforma, Ley 21.719). Pregunta A6. |
-| R15 | El prototipo de juego va dentro de la app publicada sin validar | Alguien lo toma como parte de la evaluación | Se presenta como prototipo y no se guarda como evaluación; si se oculta antes del pitch lo decide el equipo (pregunta B13). |
+| R14 | Validación con personas sin los resguardos éticos y de datos | El estudio no se puede publicar ni presentar | 🔎 Averiguar si la UNAB exige comité de ética; definir quién guarda los CSV y los videos, dónde y cómo se seudonimizan (Ley 19.628 y su reforma, Ley 21.719). Preguntas A6 y A7. |
+| R15 | El prototipo de juego va dentro de la app publicada sin validar | Alguien lo toma como parte de la evaluación | Se presenta como prototipo y no se guarda como evaluación; si se oculta antes del pitch lo decide el equipo (pregunta F4). |
 | R16 | Safari en iPhone borra los datos de un sitio no instalado tras unos días sin uso | Se pierden el historial y las mediciones de validación | Instalar la app en la pantalla de inicio: es opcional, sin tienda, el navegador solo agrega un ícono, y así Safari no borra los datos y exportar seguido; decirlo en la guía del estudio. |
 
 ## 6. Plan de validación

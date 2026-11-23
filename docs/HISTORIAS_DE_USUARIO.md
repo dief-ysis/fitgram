@@ -25,13 +25,16 @@ Historias escritas por José para FitGram v1 (13-nov-2026), la versión paralela
 | A3 | ¿La prueba termina con dos malas seguidas? **Decidido el 22-nov: sí.** |
 | A4 | ¿Cuál es la meta de la validación (concordancia ≥ 95 % o CCI y Bland-Altman)? |
 | A5 | ¿Cómo se resuelve el consentimiento para guardar video en las series con video subido? |
-| A6 | ¿Hace falta comité de ética? ¿Quién guarda los datos y cómo? ¿El análisis por subgrupos es exploratorio? |
+| A6 | ¿Hace falta comité de ética? |
+| A7 | ¿Quién guarda los datos del estudio y cómo? |
+| A8 | ¿El análisis por subgrupos es exploratorio? |
 | B2 | ¿Se amplía el rango de edad 18–21? |
 | B5 | ¿Se sigue usando la tabla de sentadillas de ACE? |
-| B10 | ¿Se calibra la profundidad de la sentadilla? |
-| B11 | ¿Entran dominadas, fondos y la pregunta de si entrenas o compites? |
-| B12 | ¿El modo stand pone una edad mínima o pide autorización a menores? |
-| B13 | ¿Se oculta el juego antes del pitch? ¿La tabla del baremo va de menor a mayor (criterio) o de mayor a menor (app)? |
+| F1 | ¿Se calibra la profundidad de la sentadilla? |
+| F2 | ¿Entran dominadas, fondos y la pregunta de si entrenas o compites? |
+| F3 | ¿El modo stand pone una edad mínima o pide autorización a menores? |
+| F4 | ¿Se oculta el juego antes del pitch? |
+| F5 | ¿La tabla del baremo va de menor a mayor (criterio) o de mayor a menor (app)? |
 
 **Términos de software.** «Épica» = grupo de historias sobre un mismo tema; «backlog» = la lista de historias por hacer; «Dado/Cuando/Entonces» = forma de escribir un criterio: situación, acción y resultado esperado. Los demás están en el glosario de `ALCANCE_MVP.md` §9.
 
@@ -45,11 +48,11 @@ Historias escritas por José para FitGram v1 (13-nov-2026), la versión paralela
 
 **Lo que hay que decidir en equipo:**
 1. **Meta de la validación** (HU-50; A1, A2, A4).
-2. **Dominadas, fondos y la pregunta de si entrenas o compites** (HU-02, 26, 27, 33; B11).
+2. **Dominadas, fondos y la pregunta de si entrenas o compites** (HU-02, 26, 27, 33; F2).
 3. **Rango de edad** (B2): hoy la app usa 18–21. Los criterios dicen «el rango vigente (hoy 18–21)» hasta que se decida.
-4. **Sentadilla**: calibración o más rango (B10) y la fuente ACE (B5) cambian los criterios de HU-24.
-5. **Menores en el modo stand** (HU-63; B12).
-6. **Video, ética y datos del estudio** (HU-50, 51; A5, A6).
+4. **Sentadilla**: calibración o más rango (F1) y la fuente ACE (B5) cambian los criterios de HU-24.
+5. **Menores en el modo stand** (HU-63; F3).
+6. **Video, ética y datos del estudio** (HU-50, 51; A5 a A8).
 
 **Problemas de redacción que siguen abiertos:**
 - Criterios que no se pueden medir: HU-06 («unos segundos»), HU-15 («sin saltos bruscos»), HU-20 («dispersión alta»), HU-21 («diferencia grande»), HU-22 («más allá de lo esperado»), HU-11 («pausa larga»), HU-46 («mensaje claro»), HU-48 («se leen a 2,5 m»), HU-62 («detección temblorosa»: el umbral existe en la app pero es provisorio), HU-64 («se mantiene») y el requerimiento de batería («incómodo al tacto»). Conviene fijar un número. La app ya usa números (por ejemplo, 5° para «teléfono movido», 3 s entre mensajes de voz); escribirlos en el criterio es lo que falta.
@@ -106,7 +109,7 @@ Total: 65 historias (60 de la v1 de José y 5 agregadas al adaptar, épica M).
 - **Dado** que no lo marco, **cuando** termino una plancha, **entonces** se usa el grupo de no deportistas (o el general si la tabla no distingue).
 - **Dado** una prueba cuyo baremo no distingue por entrenamiento, **cuando** veo el resultado, **entonces** el valor marcado no cambia la categoría.
 - Prioridad: **Should** · Sprint: S1 · Estado: **Fuera (decidir)**
-- 🔎 **Nota (22-nov):** No existe en esta app: la plancha usa solo el percentil de universitarios por sexo (Strand 2014). Además el README de la v1 de José la llama «¿Compites en algún deporte?» y esta historia «si entreno regularmente»: no es la misma pregunta. Si entra es decisión de José y Elías (pregunta B11).
+- 🔎 **Nota (22-nov):** No existe en esta app: la plancha usa solo el percentil de universitarios por sexo (Strand 2014). Además el README de la v1 de José la llama «¿Compites en algún deporte?» y esta historia «si entreno regularmente»: no es la misma pregunta. Si entra es decisión de José y Elías (pregunta F2).
 
 ### HU-03 · Cambiar el rango de edad en un solo lugar
 **Como** equipo FitGram **quiero** que el público objetivo (hoy 18 a 21 años) se defina en un único valor de configuración **para** ampliarlo o acotarlo tocando pocas líneas de código.
@@ -150,7 +153,7 @@ Total: 65 historias (60 de la v1 de José y 5 agregadas al adaptar, épica M).
 - **Dado** que no tengo barra, **cuando** hago la evaluación base, **entonces** puedo terminarla y ver mi perfil sin hacer las pruebas con barra.
 - **Dado** que cambio el orden en `TEST_ORDER`/`TEST_GROUPS` de la configuración, **cuando** recargo, **entonces** la lista refleja el cambio.
 - Prioridad: **Must** · Sprint: S1 · Estado: **Otra forma**
-- 🔎 **Nota (22-nov):** solo hay evaluación base (3 pruebas, «Prueba 01 de 03»); las pruebas con barra dependen de la pregunta B11. El orden está en el código de la app (`ORDER` en `src/app.mjs`); `TEST_ORDER`/`TEST_GROUPS` no existen.
+- 🔎 **Nota (22-nov):** solo hay evaluación base (3 pruebas, «Prueba 01 de 03»); las pruebas con barra dependen de la pregunta F2. El orden está en el código de la app (`ORDER` en `src/app.mjs`); `TEST_ORDER`/`TEST_GROUPS` no existen.
 
 ### HU-08 · Verificar la posición antes de empezar
 **Como** persona que entrena **quiero** que la app compruebe que estoy bien puesta frente a la cámara **para** no perder una prueba por mal encuadre.
@@ -295,7 +298,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 - **Dado** una sentadilla que no llega al paralelo, **cuando** subo, **entonces** no cuenta y se avisa «baja más».
 - **Dado** que veo el resultado, **cuando** abro las advertencias, **entonces** dice que el origen de esta tabla es dudoso (ver HU-31).
 - Cámara: vertical, de lado. Prioridad: **Must** · Sprint: S1 · Estado: **Hecho en código**
-- 🔎 **Nota (22-nov):** Elías propone dar más rango o calibrar la profundidad (22-nov, pregunta B10). Si se acepta, cambia el primer criterio («muslos paralelos»). La advertencia de fuente dudosa sigue en revisión (pregunta B5).
+- 🔎 **Nota (22-nov):** Elías propone dar más rango o calibrar la profundidad (22-nov, pregunta F1). Si se acepta, cambia el primer criterio («muslos paralelos»). La advertencia de fuente dudosa sigue en revisión (pregunta B5).
 
 ### HU-25 · Plancha en antebrazos (Strand 2014)
 **Como** persona que entrena **quiero** cronometrar mi plancha hasta la fatiga **para** compararme con universitarios y con deportistas.
@@ -311,7 +314,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 - **Dado** balanceo, impulso con las piernas o extensión incompleta, **cuando** ocurre, **entonces** esa repetición no cuenta.
 - **Dado** que suelto la barra o apoyo los pies, **cuando** ocurre, **entonces** la prueba termina con el motivo «posición perdida».
 - Cámara: vertical, de lado. Prioridad: **Should** · Sprint: S1 · Estado: **Fuera (decidir)**
-- 🔎 **Nota (22-nov):** No existe en esta app. Está en la v1 de José. Agregarla es decisión del equipo (pregunta B11).
+- 🔎 **Nota (22-nov):** No existe en esta app. Está en la v1 de José. Agregarla es decisión del equipo (pregunta F2).
 
 ### HU-27 · Fondos en paralelas (prueba opcional con barra)
 **Como** persona que entrena y tiene paralelas **quiero** medir mis fondos **para** registrar mi marca y compararme con Thomas 2020 cuando haya baremo.
@@ -346,7 +349,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 - **Dado** que no estoy en la categoría más alta, **cuando** veo el detalle, **entonces** dice cuántas repeticiones o segundos faltan para la siguiente.
 - **Dado** que estoy en la categoría más alta, **cuando** veo el detalle, **entonces** no aparece «siguiente nivel».
 - Prioridad: **Must** · Sprint: S1 · Estado: **Hecho en código**
-- 🔎 **Nota (23-nov):** La app muestra la tabla de mayor a menor (la categoría más alta arriba); el primer criterio dice «de menor a mayor». Si se cambia la app o el criterio lo decide el equipo (pregunta B13).
+- 🔎 **Nota (23-nov):** La app muestra la tabla de mayor a menor (la categoría más alta arriba); el primer criterio dice «de menor a mayor». Si se cambia la app o el criterio lo decide el equipo (pregunta F5).
 
 ### HU-31 · Conocer la fuente y las limitaciones del baremo
 **Como** persona que entrena (y como equipo FitGram) **quiero** ver de dónde sale cada baremo y qué limitaciones tiene **para** no sobreinterpretar el resultado.
@@ -362,7 +365,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 - **Dado** fondos (hombres), **cuando** termino, **entonces** el percentil aparece marcado como estimado.
 - **Dado** una prueba que no entrega percentil, **cuando** veo el resultado, **entonces** no hay percentil (no se muestra 0 ni un valor inventado).
 - Prioridad: **Should** · Sprint: S1 · Estado: **Parcial**
-- 🔎 **Nota (22-nov):** Plancha sí (universitarios por sexo; «estimado» cuando el tiempo queda fuera del rango que midió el estudio, entre el percentil 10 y el 90). Fondos no aplica. Camino para cerrarla: el criterio de fondos y el de grupos de deportistas (HU-02) dependen de B11; si no entran, la historia queda «Hecho en código».
+- 🔎 **Nota (22-nov):** Plancha sí (universitarios por sexo; «estimado» cuando el tiempo queda fuera del rango que midió el estudio, entre el percentil 10 y el 90). Fondos no aplica. Camino para cerrarla: el criterio de fondos y el de grupos de deportistas (HU-02) dependen de F2; si no entran, la historia queda «Hecho en código».
 
 ### HU-33 · Fondos en mujeres: registrar la marca sin baremo
 **Como** mujer que entrena **quiero** registrar mis fondos aunque todavía no exista baremo para mujeres **para** no quedar fuera y poder ver mi progreso.
@@ -515,7 +518,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 
 ### HU-50 · Validar el conteo contra dos evaluadores humanos
 **Como** equipo FitGram **quiero** comparar el conteo de la app con el de dos evaluadores en 10 a 15 jóvenes **para** saber si el conteo es confiable (meta: la que se fije en las preguntas A1, A2 y A4; ver `ALCANCE_MVP.md` §6).
-- **Dado** 10 a 15 personas del rango vigente (hoy 18–21, pregunta B2), **cuando** hacen las 3 pruebas de la evaluación base (las de barra solo si se aprueban en B11), **entonces** cada serie la cuentan por separado dos evaluadores y la app.
+- **Dado** 10 a 15 personas del rango vigente (hoy 18–21, pregunta B2), **cuando** hacen las 3 pruebas de la evaluación base (las de barra solo si se aprueban en F2), **entonces** cada serie la cuentan por separado dos evaluadores y la app.
 - **Dado** los conteos, **cuando** se calcula el indicador que se fije (concordancia, acuerdo o CCI; método en `ALCANCE_MVP.md` §6), **entonces** el informe muestra el resultado global y por prueba, con los casos en que falló y por qué.
 - **Dado** que el resultado queda bajo la meta que se fije, **cuando** se cierra el informe, **entonces** se abre un plan de mejora y se repite la validación antes de afirmar la cifra en público.
 - Prioridad: **Must** · Sprint: S5–S6 · Estado: **Parcial**
@@ -527,7 +530,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 - **Dado** la validación con personas (HU-50), **cuando** se filman al menos 1 de cada 3 series con el teléfono deliberadamente inclinado, **entonces** se reporta aparte el indicador que se fije en esas series, y con sensor versus sin sensor.
 - **Dado** que la estimación solo por imagen es menos precisa que el sensor, **cuando** se reporta, **entonces** la diferencia queda documentada como limitación conocida.
 - Prioridad: **Must** · Sprint: S5 · Estado: **Parcial**
-- 🔎 **Nota (22-nov):** La prueba con persona simulada y cámara inclinada está (traída de la v1 de José). Falta la parte con personas. El CSV de validación ya trae la inclinación y su fuente por serie. El análisis aparte de las series inclinadas y con o sin sensor depende de A1, A5 y A6 (ver `ALCANCE_MVP.md` §6).
+- 🔎 **Nota (22-nov):** La prueba con persona simulada y cámara inclinada está (traída de la v1 de José). Falta la parte con personas. El CSV de validación ya trae la inclinación y su fuente por serie. El análisis aparte de las series inclinadas y con o sin sensor depende de A1, A5 y A8 (ver `ALCANCE_MVP.md` §6).
 
 ### HU-52 · Documentar para que el proyecto no dependa de una persona
 **Como** equipo FitGram **quiero** documentar el producto, la arquitectura y las decisiones **para** que, si alguien no está (el «factor camión»), otra persona pueda seguir.
@@ -581,7 +584,7 @@ Nada de esta épica entra al MVP. Está aquí para que el diseño del MVP no cie
 - **Dado** que llevo varios días seguidos, **cuando** abro la app, **entonces** veo mi racha y puedo desbloquear una prueba nueva (estilo Duolingo).
 - **Dado** el MVP, **cuando** se define el alcance, **entonces** este modo queda fuera: es una función de crecimiento. Elías tiene un prototipo.
 - Prioridad: **Won't (ahora)** · Sprint: Post · Estado: **Futuro**
-- 🔎 **Nota (22-nov):** Ya existe un prototipo de modo juego dentro de la app (press militar, idea de Elías). Sigue fuera del MVP: no se valida ni se promete. Va dentro de la app publicada (se abre desde la pantalla de evaluación); el riesgo está en `ALCANCE_MVP.md` R15 y si se oculta es la pregunta B13.
+- 🔎 **Nota (22-nov):** Ya existe un prototipo de modo juego dentro de la app (press militar, idea de Elías). Sigue fuera del MVP: no se valida ni se promete. Va dentro de la app publicada (se abre desde la pantalla de evaluación); el riesgo está en `ALCANCE_MVP.md` R15 y si se oculta es la pregunta F4.
 
 ### HU-59 · Ejercicios con pesas y mancuernas
 **Como** persona que entrena **quiero** evaluar ejercicios con pesas o mancuernas **para** tener un diagnóstico más completo.
@@ -619,7 +622,7 @@ Nada de esta épica entra al MVP. Está aquí para que el diseño del MVP no cie
 - **Dado** el modo stand, **cuando** alguien termina, **entonces** ve su resultado y nada queda guardado; un botón pasa a la persona siguiente.
 - **Dado** una edad fuera del rango vigente, **cuando** termina, **entonces** ve el conteo sin categoría.
 - Prioridad: **Should** · Sprint: S1 · Estado: **Hecho en código**
-- 🔎 **Nota (22-nov):** Hoy acepta cualquier edad, también menores. Si se pone una edad mínima o se pide autorización es decisión del equipo (pregunta B12).
+- 🔎 **Nota (22-nov):** Hoy acepta cualquier edad, también menores. Si se pone una edad mínima o se pide autorización es decisión del equipo (pregunta F3).
 
 ### HU-64 · Instrucciones habladas a distancia
 **Como** persona que entrena a 2,5–3 m del teléfono **quiero** que la app me diga en voz alta lo que ve (posición, conteo, técnica, inclinación) **para** no tener que acercarme a leer.
