@@ -3,13 +3,14 @@
 import { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } from './norms.mjs';
 import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG } from './exercises.mjs';
 import { synthSession } from './synth.mjs';
-import { SKELETON_CONFIG, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } from './skeleton.mjs';
+import { SKELETON_CONFIG, H36M, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } from './skeleton.mjs';
 import * as Hist from './history.mjs';
 import * as Val from './validation.mjs';
 import * as Gm from './game.mjs';
 import * as Cal from './calidad.mjs';
 import { ORIENT_CONFIG, createPoseLevelEstimator, createTiltEstimator, fuseTilt, correctFrame, describeTilt, isCorrectable } from './orientation.mjs';
 import { Sensors } from './sensors.mjs';
+import { esqueletoParaCompartir, elegirFormatoVideo, nombreArchivo } from './compartir.mjs';
 import { esErrorDeCamara, cameraErrorMessage } from './camara-errores.mjs';
 /**
  * Con qué reglas cuenta esta copia de la app: los umbrales, el suavizado y el
@@ -34,7 +35,7 @@ const URLS = {
   model: (variant) => (CFG.modelBase || './models/') + `pose_landmarker_${variant}${CFG.modelExt || '.task'}`,
 };
 const STORE_KEY = 'fitgram.v0';
-const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true });
+const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false });
 const ORDER = ['pushup', 'squat', 'plank'];
 const COLORS = { left: '#2f9bd3', right: '#e8613c', axial: '#8a96a3', axis: '#8a96a3' };
 
@@ -650,6 +651,7 @@ const Runner = {
   },
 
   teardown() {
+    this.stopGrab(false);
     this.dejarDeVigilar();
     this.sid = (this.sid || 0) + 1;
     this.runId = (this.runId || 0) + 1;
@@ -854,8 +856,67 @@ const Runner = {
     };
   },
 
+  /* ---------------- video con el esqueleto (opcional, queda en el teléfono) ---------------- */
+
+  /** Empieza a grabar la imagen con el esqueleto encima, si la persona lo activó en Ajustes. */
+  startGrab() {
+    this.grab = null;
+    if (!S.settings.grabarVideo || S.stand || !['live', 'video'].includes(this.mode)) return;
+    const fmt = typeof MediaRecorder !== 'undefined' ? elegirFormatoVideo((m) => MediaRecorder.isTypeSupported(m)) : null;
+    const ov = $('overlay');
+    if (!fmt || !ov.width || typeof ov.captureStream !== 'function') return;
+    try {
+      const canvas = document.createElement('canvas');
+      const k = Math.min(1, 1280 / Math.max(ov.width, ov.height));
+      canvas.width = Math.round(ov.width * k); canvas.height = Math.round(ov.height * k);
+      const rec = new MediaRecorder(canvas.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 2500000 });
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+      rec.start(1000);
+      this.grab = { canvas, ctx: canvas.getContext('2d'), rec, chunks, fmt, k };
+    } catch (e) { console.warn('grabar video', e); this.grab = null; }
+  },
+
+  /** Pinta un cuadro del video grabado: la imagen, el esqueleto y el conteo. */
+  componer() {
+    const g = this.grab;
+    if (!g || g.rec.state !== 'recording') return;
+    const v = $('video'), ov = $('overlay'), { ctx, canvas } = g;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (v.videoWidth) {
+      const r = this.contentRect(v.videoWidth / v.videoHeight), s = this.dpr * g.k;
+      const mirror = this.mode === 'live' && S.settings.facing === 'user';
+      ctx.save();
+      if (mirror) { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
+      const x = mirror ? (this.cw - r.x - r.w) : r.x;
+      try { ctx.drawImage(v, x * s, r.y * s, r.w * s, r.h * s); } catch { /* cuadro no listo */ }
+      ctx.restore();
+    }
+    ctx.drawImage(ov, 0, 0, canvas.width, canvas.height);
+    const val = this.st?.value;
+    if (val != null) {
+      const txt = this.test === 'plank' ? `${mmss(val)}` : `${val} válidas`;
+      ctx.font = `600 ${Math.round(canvas.height / 16)}px sans-serif`;
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, ctx.measureText(txt).width + 32, canvas.height / 11);
+      ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(txt, 16, canvas.height / 22);
+    }
+  },
+
+  /** Termina la grabación y entrega { blob, ext }, o null si no había. `guardar` false la descarta. */
+  stopGrab(guardar = true) {
+    const g = this.grab;
+    this.grab = null;
+    if (!g || g.rec.state === 'inactive') return Promise.resolve(null);
+    return new Promise((res) => {
+      g.rec.onstop = () => res(guardar && g.chunks.length ? { blob: new Blob(g.chunks, { type: g.fmt.mime.split(';')[0] }), ext: g.fmt.ext } : null);
+      try { g.rec.stop(); } catch { res(null); }
+    });
+  },
+
   beginActive(t, immediate = false) {
     this.tiltLocked = true;
+    this.startGrab();
     const ss = this.sensorState();
     this.sensorLock = ss?.lastStill?.source === 'sensor' ? ss.lastStill : null;
     this.analyzer.start(t);
@@ -1146,6 +1207,11 @@ const Runner = {
   },
 
   draw(frame) {
+    this.drawOverlay(frame);
+    this.componer();
+  },
+
+  drawOverlay(frame) {
     const c = $('overlay'), ctx = c.getContext('2d');
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.cw, this.ch);
@@ -1344,7 +1410,9 @@ const Runner = {
       S.results = Hist.latestMap(S.history, ORDER);
       saveStore();
     }
-    S.last = { test: this.test, result, rec: this.rec, demo: this.mode === 'demo' };
+    S.last = { test: this.test, result, rec: this.rec, demo: this.mode === 'demo', video: null };
+    const ultimo = S.last;
+    this.stopGrab().then((v) => { if (v && S.last === ultimo) { ultimo.video = v; if (S.screen === 'result') renderGuardar(); } });
     const test = this.test;
     const sid = this.sid;
     setTimeout(() => { if (sid === this.sid && S.screen === 'run') { show('result'); renderResult(test); } }, 350);
@@ -1480,6 +1548,7 @@ function renderResult(test) {
   bv.onclick = () => openValid(test, r.value, r);
 
   setupReview(L?.rec || []);
+  renderGuardar();
 }
 
 function setupReview(rec) {
@@ -1502,6 +1571,7 @@ function setupReview(rec) {
   // Se abre en el cuadro del medio como vista previa; la primera vez que se
   // reproduce parte desde el inicio, no desde ahí.
   let preview = true;
+  let onEnd = null;   // lo usa grabar(): avisa cuando la reproducción llega al final
   const icon = (p) => { $('review-play-ic').innerHTML = p ? '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>' : '<polygon points="7 4 20 12 7 20 7 4"/>'; $('review-play').setAttribute('aria-label', p ? 'Pausar' : 'Reproducir'); };
   const step = () => {
     if (!playing) return;
@@ -1509,7 +1579,7 @@ function setupReview(rec) {
     let i = Number(range.value);
     while (i < rec.length - 1 && rec[i + 1].t <= el) i++;
     range.value = String(i); showAt(i);
-    if (i >= rec.length - 1) { playing = false; icon(false); return; }
+    if (i >= rec.length - 1) { playing = false; icon(false); onEnd?.(); return; }
     raf = requestAnimationFrame(step);
   };
   $('review-play').onclick = () => {
@@ -1527,7 +1597,57 @@ function setupReview(rec) {
     };
   }
   requestAnimationFrame(() => { view.resize?.(); view.setView?.('front'); showAt(Math.floor(rec.length / 2)); range.value = String(Math.floor(rec.length / 2)); });
-  Review = { stop() { playing = false; cancelAnimationFrame(raf); view?.destroy?.(); } };
+  Review = {
+    stop() { playing = false; onEnd = null; cancelAnimationFrame(raf); view?.destroy?.(); },
+    /** Graba la animación 3D de principio a fin, en la vista elegida. Entrega { blob, ext } o null. */
+    grabar() {
+      const fmt = typeof MediaRecorder !== 'undefined' ? elegirFormatoVideo((m) => MediaRecorder.isTypeSupported(m)) : null;
+      if (!fmt || typeof canvas.captureStream !== 'function') return Promise.resolve(null);
+      return new Promise((res) => {
+        let mr;
+        try { mr = new MediaRecorder(canvas.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 2000000 }); } catch { res(null); return; }
+        const chunks = [];
+        mr.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+        mr.onstop = () => res(chunks.length ? { blob: new Blob(chunks, { type: fmt.mime.split(';')[0] }), ext: fmt.ext } : null);
+        onEnd = () => { onEnd = null; setTimeout(() => { try { mr.stop(); } catch { res(null); } }, 400); };
+        mr.start(500);
+        cancelAnimationFrame(raf);
+        preview = false; range.value = '0'; showAt(0);
+        playing = true; icon(true); i0 = 0; t0 = performance.now(); raf = requestAnimationFrame(step);
+      });
+    },
+  };
+  Review.disponible = typeof MediaRecorder !== 'undefined' && typeof canvas.captureStream === 'function';
+}
+
+/** Guarda un archivo: con la hoja de compartir del teléfono si existe, si no, como descarga. */
+async function guardarArchivo(nombre, blob) {
+  try {
+    const file = new File([blob], nombre, { type: blob.type });
+    if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: 'FitGram' }); return true; }
+  } catch (e) { if (e?.name === 'AbortError') return false; /* sigue con la descarga */ }
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return true;
+  } catch { return false; }
+}
+
+/** Botones de «Guardar o compartir» del resultado (idea de Elías, 23-nov). */
+function renderGuardar() {
+  const L = S.last;
+  const box = $('res-guardar');
+  const real = !!L && !L.demo && L.test === S.test;
+  box.hidden = !real || S.stand;   // modo stand: el teléfono es compartido, no se guarda nada
+  if (box.hidden) return;
+  $('btn-save-video').hidden = !L.video;
+  $('btn-save-3d').hidden = !(L.rec?.length && Review?.disponible);
+  $('btn-share-skel').hidden = !(L.rec?.length);
+  box.hidden = $('btn-save-video').hidden && $('btn-save-3d').hidden && $('btn-share-skel').hidden;
+  $('res-guardar-msg').textContent = '';
 }
 
 /* ------------------------------------------------------------------ avance */
@@ -2608,6 +2728,7 @@ function renderSettings() {
   $('set-voice').checked = !!S.settings.voice;
   $('set-angles').checked = !!S.settings.angles;
   $('set-calidad').checked = !!S.settings.calidad;
+  $('set-grabar').checked = !!S.settings.grabarVideo;
   $('set-tilt').checked = !!S.settings.tiltCorrection;
   $('set-stand').checked = !!S.stand;
   $('set-valid').checked = !!S.settings.valid;
@@ -2655,6 +2776,33 @@ function bind() {
   $('set-voice').addEventListener('change', (e) => { S.settings.voice = e.target.checked; saveStore(); });
   $('set-angles').addEventListener('change', (e) => { S.settings.angles = e.target.checked; saveStore(); });
   $('set-calidad').addEventListener('change', (e) => { S.settings.calidad = e.target.checked; saveStore(); });
+  $('set-grabar').addEventListener('change', (e) => { S.settings.grabarVideo = e.target.checked; saveStore(); });
+  const guardarMsg = (t) => { $('res-guardar-msg').textContent = t; };
+  $('btn-save-video').addEventListener('click', async () => {
+    const v = S.last?.video;
+    if (!v) return;
+    const ok = await guardarArchivo(nombreArchivo(TESTS[S.last.test].name, 'video con esqueleto', v.ext), v.blob);
+    guardarMsg(ok ? 'Listo: el video quedó en tu teléfono.' : '');
+  });
+  $('btn-save-3d').addEventListener('click', async () => {
+    const b = $('btn-save-3d');
+    b.disabled = true; guardarMsg('Grabando la animación 3D… espera a que termine.');
+    const v = await Review?.grabar();
+    b.disabled = false;
+    if (!v) { guardarMsg('Este navegador no puede grabar la animación.'); return; }
+    const ok = await guardarArchivo(nombreArchivo(TESTS[S.last.test].name, 'animacion 3d', v.ext), v.blob);
+    guardarMsg(ok ? 'Listo: la animación quedó en tu teléfono.' : '');
+  });
+  $('btn-share-skel').addEventListener('click', async () => {
+    const L = S.last;
+    if (!L?.rec?.length) return;
+    if (!window.confirm('Vas a compartir solo los puntos de tu cuerpo (sin imagen ni video), tu edad, tu sexo y tu resultado. No va tu nombre ni la fecha exacta. Sirve para que el equipo de FitGram afine las reglas de conteo. ¿Seguir?')) return;
+    const r = L.result;
+    const datos = esqueletoParaCompartir(L.rec, { test: L.test, value: r.value, invalid: r.invalid, date: r.date,
+      age: r.profile?.age, sex: r.profile?.sex, reglas: r.reglas, nombres: [...H36M.names] });
+    const ok = await guardarArchivo(nombreArchivo(TESTS[L.test].name, 'esqueleto', 'json'), new Blob([JSON.stringify(datos)], { type: 'application/json' }));
+    guardarMsg(ok ? 'Listo. Mándaselo al equipo por el medio que prefieras.' : '');
+  });
   $('set-tilt').addEventListener('change', (e) => { S.settings.tiltCorrection = e.target.checked; saveStore(); });
   $('btn-probe').addEventListener('click', async () => {
     const out = $('probe-out');

@@ -143,6 +143,8 @@ def main():
         page.evaluate(SENSORS_JS, 8)
         page.wait_for_function("document.getElementById('probe-out').textContent.includes('Orientación')", timeout=10000)
         check('Orientación: sí' in page.text_content('#probe-out'), f"probar sensores: {page.text_content('#probe-out')}")
+        if VIDEOS:
+            page.check('#set-grabar')   # para probar el video con esqueleto en el escenario D
         page.screenshot(path=str(OUT / 'C-ajustes.png'))
         page.click('#sheet-close')
 
@@ -169,11 +171,25 @@ def main():
             open_test(page, idx)
             page.set_input_files('#file-pick', str(v))
             page.wait_for_selector('#scr-run:not([hidden])')
+            page.wait_for_selector('#btn-start:not([hidden])', timeout=120000)
+            page.click('#btn-start')
             try:
                 page.wait_for_selector('#scr-result:not([hidden])', timeout=600000)
                 check(True, f"video {v.name}: {page.text_content('#res-value')} {page.text_content('#res-unit')}"
                             f" · {page.text_content('#level-msg')}")
                 page.screenshot(path=str(OUT / f'D-{v.stem}.png'), full_page=True)
+                # Guardar o compartir: video con esqueleto, esqueleto y animación 3D (se descargan en Chrome de escritorio)
+                page.wait_for_timeout(1500)
+                for b, ext, wait in (('#btn-save-video', '.mp4', 10000), ('#btn-share-skel', '.json', 10000), ('#btn-save-3d', '', 120000)):
+                    if not page.is_visible(b):
+                        check(False, f'video {v.name}: falta el botón {b}')
+                        continue
+                    page.once('dialog', lambda d: d.accept())
+                    with page.expect_download(timeout=wait) as dl:
+                        page.click(b)
+                    name = dl.value.suggested_filename
+                    size = Path(dl.value.path()).stat().st_size
+                    check(name.endswith(ext) and size > 1000, f'{b}: {name} ({size // 1024} KB)')
             except Exception as e:
                 page.screenshot(path=str(OUT / f'D-{v.stem}-falla.png'))
                 check(False, f'video {v.name}: no llegó al resultado ({e})')

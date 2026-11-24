@@ -42,7 +42,7 @@ Historias escritas por José para FitGram v1 (13-nov-2026), la versión paralela
 
 ## Auditoría (22-nov-2026)
 
-**Cuenta.** El alcance del MVP abarca 56 historias: HU-01 a HU-52 sin HU-42 (que pasó a Futuro) y HU-61 a HU-65. De ellas, 39 están hechas en código, 6 resueltas de otra forma (HU-01, 03, 04, 07, 41, 49), 6 parciales (HU-32, 46, 48, 50, 51, 52), 1 pendiente (HU-65) y 4 fuera hasta que el equipo decida (HU-02, 26, 27 y 33: esta app no tiene esas pruebas ni esa pregunta). Las 9 de futuro siguen siendo futuro; del modo juego (HU-58) ya hay un prototipo.
+**Cuenta.** El alcance del MVP abarca estas historias: HU-01 a HU-52 sin HU-42 (que pasó a Futuro) y HU-61 a HU-66 (57 en total). De ellas, 40 están hechas en código, 6 resueltas de otra forma (HU-01, 03, 04, 07, 41, 49), 6 parciales (HU-32, 46, 48, 50, 51, 52), 1 pendiente (HU-65) y 4 fuera hasta que el equipo decida (HU-02, 26, 27 y 33: esta app no tiene esas pruebas ni esa pregunta). Las 9 de futuro siguen siendo futuro; del modo juego (HU-58) ya hay un prototipo.
 
 **Ya decidido:** dos malas seguidas terminan la prueba (A3, 22-nov; ver HU-11 y HU-25).
 
@@ -87,9 +87,9 @@ Historias escritas por José para FitGram v1 (13-nov-2026), la versión paralela
 | J. Accesibilidad e idioma | HU-45 a HU-48 |
 | K. Calidad y validación | HU-49 a HU-52 |
 | L. Futuro | HU-53 a HU-60 |
-| M. Agregadas al adaptar | HU-61 a HU-65 |
+| M. Agregadas al adaptar | HU-61 a HU-66 |
 
-Total: 65 historias (60 de la v1 de José y 5 agregadas al adaptar, épica M).
+Total: 66 historias (60 de la v1 de José y 6 agregadas al adaptar, épica M).
 
 ---
 
@@ -436,6 +436,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 - **Dado** un video subido, **cuando** termina el análisis, **entonces** la app no conserva copia; el archivo original sigue solo en mi galería.
 - **Dado** el historial y la exportación, **cuando** se revisan, **entonces** contienen números y fechas, nunca imágenes ni video.
 - Prioridad: **Must** · Sprint: S1 · Estado: **Hecho en código**
+- 🔎 **Nota (23-nov):** Desde el 23-nov la persona puede **elegir** guardar en su teléfono un video con el esqueleto superpuesto (Ajustes, apagado por defecto) o la animación 3D (HU-66). La app sigue sin guardar video por su cuenta y sin enviarlo; lo que la persona guarde queda en su galería.
 
 ### HU-41 · No perder mis datos de v0
 **Como** persona que ya probó la versión anterior **quiero** que mis datos se migren **para** no perder mi historial.
@@ -639,6 +640,15 @@ Nada de esta épica entra al MVP. Está aquí para que el diseño del MVP no cie
 - **Dado** los resultados, **cuando** no se cumple una meta, **entonces** se prueba el modelo «Rápido» (el detector liviano, en Ajustes) y se anota la diferencia.
 - Prioridad: **Must** · Sprint: S1 (Lenovo) y S2 (teléfonos) · Estado: **Pendiente**
 - **Dado** que la Lenovo no alcanza la meta antes del 30-nov, **cuando** se prepara el pitch, **entonces** se usa el modelo «Rápido» y, si igual falla, se muestran los videos de respaldo y la demostración (responsable: David, con Elías).
+
+### HU-66 · Guardar mi video con el esqueleto o compartir mi esqueleto
+**Como** persona que entrena **quiero** guardar un video de mi prueba con el esqueleto encima, o la animación 3D, y poder compartir solo mi esqueleto (sin imagen) con el equipo **para** ver mi técnica después y ayudar a mejorar el conteo sin entregar un video mío.
+- **Dado** que activé «Grabar video con el esqueleto» en Ajustes, **cuando** termino una prueba en vivo o con video, **entonces** en el resultado aparece «Guardar video con el esqueleto» y el archivo queda en mi teléfono.
+- **Dado** el resultado, **cuando** toco «Guardar animación 3D», **entonces** se graba la reproducción 3D de principio a fin y se guarda en mi teléfono.
+- **Dado** el resultado, **cuando** toco «Compartir mi esqueleto (sin video)», **entonces** la app me explica qué se comparte (puntos del cuerpo, edad, sexo, resultado; sin nombre, imagen ni fecha exacta) y, si acepto, me entrega el archivo para mandarlo por el medio que yo elija.
+- **Dado** el modo stand o la demostración, **cuando** termina la prueba, **entonces** no aparecen estas opciones.
+- Prioridad: **Should** · Sprint: S1 · Estado: **Hecho en código**
+- 🔎 **Nota (23-nov):** Idea de Elías (WhatsApp, 23-nov). Los datos del esqueleto sirven para afinar y validar las reglas de conteo de FitGram, no para entrenar MediaPipe. Falta probar la grabación en la Lenovo y en un iPhone.
 
 ---
 

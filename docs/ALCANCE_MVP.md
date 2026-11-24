@@ -27,7 +27,7 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 | Historial | Hasta 50 resultados por prueba en el teléfono, avance contra el intento anterior (con aviso cuando dos mediciones no son comparables) y aviso dentro de la app cada 4 semanas (sin notificaciones). Lista «Mis mediciones» con borrar cada una, y exportación CSV/JSON de los resultados personales. |
 | Validación | Modo validación: app + 2 evaluadores por participante y prueba, acuerdo, Bland-Altman y CCI con intervalo, exportación CSV/JSON y recarga del JSON. |
 | Modo stand | Para ferias y el pitch: cualquier edad, no guarda nada. 🔎 Acepta menores; si se pone un límite es decisión del equipo (pregunta F3). |
-| Privacidad | Todo se procesa en el teléfono. No se envía ningún dato de la persona a internet (comprobado revisando el código; falta mirar el tráfico en un teléfono); solo se descargan la app y el modelo la primera vez. El video nunca se guarda. |
+| Privacidad | Todo se procesa en el teléfono. No se envía ningún dato de la persona a internet (comprobado revisando el código; falta mirar el tráfico en un teléfono); solo se descargan la app y el modelo la primera vez. La app nunca guarda ni envía video por su cuenta; la persona puede elegir guardar en su teléfono un video con el esqueleto o la animación 3D, y compartir solo su esqueleto (sin imagen) con el equipo (HU-66). |
 | Plataforma | Una sola app web (Android, iPhone y computador) en GitHub Pages, instalable y usable sin conexión después de tocar «Preparar para usar sin conexión». Bienvenida corta la primera vez y aviso si el navegador no sirve. |
 
 ## 3. Qué NO hace el MVP (fuera de alcance)
@@ -41,7 +41,7 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 - **No** usa pruebas de 1 o 2 minutos.
 - **No** incluye VideoPose3D (pesos de uso no comercial, CC BY-NC 4.0).
 - **No** diagnostica ni reemplaza a un profesional de la salud. El perfil general es un índice exploratorio.
-- **No** guarda video, ni envía notificaciones, ni se publica en App Store ni Play Store.
+- **No** guarda video por su cuenta (solo si la persona lo pide, en su teléfono), ni envía notificaciones, ni se publica en App Store ni Play Store.
 
 ## 4. Supuestos
 
