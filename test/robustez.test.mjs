@@ -74,3 +74,13 @@ test('la variante de rodillas cuenta tan bien como la de puntas', () => {
     }
   }
 });
+
+test('vista de frente: de frente supera el umbral; de lado no', async () => {
+  const { vistaDeFrente, EX_CONFIG } = await import('../src/exercises.mjs');
+  const P = (x, y) => ({ x, y, v: 1 });
+  const frente = { l_shoulder: P(0.62, 0.3), r_shoulder: P(0.38, 0.3), l_hip: P(0.56, 0.6), r_hip: P(0.44, 0.6) };
+  const lado = { l_shoulder: P(0.51, 0.3), r_shoulder: P(0.49, 0.3), l_hip: P(0.5, 0.6), r_hip: P(0.5, 0.6) };
+  assert.ok(vistaDeFrente(frente) > EX_CONFIG.common.sideViewMax);
+  assert.ok(vistaDeFrente(lado) < EX_CONFIG.common.sideViewMax);
+  assert.equal(vistaDeFrente({}), null);
+});

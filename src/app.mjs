@@ -1,7 +1,7 @@
 // FitGram v0 — app shell: screens, camera, MediaPipe Pose Landmarker, test runner, results.
 // Modules are inlined by build.mjs; imports below are rewritten at build time.
 import { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } from './norms.mjs';
-import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG } from './exercises.mjs';
+import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG, vistaDeFrente } from './exercises.mjs';
 import { synthSession } from './synth.mjs';
 import { SKELETON_CONFIG, H36M, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } from './skeleton.mjs';
 import * as Hist from './history.mjs';
@@ -35,6 +35,7 @@ const URLS = {
   model: (variant) => (CFG.modelBase || './models/') + `pose_landmarker_${variant}${CFG.modelExt || '.task'}`,
 };
 const STORE_KEY = 'fitgram.v0';
+const ARM_HOLD_MS = 300; // cuánto hay que estar en la posición de partida para que empiece la prueba
 const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false });
 const ORDER = ['pushup', 'squat', 'plank'];
 const COLORS = { left: '#2f9bd3', right: '#e8613c', axial: '#8a96a3', axis: '#8a96a3' };
@@ -530,7 +531,7 @@ const Runner = {
     // Inclinación del teléfono (orientation.mjs, de Jose): se estima con la postura
     // de partida antes de empezar y queda fija durante la prueba. Sin esto, una
     // cámara ladeada ladea el esqueleto 3D y los ángulos respecto de la vertical.
-    this.level = createPoseLevelEstimator(test); this.tilt = null; this.tiltLocked = false; this.sensorLock = null; this.avisoMovido = false; this.movido = false; this.chipKey = ''; this.tiltDicho = '';
+    this.level = createPoseLevelEstimator(test); this.tilt = null; this.tiltLocked = false; this.sensorLock = null; this.avisoMovido = false; this.movido = false; this.chipKey = ''; this.tiltDicho = ''; this.frenteDesde = null; this.avisoLadoAt = null;
     $('level-chip').hidden = mode === 'demo'; $('level-chip').dataset.level = ''; $('level-msg').textContent = 'Inclinación del teléfono'; $('level-src').textContent = '';
     // En vivo se suman el giroscopio y el acelerómetro: dicen la inclinación
     // aunque la persona todavía no esté en posición, y avisan si el teléfono se mueve.
@@ -806,6 +807,20 @@ const Runner = {
     if (this.phase !== 'active') { this.cameraLost(); return; }
     const st = this.analyzer.stop(performance.now(), 'not_visible');
     this.finish(st, 'not_visible');
+  },
+
+  /**
+   * Durante la prueba: si la persona queda de frente a la cámara más de 1,5 s, se avisa en pantalla y en voz (cada 8 s
+   * como máximo). De frente no se mide la rodilla ni el codo y las repeticiones no se cuentan, sin que se note.
+   */
+  revisarLado(joints, t) {
+    const r = vistaDeFrente(joints.j2);
+    if (r == null || r <= EX_CONFIG.common.sideViewMax) { this.frenteDesde = null; return; }
+    if (this.frenteDesde == null) { this.frenteDesde = t; return; }
+    if (t - this.frenteDesde < 1500 || t - (this.avisoLadoAt ?? -1e9) < 8000) return;
+    this.avisoLadoAt = t;
+    this.cue({ level: 'warn', msg: 'Ponte de lado a la cámara' });
+    Voice.say('Ponte de lado a la cámara. De frente no puedo contar', true);
   },
 
   sensorState() { return this.tiltEst ? this.tiltEst.state(performance.now()) : null; },
@@ -1179,10 +1194,13 @@ const Runner = {
       this.setPos(c.ok, c.ok ? 'Posición correcta: comienza' : c.msg);
       if (c.ok) {
         if (this.armOkSince == null) this.armOkSince = frame.t;
-        if (frame.t - this.armOkSince >= 1000) { this.beginActive(this.armOkSince); }
+        // Basta con estar en la posición de partida un momento (no 1 s quieto): quien hace las repeticiones sin pausa
+        // nunca se queda 1 s arriba, y la app se perdía las primeras (video de Elías, 25-nov).
+        if (frame.t - this.armOkSince >= ARM_HOLD_MS) { this.beginActive(this.armOkSince); }
       } else this.armOkSince = null;
     }
     if (this.phase === 'active') {
+      this.revisarLado(joints, frame.t);
       const st = this.analyzer.update(joints);
       this.st = st;
       // Una sola vez cada 12 s: avisar más seguido sería ruido encima del ruido.

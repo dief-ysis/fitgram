@@ -577,4 +577,20 @@ function codigoDeConteo() {
 // cuenta igual que cambiar un umbral. Se arma en el módulo de la app, que ve
 // las dos configuraciones; acá van solo las funciones.
 
-export { EX_CONFIG, createAnalyzer, huellaDe, normalizarCodigo, codigoDeConteo };
+/**
+ * Cuánto mira la persona hacia la cámara: separación de los hombros / largo del tronco, en la imagen. Por encima de
+ * EX_CONFIG.common.sideViewMax está de frente (o casi) y la rodilla o el codo no se pueden medir. La usa la app para
+ * avisar durante la prueba; no cambia qué cuenta como repetición (no está en la huella de las reglas).
+ * @param {object} j2 Joints.j2
+ * @returns {number|null}
+ */
+function vistaDeFrente(j2) {
+  const ok = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y);
+  const ls = j2?.l_shoulder, rs = j2?.r_shoulder, lh = j2?.l_hip, rh = j2?.r_hip;
+  if (!ok(ls) || !ok(rs) || !ok(lh) || !ok(rh)) return null;
+  const sx = (ls.x + rs.x) / 2, sy = (ls.y + rs.y) / 2, hx = (lh.x + rh.x) / 2, hy = (lh.y + rh.y) / 2;
+  const torso = Math.hypot(sx - hx, sy - hy);
+  return torso > 1e-6 ? Math.hypot(ls.x - rs.x, ls.y - rs.y) / torso : null;
+}
+
+export { EX_CONFIG, createAnalyzer, huellaDe, normalizarCodigo, codigoDeConteo, vistaDeFrente };
