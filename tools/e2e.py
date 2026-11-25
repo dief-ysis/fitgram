@@ -217,6 +217,41 @@ def main():
                 page.screenshot(path=str(OUT / f'D-{v.stem}-falla.png'))
                 check(False, f'video {v.name}: no llegó al resultado ({e})')
 
+        # S. modo stand (como lo prueba el jurado): cualquier edad, nada se guarda, «Siguiente persona»
+        sc = browser.new_context(viewport={'width': 1472, 'height': 920}, permissions=['camera'], service_workers='block')
+        sp = sc.new_page()
+        sp.on('pageerror', lambda e: errors.append(str(e)))
+        sp.goto(url)
+        sp.evaluate("localStorage.clear(); localStorage.setItem('fitgram.v0', JSON.stringify({ marca: 'datos reales' }))")
+        antes = sp.evaluate("JSON.stringify(Object.entries(localStorage).sort())")
+        sp.goto(url + '?modo=stand')
+        sp.wait_for_selector('#scr-onb:not([hidden])')
+        check(sp.is_visible('#onb-age-num'), 'stand: deja escribir cualquier edad')
+        sp.fill('#onb-age-num', '45')
+        sp.click('#sex-pills .pill:has-text("Mujer")')
+        sp.click('#btn-onb')
+        sp.wait_for_selector('#scr-hub:not([hidden])')
+        open_test(sp, 1)
+        sp.click('#btn-demo')
+        sp.wait_for_selector('#btn-start:not([hidden])')
+        sp.click('#btn-start')
+        sp.wait_for_selector('#scr-result:not([hidden])', timeout=180000)
+        sp.wait_for_timeout(600)
+        val = (sp.text_content('#res-value') or '').strip()
+        lbl = sp.text_content('#res-table-lbl') or ''
+        check(val != '' and 'Sin tabla' in lbl, f'stand: 45 años ve su conteo ({val}) sin categoría («{lbl}»)')
+        check(sp.is_hidden('#res-guardar'), 'stand: sin «Guardar o compartir»')
+        despues = sp.evaluate("JSON.stringify(Object.entries(localStorage).sort())")
+        check(antes == despues, 'stand: no escribe nada en el teléfono')
+        sp.screenshot(path=str(OUT / 'S-stand-resultado.png'), full_page=True)
+        if sp.is_visible('#btn-next-person'):
+            sp.click('#btn-next-person')
+            sp.wait_for_selector('#scr-onb:not([hidden])')
+            check(sp.input_value('#onb-age-num') == '', 'stand: «Siguiente persona» vuelve a los datos en blanco')
+        else:
+            check(False, 'stand: falta el botón «Siguiente persona»')
+        sc.close()
+
         # T. tablet (Lenovo Tab P12: ~1472x920 de navegador), horizontal y vertical
         for nombre, vp in (('horizontal', {'width': 1472, 'height': 920}), ('vertical', {'width': 920, 'height': 1472})):
             tc = browser.new_context(viewport=vp, permissions=['camera'], service_workers='block')
