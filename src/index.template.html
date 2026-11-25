@@ -144,6 +144,7 @@ body.run-mode main { padding-block: 0 32px; }
 .run-close { width: 52px; height: auto; min-height: 52px; flex: none; }
 @media (max-width: 480px) { .run-tag { display: none; } }
 body.run-mode main.wrap { max-width: 960px; }
+@media (min-width: 1200px) and (orientation: landscape) { body.run-mode main.wrap { max-width: 1440px; } } /* tablet en horizontal: la imagen 16:9 usa todo el ancho */
 /* Tablet (p. ej. Lenovo Tab P12): fuera de la prueba todo se ve como celular, chico y angosto. Se agranda entero; la
    pantalla de la prueba no, porque el escenario mide su propio tamaño en píxeles. */
 @media (min-width: 900px) and (min-height: 760px) { body:not(.run-mode) { zoom: 1.3; } }
