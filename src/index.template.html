@@ -37,7 +37,7 @@
    Visual language inherited from the FitGram MVP: square corners, crop marks on cards, condensed uppercase labels. */
 :root {
   --bg: #f2f2f3; --surface: #f8f8f9; --surface-2: #ffffff; --ink: #1d1f20; --muted: #565b61;
-  --line: #c5c9ce; --line-soft: #dfe1e4; --accent: #5980a6; --accent-ink: #44678a; --on-accent: #ffffff;
+  --line: #c5c9ce; --line-soft: #dfe1e4; --accent: #4f77a0; /* 4,7:1 con blanco (antes #5980a6, 4,15:1, bajo el mínimo AA) */ --accent-ink: #44678a; --on-accent: #ffffff;
   --good: #2e7d5b; --warn: #a86b12; --bad: #b23b3b; --mark: #1d1f20;
   --stage: #0e1011; --stage-ink: #f2f4f5; --stage-muted: #a9b1b8; --stage-veil: rgba(14,16,17,.72);
   --sk-left: #2f9bd3; --sk-right: #e8613c; --sk-axis: #8a96a3;
@@ -77,7 +77,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 /* Header */
 .app-head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--ink); }
 .app-head .wrap { height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.brand { font-family: var(--font-cd); font-size: 26px; font-weight: 700; letter-spacing: .14em; background: none; border: 0; padding: 0; }
+.brand { font-family: var(--font-cd); font-size: 26px; font-weight: 700; letter-spacing: .14em; background: none; border: 0; padding: 0; min-height: 44px; }
 .head-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .icon-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: transparent; }
 .ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
@@ -223,9 +223,9 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .review .viewer canvas { width: 100%; height: 100%; display: block; touch-action: none; }
 .review .viewer .tag { position: absolute; left: 10px; top: 8px; font-family: var(--font-cd); font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--stage-muted); pointer-events: none; }
 .scrub { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: center; gap: 10px; }
-.scrub input[type=range] { width: 100%; accent-color: var(--accent); }
+.scrub input[type=range] { width: 100%; min-height: 44px; accent-color: var(--accent); }
 .seg { display: flex; border: 1px solid var(--line); }
-.seg button { flex: 1; min-height: 40px; border: 0; background: transparent; font-family: var(--font-cd); font-size: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.seg button { flex: 1; min-height: 44px; border: 0; background: transparent; font-family: var(--font-cd); font-size: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 
 /* Profile */

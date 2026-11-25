@@ -504,6 +504,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 - **Dado** cualquier botón, **cuando** lo toco, **entonces** su área mide al menos 44 × 44 px.
 - Prioridad: **Should** · Sprint: S3 · Estado: **Parcial**
 - 🔎 **Nota (22-nov):** Contador y avisos grandes (barra de avisos dentro de la imagen) y voz para lo que no se lee. Falta revisar contraste y áreas de 44 px con una lista de chequeo. El criterio «se leen a 2,5 m» no es medible tal cual: conviene fijar un tamaño mínimo.
+- 🔎 **Nota (25-nov):** Revisión automática en 7 pantallas, tema claro y oscuro: el azul de los botones en tema claro tenía 4,15:1 con el texto blanco (bajo el 4,5:1 de WCAG AA) y pasó a 4,7:1; el logo, la barra de la reproducción 3D y los botones Frente/Lado/Arriba pasaron a 44 px. Lo que queda bajo 44 px está exento: casillas dentro de filas de 44 px, enlaces dentro del texto y selectores de archivo ocultos detrás de su botón. En tablet la interfaz se agranda (Lenovo Tab P12). No revisado: el texto sobre la imagen de la cámara y la lectura real a 2,5 m.
 
 ---
 
