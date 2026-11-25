@@ -2433,6 +2433,97 @@ function registrarSW() {
   });
 }
 
+/* ------------------------------------------------------------------ ensayo antes de presentar */
+
+/* Una lista de chequeo para correr en el equipo del pitch (la Lenovo Tab P12) antes de presentar. Cada punto dice
+   ok / ojo / falla y qué hacer. No guarda nada. */
+const Ensayo = {
+  corriendo: false,
+  async run() {
+    if (this.corriendo) return;
+    this.corriendo = true;
+    const ul = $('ensayo-out'), btn = $('btn-ensayo');
+    btn.disabled = true; ul.innerHTML = '';
+    const poner = (nivel, titulo, detalle) => {
+      const li = document.createElement('li');
+      li.className = nivel;
+      li.innerHTML = `<span class="i" aria-hidden="true">${nivel === 'ok' ? '✓' : nivel === 'warn' ? '!' : '✕'}</span><span><b>${esc(titulo)}</b> · ${esc(detalle)}</span>`;
+      li.setAttribute('aria-label', `${nivel === 'ok' ? 'Bien' : nivel === 'warn' ? 'Ojo' : 'Falla'}: ${titulo}. ${detalle}`);
+      ul.appendChild(li);
+    };
+    let stream = null;
+    try {
+      // 1. Sitio seguro (sin HTTPS no hay cámara ni sensores)
+      if (window.isSecureContext === false) poner('bad', 'Conexión', 'El sitio no es seguro (HTTPS): la cámara no va a funcionar. Abre la app desde dief-ysis.github.io/fitgram.');
+      else poner('ok', 'Conexión', 'Sitio seguro.');
+      // 2. Cámara
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true;
+      try {
+        stream = await openCameraStream(S.settings.facing);
+        v.srcObject = stream; await v.play().catch(() => {});
+        await waitFor(() => v.videoWidth > 0, 4000);
+        const s = stream.getVideoTracks()[0]?.getSettings?.() || {};
+        poner(v.videoWidth >= 640 ? 'ok' : 'warn', 'Cámara', `${v.videoWidth}×${v.videoHeight}${s.frameRate ? `, ${Math.round(s.frameRate)} cuadros/s` : ''} (${S.settings.facing === 'user' ? 'frontal' : 'trasera'}).`);
+      } catch (e) {
+        const m = cameraErrorMessage(e, { secure: window.isSecureContext !== false });
+        poner('bad', 'Cámara', `${m.title}. ${m.detail}`);
+      }
+      // 3. Detector y velocidad
+      try {
+        await Engine.load(S.settings.model, () => {});
+        if (v.videoWidth) {
+          const ms = [];
+          for (let i = 0; i < 25; i++) {
+            const t0 = performance.now();
+            Engine.detect(v, performance.now(), v.videoWidth / v.videoHeight);
+            ms.push(performance.now() - t0);
+            await new Promise((r) => requestAnimationFrame(r));
+          }
+          const prom = ms.slice(5).reduce((a, b) => a + b, 0) / (ms.length - 5);
+          const fps = Math.min(30, 1000 / Math.max(prom, 1));
+          poner('ok', 'Detector', Engine.info());
+          poner(fps >= 15 ? 'ok' : 'warn', 'Velocidad', `unos ${Math.round(fps)} cuadros por segundo (${Math.round(prom)} ms por cuadro).${fps < 15 ? (S.settings.model === 'lite' ? ' Está bajo 15: cierra otras apps y vuelve a probar.' : ' Está bajo 15: prueba el modelo «Rápido».') : ''}`);
+        } else poner('warn', 'Detector', `${Engine.info()}. Sin cámara no se pudo medir la velocidad.`);
+      } catch (e) { poner('bad', 'Detector', `No cargó: ${e?.message || e}`); }
+      // 4. Sensores
+      try {
+        await Sensors.requestPermission();
+        const est = createTiltEstimator({ facing: S.settings.facing });
+        Sensors.start(est, { facing: S.settings.facing });
+        await new Promise((r) => setTimeout(r, 1500));
+        const st = est.state(performance.now()); Sensors.stop();
+        const ok = st.sensors.orientation || st.sensors.accelerometer;
+        const t = st.lastStill || st.tilt;
+        poner(ok ? 'ok' : 'warn', 'Sensores', ok ? `responden${t && Number.isFinite(t.roll) ? `; inclinación ahora: ${Math.round(Math.abs(t.roll))}°` : ''}.` : (Sensors.permission === 'denied' ? 'permiso rechazado: la inclinación se estimará con la postura.' : 'no responden: la inclinación se estimará con la postura.'));
+      } catch { poner('warn', 'Sensores', 'no se pudieron leer: la inclinación se estimará con la postura.'); }
+      // 5. Voz
+      const hayVoz = 'speechSynthesis' in window;
+      poner(hayVoz && Voice.voice ? 'ok' : hayVoz ? 'warn' : 'bad', 'Voz',
+        !hayVoz ? 'este navegador no habla: los avisos serán solo en pantalla.'
+          : Voice.voice ? `voz en español (${Voice.voice.lang}).${S.settings.voice ? ' Sube el volumen del equipo.' : ' Está apagada en Ajustes.'}`
+            : 'no hay voz en español instalada; puede hablar con acento o en otro idioma.');
+      // 6. Sin conexión
+      try {
+        const keys = (await caches.keys()).filter((k) => k.endsWith('-heavy'));
+        let n = 0;
+        for (const k of keys) n += (await (await caches.open(k)).keys()).length;
+        poner(n >= 3 ? 'ok' : 'warn', 'Sin conexión', n >= 3 ? 'el detector y los modelos están guardados: funciona en modo avión.' : 'todavía no está preparada: toca «Preparar para usar sin conexión» abajo, con wifi.');
+      } catch { poner('warn', 'Sin conexión', 'no se pudo revisar.'); }
+      // 7. Batería y pantalla
+      try {
+        const b = await navigator.getBattery?.();
+        if (b) poner(b.level >= 0.5 || b.charging ? 'ok' : 'warn', 'Batería', `${Math.round(b.level * 100)} %${b.charging ? ', cargando' : ''}.${b.level < 0.5 && !b.charging ? ' Cárgala antes de presentar.' : ''}`);
+      } catch { /* sin dato de batería */ }
+      poner('wakeLock' in navigator ? 'ok' : 'warn', 'Pantalla', 'wakeLock' in navigator ? 'la app mantiene la pantalla encendida durante la prueba.' : 'este navegador puede apagar la pantalla: súbele el tiempo de apagado.');
+    } finally {
+      try { for (const tr of stream?.getTracks() || []) tr.stop(); } catch { /* ignore */ }
+      $('engine-info').textContent = Engine.info();
+      btn.disabled = false; this.corriendo = false;
+    }
+  },
+};
+
 /* ------------------------------------------------------------------ modo juego */
 
 /* Idea de Elias Hermosilla (KineVision). La lógica del juego vive en el módulo
@@ -2821,6 +2912,7 @@ function bind() {
   $('set-angles').addEventListener('change', (e) => { S.settings.angles = e.target.checked; saveStore(); });
   $('set-calidad').addEventListener('change', (e) => { S.settings.calidad = e.target.checked; saveStore(); });
   $('set-grabar').addEventListener('change', (e) => { S.settings.grabarVideo = e.target.checked; saveStore(); });
+  $('btn-ensayo').addEventListener('click', () => Ensayo.run());
   $('set-juego').addEventListener('change', (e) => { S.settings.mostrarJuego = e.target.checked; saveStore(); if (S.screen === 'hub') renderHub(); });
   const guardarMsg = (t) => { $('res-guardar-msg').textContent = t; };
   $('btn-save-video').addEventListener('click', async () => {

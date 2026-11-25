@@ -186,6 +186,11 @@ body.run-mode main.wrap { max-width: 960px; }
 .veil .sub { font-size: 15px; color: var(--stage-muted); max-width: 36ch; }
 .progress { width: min(260px, 80%); height: 6px; background: rgba(255,255,255,.18); }
 .progress > i { display: block; height: 100%; width: 0%; background: var(--stage-ink); transition: width .2s; }
+.ensayo { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ensayo li { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 8px; font-size: 14px; line-height: 1.35; }
+.ensayo li b { font-weight: 600; }
+.ensayo .i { font-weight: 700; }
+.ensayo .ok .i { color: var(--good); } .ensayo .warn .i { color: var(--warn); } .ensayo .bad .i { color: var(--bad); }
 .level-chip { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: var(--surface); flex-wrap: wrap; }
 .level-chip .dot { width: 10px; height: 10px; flex: none; background: var(--muted); }
 .level-chip[data-level="ok"] .dot { background: var(--good); }
@@ -702,6 +707,12 @@ body.run-mode .stand-bar { display: none; }
       <div class="small" id="offline-info">Comprobando…</div>
       <button class="btn quiet sm" id="btn-offline" type="button">Preparar para usar sin conexión</button>
       <div class="small muted">Guarda el detector y los dos modelos (unos 29 MB) en este teléfono. Después la app abre y mide en modo avión, sin pedirle nada a ningún servidor.</div>
+    </div>
+    <div class="field">
+      <div class="lbl">Ensayo antes de presentar</div>
+      <div class="small muted">Revisa en un toque si este equipo está listo: cámara, detector, velocidad, sensores, voz, sin conexión y batería. Pide la cámara unos segundos.</div>
+      <button class="btn quiet sm" id="btn-ensayo" type="button">Revisar todo</button>
+      <ul class="ensayo" id="ensayo-out" aria-live="polite"></ul>
     </div>
     <div class="field">
       <div class="lbl">Motor</div>

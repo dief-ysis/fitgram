@@ -148,6 +148,17 @@ def main():
             page.check('#set-calidad')  # y el rendimiento en el resultado
         page.screenshot(path=str(OUT / 'C-ajustes.png'))
         page.click('#sheet-close')
+        # Ensayo antes de presentar
+        page.click('#btn-settings'); page.wait_for_selector('#sheet:not([hidden])')
+        page.click('#btn-ensayo')
+        page.wait_for_function("[...document.querySelectorAll('#ensayo-out li')].some(li => li.textContent.includes('Pantalla'))", timeout=120000)
+        items = page.evaluate("[...document.querySelectorAll('#ensayo-out li')].map(li => li.className + ' ' + li.textContent)")
+        for it in items:
+            print('       ', it)
+        ok_cam = any(i.startswith('ok') and 'Cámara' in i for i in items)
+        ok_det = any(i.startswith('ok') and 'Detector' in i for i in items)
+        check(len(items) >= 7 and ok_cam and ok_det, f'ensayo: {len(items)} puntos, cámara y detector bien')
+        page.click('#sheet-close')
         # El juego se puede ocultar desde Ajustes
         page.evaluate("document.querySelector('[data-tab=hub]')?.click()")
         page.wait_for_selector('#scr-hub:not([hidden])')
