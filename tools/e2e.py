@@ -145,6 +145,7 @@ def main():
         check('Orientación: sí' in page.text_content('#probe-out'), f"probar sensores: {page.text_content('#probe-out')}")
         if VIDEOS:
             page.check('#set-grabar')   # para probar el video con esqueleto en el escenario D
+            page.check('#set-calidad')  # y el rendimiento en el resultado
         page.screenshot(path=str(OUT / 'C-ajustes.png'))
         page.click('#sheet-close')
         # El juego se puede ocultar desde Ajustes
@@ -187,6 +188,8 @@ def main():
                 check(True, f"video {v.name}: {page.text_content('#res-value')} {page.text_content('#res-unit')}"
                             f" · {page.text_content('#level-msg')}")
                 page.screenshot(path=str(OUT / f'D-{v.stem}.png'), full_page=True)
+                det = page.text_content('#res-detail') or ''
+                check('cuadros por segundo' in det, f"video {v.name}: rendimiento en el resultado «{det[det.find('Rendimiento'):][:120]}»")
                 # Guardar o compartir: video con esqueleto, esqueleto y animación 3D (se descargan en Chrome de escritorio)
                 page.wait_for_timeout(1500)
                 for b, ext, wait in (('#btn-save-video', '.mp4', 10000), ('#btn-share-skel', '.json', 10000), ('#btn-save-3d', '', 120000)):

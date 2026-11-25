@@ -791,6 +791,22 @@ const Runner = {
   anotarCuadro() {
     this.ultimoCuadroAt = performance.now();
     this.huboCuadro = true;
+    if (this.perf && this.phase === 'active') this.perf.n++;
+  },
+
+  /** Rendimiento de la serie (HU-65): cuadros analizados por segundo y lo que tarda el detector. Solo cámara y video. */
+  rendimiento() {
+    const p = this.perf;
+    if (!p || !['live', 'video'].includes(this.mode)) return null;
+    const seg = (performance.now() - p.t0) / 1000;
+    const ms = p.ms.length ? p.ms.slice().sort((a, b) => a - b) : null;
+    return {
+      fps: seg > 1 ? Math.round((p.n / seg) * 10) / 10 : null,
+      msDeteccion: ms ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null,
+      msP95: ms ? Math.round(ms[Math.min(ms.length - 1, Math.floor(ms.length * 0.95))]) : null,
+      modelo: S.settings.model || 'full',
+      video: this.mode === 'video',
+    };
   },
 
   dejarDeVigilar() {
@@ -932,6 +948,7 @@ const Runner = {
   },
 
   beginActive(t, immediate = false) {
+    this.perf = { n: 0, t0: performance.now(), ms: [] };
     this.tiltLocked = true;
     this.startGrab();
     const ss = this.sensorState();
@@ -1137,6 +1154,7 @@ const Runner = {
 
   noteDetect(ms, adaptVideo = false) {
     this.detectMs.push(ms);
+    if (this.perf && this.phase === 'active' && this.perf.ms.length < 20000) this.perf.ms.push(ms);
     if (this.detectMs.length > 30) this.detectMs.shift();
     if (adaptVideo && this.detectMs.length >= 10) {
       const avg = this.detectMs.reduce((a, b) => a + b, 0) / this.detectMs.length;
@@ -1422,6 +1440,7 @@ const Runner = {
     const result = { value, invalid: st.invalid || 0, endReason, mode: this.mode, date: new Date().toISOString(), log: (st.log || []).slice(0, 200),
       calidad: this.jitter?.resumen() || null,
       captura: this.capturaAhora(),
+      rendimiento: this.rendimiento(),
       sinVer: Number.isFinite(st.sinVer) ? st.sinVer : null,
       reglas: REGLAS,
       profile: { age: S.profile.age, sex: S.profile.sex } };
@@ -1501,9 +1520,13 @@ function renderResult(test) {
   const detail = t.unit === 's'
     ? `${num(r.value, 1)} s en posición. ${cls?.percentile != null ? `Percentil ${cls.percentile} entre universitarios de tu sexo.` : ''} Terminó porque ${endTxt}.`
     : `${r.invalid} no válidas. Terminó porque ${endTxt}.`;
+  const rd = r.rendimiento;
   $('res-detail').textContent = detail
     + (S.settings.calidad && r.calidad
       ? ` Estabilidad de la detección: ${String(r.calidad.temblor).replace('.', ',')} (${r.calidad.nivel}).`
+      : '')
+    + (S.settings.calidad && rd?.fps != null
+      ? ` Rendimiento: ${num(rd.fps, 1)} cuadros por segundo, el detector tarda ${rd.msDeteccion} ms (${rd.msP95} ms en los cuadros más lentos), modelo ${rd.modelo === 'lite' ? 'rápido' : 'preciso'}.${rd.fps < 15 && !rd.video ? ' Bajo 15 cuadros por segundo: prueba el modelo «Rápido» en Ajustes.' : ''}`
       : '');
   $('res-next').textContent = cls ? (cls.next ? `Te faltan ${t.unit === 's' ? num(cls.next.needed, 0) + ' s' : cls.next.needed + (cls.next.needed === 1 ? ' repetición' : ' repeticiones')} para llegar a «${cls.next.label}».` : 'Estás en la categoría más alta de la tabla.') : '';
 

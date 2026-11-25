@@ -681,7 +681,7 @@ body.run-mode .stand-bar { display: none; }
     <div class="result-head"><h2 class="screen-title" id="sheet-title" style="font-size:30px">Ajustes</h2><button class="icon-btn" id="sheet-close" type="button" aria-label="Cerrar ajustes"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
     <label class="toggle-row" for="set-voice"><span>Voz: cuenta las repeticiones y avisa la técnica</span><input type="checkbox" id="set-voice"></label>
     <label class="toggle-row" for="set-angles"><span>Mostrar ángulos sobre el esqueleto</span><input type="checkbox" id="set-angles"></label>
-    <label class="toggle-row" for="set-calidad"><span>Mostrar la estabilidad de la detección</span><input type="checkbox" id="set-calidad"></label>
+    <label class="toggle-row" for="set-calidad"><span>Mostrar la estabilidad y el rendimiento de la detección</span><input type="checkbox" id="set-calidad"></label>
     <label class="toggle-row" for="set-juego"><span>Mostrar el juego (prototipo) en la pantalla de evaluación</span><input type="checkbox" id="set-juego"></label>
     <label class="toggle-row" for="set-grabar"><span>Grabar video con el esqueleto (queda solo en tu teléfono)</span><input type="checkbox" id="set-grabar"></label>
     <div class="small muted">Un número en la imagen y en el resultado. Sirve para comparar condiciones —luz, ropa, distancia, teléfono— y ajustar con datos cuándo la app debería avisar. Los umbrales actuales salen de pruebas sintéticas y son provisorios.</div>
@@ -6357,6 +6357,22 @@ const Runner = {
   anotarCuadro() {
     this.ultimoCuadroAt = performance.now();
     this.huboCuadro = true;
+    if (this.perf && this.phase === 'active') this.perf.n++;
+  },
+
+  /** Rendimiento de la serie (HU-65): cuadros analizados por segundo y lo que tarda el detector. Solo cámara y video. */
+  rendimiento() {
+    const p = this.perf;
+    if (!p || !['live', 'video'].includes(this.mode)) return null;
+    const seg = (performance.now() - p.t0) / 1000;
+    const ms = p.ms.length ? p.ms.slice().sort((a, b) => a - b) : null;
+    return {
+      fps: seg > 1 ? Math.round((p.n / seg) * 10) / 10 : null,
+      msDeteccion: ms ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null,
+      msP95: ms ? Math.round(ms[Math.min(ms.length - 1, Math.floor(ms.length * 0.95))]) : null,
+      modelo: S.settings.model || 'full',
+      video: this.mode === 'video',
+    };
   },
 
   dejarDeVigilar() {
@@ -6498,6 +6514,7 @@ const Runner = {
   },
 
   beginActive(t, immediate = false) {
+    this.perf = { n: 0, t0: performance.now(), ms: [] };
     this.tiltLocked = true;
     this.startGrab();
     const ss = this.sensorState();
@@ -6703,6 +6720,7 @@ const Runner = {
 
   noteDetect(ms, adaptVideo = false) {
     this.detectMs.push(ms);
+    if (this.perf && this.phase === 'active' && this.perf.ms.length < 20000) this.perf.ms.push(ms);
     if (this.detectMs.length > 30) this.detectMs.shift();
     if (adaptVideo && this.detectMs.length >= 10) {
       const avg = this.detectMs.reduce((a, b) => a + b, 0) / this.detectMs.length;
@@ -6988,6 +7006,7 @@ const Runner = {
     const result = { value, invalid: st.invalid || 0, endReason, mode: this.mode, date: new Date().toISOString(), log: (st.log || []).slice(0, 200),
       calidad: this.jitter?.resumen() || null,
       captura: this.capturaAhora(),
+      rendimiento: this.rendimiento(),
       sinVer: Number.isFinite(st.sinVer) ? st.sinVer : null,
       reglas: REGLAS,
       profile: { age: S.profile.age, sex: S.profile.sex } };
@@ -7067,9 +7086,13 @@ function renderResult(test) {
   const detail = t.unit === 's'
     ? `${num(r.value, 1)} s en posición. ${cls?.percentile != null ? `Percentil ${cls.percentile} entre universitarios de tu sexo.` : ''} Terminó porque ${endTxt}.`
     : `${r.invalid} no válidas. Terminó porque ${endTxt}.`;
+  const rd = r.rendimiento;
   $('res-detail').textContent = detail
     + (S.settings.calidad && r.calidad
       ? ` Estabilidad de la detección: ${String(r.calidad.temblor).replace('.', ',')} (${r.calidad.nivel}).`
+      : '')
+    + (S.settings.calidad && rd?.fps != null
+      ? ` Rendimiento: ${num(rd.fps, 1)} cuadros por segundo, el detector tarda ${rd.msDeteccion} ms (${rd.msP95} ms en los cuadros más lentos), modelo ${rd.modelo === 'lite' ? 'rápido' : 'preciso'}.${rd.fps < 15 && !rd.video ? ' Bajo 15 cuadros por segundo: prueba el modelo «Rápido» en Ajustes.' : ''}`
       : '');
   $('res-next').textContent = cls ? (cls.next ? `Te faltan ${t.unit === 's' ? num(cls.next.needed, 0) + ' s' : cls.next.needed + (cls.next.needed === 1 ? ' repetición' : ' repeticiones')} para llegar a «${cls.next.label}».` : 'Estás en la categoría más alta de la tabla.') : '';
 

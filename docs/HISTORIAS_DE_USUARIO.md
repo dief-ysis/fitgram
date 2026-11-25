@@ -641,6 +641,7 @@ Nada de esta épica entra al MVP. Está aquí para que el diseño del MVP no cie
 - **Dado** los resultados, **cuando** no se cumple una meta, **entonces** se prueba el modelo «Rápido» (el detector liviano, en Ajustes) y se anota la diferencia.
 - Prioridad: **Must** · Sprint: S1 (Lenovo) y S2 (teléfonos) · Estado: **Pendiente**
 - **Dado** que la Lenovo no alcanza la meta antes del 30-nov, **cuando** se prepara el pitch, **entonces** se usa el modelo «Rápido» y, si igual falla, se muestran los videos de respaldo y la demostración (responsable: David, con Elías).
+- 🔎 **Nota (25-nov):** La app ya mide los cuadros por segundo y lo que tarda el detector en cada serie, y lo guarda con el resultado. Con «Mostrar la estabilidad y el rendimiento de la detección» activado en Ajustes, lo muestra en el resultado (y sugiere el modelo «Rápido» bajo 15 cuadros por segundo en vivo). Falta hacer la medición en la Lenovo y en los teléfonos.
 
 ### HU-66 · Guardar mi video con el esqueleto o compartir mi esqueleto
 **Como** persona que entrena **quiero** guardar un video de mi prueba con el esqueleto encima, o la animación 3D, y poder compartir solo mi esqueleto (sin imagen) con el equipo **para** ver mi técnica después y ayudar a mejorar el conteo sin entregar un video mío.
