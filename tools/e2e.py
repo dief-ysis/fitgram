@@ -147,6 +147,15 @@ def main():
             page.check('#set-grabar')   # para probar el video con esqueleto en el escenario D
         page.screenshot(path=str(OUT / 'C-ajustes.png'))
         page.click('#sheet-close')
+        # El juego se puede ocultar desde Ajustes
+        page.evaluate("document.querySelector('[data-tab=hub]')?.click()")
+        page.wait_for_selector('#scr-hub:not([hidden])')
+        check(page.is_visible('#btn-open-game'), 'juego visible por defecto')
+        page.click('#btn-settings'); page.wait_for_selector('#sheet:not([hidden])')
+        page.uncheck('#set-juego'); page.click('#sheet-close')
+        check(page.is_hidden('#btn-open-game'), 'juego oculto al apagarlo en Ajustes')
+        page.click('#btn-settings'); page.wait_for_selector('#sheet:not([hidden])')
+        page.check('#set-juego'); page.click('#sheet-close')
 
         # P. perfil: mediciones de ejemplo, exportar y borrar una
         page.goto(url + '?demo=historial')

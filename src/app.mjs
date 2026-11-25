@@ -36,7 +36,7 @@ const URLS = {
 };
 const STORE_KEY = 'fitgram.v0';
 const ARM_HOLD_MS = 300; // cuánto hay que estar en la posición de partida para que empiece la prueba
-const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false });
+const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false, mostrarJuego: true });
 const ORDER = ['pushup', 'squat', 'plank'];
 const COLORS = { left: '#2f9bd3', right: '#e8613c', axial: '#8a96a3', axis: '#8a96a3' };
 
@@ -426,6 +426,8 @@ function renderHub() {
   $('hub-title').textContent = done === 3 ? 'Evaluación completa' : 'Tu evaluación';
   const sinTabla = S.profile.age != null && !coversAge(S.profile.age);
   $('hub-sub').textContent = `${profileTag()}. ${sinTabla ? `Fuera de ${AGE_RANGE.min} a ${AGE_RANGE.max} años: verás el conteo, no la categoría.` : hasDemoData() ? 'Estás viendo datos de demostración.' : done === 3 ? 'Puedes repetir cualquier prueba cuando quieras.' : '3 pruebas. Descansa lo que necesites entre una y otra.'}`;
+  // El juego es un prototipo: se puede ocultar desde Ajustes (por ejemplo, para el pitch) sin publicar otra versión.
+  $('btn-open-game').hidden = !S.settings.mostrarJuego;
   const btn = $('btn-hub');
   btn.textContent = next ? `${done ? 'Continuar' : 'Comenzar'} · ${TESTS[next].short}` : 'Ver mi estado de forma';
   btn.onclick = () => (next ? openIntro(next) : show('profile'));
@@ -2747,6 +2749,7 @@ function renderSettings() {
   $('set-angles').checked = !!S.settings.angles;
   $('set-calidad').checked = !!S.settings.calidad;
   $('set-grabar').checked = !!S.settings.grabarVideo;
+  $('set-juego').checked = S.settings.mostrarJuego !== false;
   $('set-tilt').checked = !!S.settings.tiltCorrection;
   $('set-stand').checked = !!S.stand;
   $('set-valid').checked = !!S.settings.valid;
@@ -2795,6 +2798,7 @@ function bind() {
   $('set-angles').addEventListener('change', (e) => { S.settings.angles = e.target.checked; saveStore(); });
   $('set-calidad').addEventListener('change', (e) => { S.settings.calidad = e.target.checked; saveStore(); });
   $('set-grabar').addEventListener('change', (e) => { S.settings.grabarVideo = e.target.checked; saveStore(); });
+  $('set-juego').addEventListener('change', (e) => { S.settings.mostrarJuego = e.target.checked; saveStore(); if (S.screen === 'hub') renderHub(); });
   const guardarMsg = (t) => { $('res-guardar-msg').textContent = t; };
   $('btn-save-video').addEventListener('click', async () => {
     const v = S.last?.video;
