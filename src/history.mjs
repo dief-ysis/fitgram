@@ -225,7 +225,7 @@ const csvCell = (v) => {
  */
 function toCSV(history, order, describe = () => ({})) {
   const head = ['fecha', 'prueba', 'valor', 'unidad', 'no_validas', 'categoria', 'tabla', 'banda', 'edad', 'sexo',
-    'termino', 'calidad', 'inclinacion', 'inclinacion_fuente', 'telefono_movido', 'modo'];
+    'termino', 'calidad', 'inclinacion', 'inclinacion_fuente', 'telefono_movido', 'cuadros_por_segundo', 'modelo', 'modo'];
   const rows = [];
   for (const t of order) {
     for (const r of history?.[t] || []) {
@@ -233,7 +233,8 @@ function toCSV(history, order, describe = () => ({})) {
       const roll = r.captura && Number.isFinite(r.captura.roll) ? String(r.captura.roll).replace('.', ',') : '';
       rows.push([String(r.date || '').slice(0, 16).replace('T', ' '), t, String(r.value ?? '').replace('.', ','),
         d.unidad || '', r.invalid ?? '', d.categoria || '', d.tabla || '', d.banda || '', r.profile?.age ?? '', r.profile?.sex ?? '',
-        r.endReason || '', r.calidad?.nivel || '', roll, r.captura?.fuente || '', r.captura ? (r.captura.movido ? 'sí' : 'no') : '', r.mode || '']
+        r.endReason || '', r.calidad?.nivel || '', roll, r.captura?.fuente || '', r.captura ? (r.captura.movido ? 'sí' : 'no') : '',
+        Number.isFinite(r.rendimiento?.fps) ? String(r.rendimiento.fps).replace('.', ',') : '', r.rendimiento?.modelo || '', r.mode || '']
         .map(csvCell).join(';'));
     }
   }

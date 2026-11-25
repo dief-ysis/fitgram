@@ -108,6 +108,9 @@ function normalizeRun(run) {
     inclinacion: Number.isNaN(toNum(run.inclinacion)) ? null : toNum(run.inclinacion),
     inclFuente: run.inclFuente ? String(run.inclFuente) : null,
     movido: run.movido == null ? null : !!run.movido,
+    // Rendimiento de la serie: cuadros analizados por segundo y modelo del detector.
+    fps: Number.isNaN(toNum(run.fps)) ? null : toNum(run.fps),
+    modelo: run.modelo ? String(run.modelo) : null,
     // Cuándo midió la app. No es lo mismo que la fecha de la medición: esa es
     // cuándo se tecleó. Sirve para revisar un dato raro después, y para saber
     // si esta corrida ya se adjuntó a otro participante.
@@ -154,6 +157,8 @@ function runFromResult(result) {
     inclinacion: Number.isFinite(result.captura?.roll) ? result.captura.roll : null,
     inclFuente: result.captura?.fuente ? String(result.captura.fuente) : null,
     movido: result.captura ? !!result.captura.movido : null,
+    fps: Number.isFinite(result.rendimiento?.fps) ? result.rendimiento.fps : null,
+    modelo: result.rendimiento?.modelo ? String(result.rendimiento.modelo) : null,
     fecha: result.date ? String(result.date) : null,
     // Con qué reglas de conteo se tomó. Si el estudio mezcla dos, las
     // mediciones no son comparables entre sí y hay que saberlo.
@@ -591,7 +596,7 @@ function toCSV(records, order, units = {}) {
     .concat(Array.from({ length: maxR }, (_, i) => `evaluador${i + 1}`))
     .concat(['promedio_evaluadores', 'diferencia_app_menos_promedio',
       'descartadas', 'motivo_principal', 'termino', 'clasificacion',
-      'temblor', 'calidad', 'sin_ver', 'reglas', 'inclinacion', 'inclinacion_fuente', 'telefono_movido', 'fecha_corrida', 'nota']);
+      'temblor', 'calidad', 'sin_ver', 'reglas', 'inclinacion', 'inclinacion_fuente', 'telefono_movido', 'cuadros_por_segundo', 'modelo', 'fecha_corrida', 'nota']);
   const rows = (records || []).slice().sort((a, b) => String(a.participant).localeCompare(String(b.participant))
     || String(a.test).localeCompare(String(b.test)));
   const body = rows.map((r) => {
@@ -607,6 +612,7 @@ function toCSV(records, order, units = {}) {
       r.run?.sinVer != null ? numCL(r.run.sinVer, 1) : '', r.run?.reglas || '',
       r.run?.inclinacion != null ? numCL(r.run.inclinacion, 1) : '', r.run?.inclFuente || '',
       r.run?.movido == null ? '' : (r.run.movido ? 'sí' : 'no'),
+      r.run?.fps != null ? numCL(r.run.fps, 1) : '', r.run?.modelo || '',
       r.run?.fecha || '',
       r.note || '',
     ].map(csvCell).join(';');

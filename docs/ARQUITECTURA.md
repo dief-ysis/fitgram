@@ -112,6 +112,7 @@ Un punto ausente queda `{x: NaN, y: NaN, v: 0}`.
 { value, invalid, endReason, mode, date, log,   // log: los primeros 200 eventos
   calidad: { nivel, temblor, ... } | null,
   captura: { fuente, roll, pitch, corregida, movido },   // inclinación (desde 22-nov)
+  rendimiento: { fps, msDeteccion, msP95, modelo, video } | null,   // solo cámara y video (desde 25-nov)
   sinVer, reglas,                               // segundos sin ver; huella de las reglas de conteo
   profile: { age, sex } }
 ```
@@ -130,7 +131,7 @@ Un punto ausente queda `{x: NaN, y: NaN, v: 0}`.
 ```js
 { id, participant, test, date, app, raters: [n, n, ...], note,
   run: { invalid, counted, endReason, calidad, temblor, sinVer, reglas,
-         inclinacion, inclFuente, movido, fecha,
+         inclinacion, inclFuente, movido, fps, modelo, fecha,
          reasons: { motivo: cantidad } } | null }   // por qué se descartaron repeticiones
 ```
 CSV con `;` y coma decimal (se abre en Excel en Chile); JSON recargable.

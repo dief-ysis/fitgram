@@ -558,8 +558,9 @@ test('CSV: lleva la huella de las reglas de cada medicion', () => {
 
 test('CSV: la inclinación del teléfono y si se movió viajan con la corrida', () => {
   const r = V.newRecord({ participant: 'P01', test: 'squat', app: 20, raters: [20, 21],
-    run: V.runFromResult({ value: 20, log: [], date: '2026-11-22T10:00:00Z', captura: { fuente: 'sensor', roll: -7.5, movido: true } }) });
+    run: V.runFromResult({ value: 20, log: [], date: '2026-11-22T10:00:00Z', captura: { fuente: 'sensor', roll: -7.5, movido: true }, rendimiento: { fps: 24.5, modelo: 'lite' } }) });
   const [head, line] = V.toCSV([r]).trim().split('\n');
   assert.ok(head.includes('inclinacion;inclinacion_fuente;telefono_movido'), head);
-  assert.ok(line.includes('-7,5;sensor;sí'), line);
+  assert.ok(line.includes('-7,5;sensor;sí;24,5;lite'), line);
+  assert.ok(head.includes('cuadros_por_segundo;modelo'), head);
 });
