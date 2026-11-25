@@ -162,6 +162,9 @@ body.run-mode main.wrap { max-width: 960px; }
 .stage canvas.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .stage .grid-bg { position: absolute; inset: 0; background-color: var(--stage); background-image: linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px); background-size: 32px 32px; }
 .hud-tl, .hud-tr { position: absolute; top: max(10px, env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+/* Sobre la imagen de la cámara (cielo, pasto, paredes claras) el blanco solo no alcanza: un fondo oscuro detrás del
+   tiempo y el conteo asegura el contraste aunque la escena sea muy clara. */
+.hud-tl, .hud-tr { background: rgba(0,0,0,.7); padding: 6px 10px; }
 .hud-tl { left: max(12px, env(safe-area-inset-left, 0px)); }
 .hud-tr { right: max(12px, env(safe-area-inset-right, 0px)); align-items: flex-end; }
 .hud-lbl { font-family: var(--font-cd); font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--stage-muted); }
@@ -652,7 +655,7 @@ body.run-mode .stand-bar { display: none; }
         <button class="btn quiet sm" id="v-json" type="button">Exportar JSON</button>
         <button class="btn quiet sm" id="v-load" type="button">Cargar respaldo</button>
       </div>
-      <input class="visually-hidden" type="file" id="v-file" accept=".json,application/json">
+      <input class="visually-hidden" type="file" id="v-file" accept=".json,application/json" aria-label="Cargar un respaldo JSON de la validación">
       <div class="note small" id="v-loaded" hidden></div>
       <button class="link-btn" id="v-clear" type="button">Borrar todas las mediciones de validación</button>
       <div class="note warn small" id="v-clear-confirm" hidden>
