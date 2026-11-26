@@ -249,6 +249,8 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .scale-lbls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; font-family: var(--font-cd); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .prof-row { display: grid; grid-template-columns: minmax(0,1fr) auto 70px; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
 .prof-row:last-child { border-bottom: 0; }
+/* telaraña del perfil */
+.telarana { display: block; width: 100%; max-width: 420px; margin: 4px auto 0; overflow: visible; }
 /* avance (historial) */
 .delta { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
 .delta-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
@@ -539,6 +541,11 @@ body.run-mode .stand-bar { display: none; }
       <p class="screen-sub" id="prof-sub"></p>
     </div>
     <div class="card marks pad overall" id="prof-overall"></div>
+    <div class="card pad" id="prof-radar" hidden>
+      <div class="lbl">Tu perfil por áreas</div>
+      <div id="prof-radar-svg"></div>
+      <div class="small muted" id="prof-radar-ley"></div>
+    </div>
     <div class="card pad" id="prof-rows"></div>
     <div class="card pad" id="prof-progress" style="display:flex;flex-direction:column;gap:14px" hidden></div>
     <div class="card pad" id="prof-hist" style="display:flex;flex-direction:column;gap:10px">

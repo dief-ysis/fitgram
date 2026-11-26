@@ -3,6 +3,7 @@
 import { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } from './norms.mjs';
 import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG, vistaDeFrente, queFalta } from './exercises.mjs';
 import { siluetaPara, opacidadSilueta } from './silueta.mjs';
+import { datosTelarana, svgTelarana } from './telarana.mjs';
 import { synthSession } from './synth.mjs';
 import { SKELETON_CONFIG, H36M, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } from './skeleton.mjs';
 import * as Hist from './history.mjs';
@@ -1971,6 +1972,7 @@ function renderProfile() {
       <div class="scale" aria-hidden="true"><div class="track">${bands.map(() => '<i></i>').join('')}</div><div class="pin" style="left:${clamp(prof.position, 0, 100)}%"></div></div>
       <div class="scale-lbls" aria-hidden="true">${bands.map((b) => `<span>${b}</span>`).join('')}</div>`;
   }
+  renderTelarana();
   $('prof-rows').innerHTML = ORDER.map((t) => {
     const T = TESTS[t], r = S.results[t], c = parts[t];
     const meter = c ? `<div class="meter">${Array.from({ length: c.category.of }, (_, i) => `<i class="${i <= c.category.index ? 'on' : ''}"></i>`).join('')}</div><div class="lbl" style="font-size:12px;text-align:center;color:var(--ink)">${esc(c.category.label)}</div>` : '<div class="lbl" style="font-size:12px;text-align:center">Pendiente</div>';
@@ -1983,6 +1985,17 @@ function renderProfile() {
   renderHistList();
   $('btn-prof-eval').textContent = nextPending() ? `Seguir · ${TESTS[nextPending()].short}` : 'Repetir una prueba';
   $('btn-prof-eval').onclick = () => (nextPending() ? openIntro(nextPending()) : show('hub'));
+}
+
+/** Telaraña del perfil: brazos, piernas, core y técnica, con la evaluación anterior punteada (solo datos reales). */
+function renderTelarana() {
+  const clasificar = (t, r) => classify(t, r.value, r.profile || S.profile);
+  const d = datosTelarana(S.history, clasificar);
+  $('prof-radar').hidden = !d;
+  if (!d) return;
+  $('prof-radar-svg').innerHTML = svgTelarana(d, { titulo: 'Tu perfil por áreas, de 0 a 100' });
+  $('prof-radar-ley').textContent = (d.anterior ? 'Relleno: tu última evaluación. Punteado: la anterior. ' : '')
+    + 'Brazos, piernas y core: tu posición en cada tabla (0 a 100). Técnica: el porcentaje de repeticiones válidas.';
 }
 
 /** Todas las mediciones guardadas, la más nueva primero, con su botón de borrar (HU-38). */
