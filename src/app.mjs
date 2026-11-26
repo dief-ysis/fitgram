@@ -1,7 +1,7 @@
 // FitGram v0 — la app: pantallas, cámara, MediaPipe Pose Landmarker, corredor de pruebas, resultados.
 // build.mjs junta los módulos en un solo archivo; estos import se reescriben al construir.
 import { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } from './norms.mjs';
-import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG, vistaDeFrente } from './exercises.mjs';
+import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG, vistaDeFrente, queFalta } from './exercises.mjs';
 import { synthSession } from './synth.mjs';
 import { SKELETON_CONFIG, H36M, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } from './skeleton.mjs';
 import * as Hist from './history.mjs';
@@ -516,7 +516,7 @@ const Runner = {
     $('btn-flip').hidden = mode !== 'live';
     $('btn-start').hidden = false; $('btn-stop').hidden = true;
     $('btn-start').disabled = true;
-    $('btn-start').textContent = mode === 'video' ? 'Analizar video' : mode === 'demo' ? 'Iniciar demostración' : 'Iniciar · cuenta de 10 s';
+    $('btn-start').textContent = mode === 'video' ? 'Analizar video' : mode === 'demo' ? 'Iniciar demostración' : 'Iniciar · cuenta de 5 s';
     $('replog').innerHTML = '';
     $('replog-wrap').hidden = test === 'plank';
     $('cue-bar').hidden = true;
@@ -731,7 +731,7 @@ const Runner = {
       this.countdown(3, () => { this.demoT0 = performance.now(); this.beginActive(this.demo.frames[0]?.t ?? 0, true); });
       return;
     }
-    this.countdown(10, () => { this.phase = 'arming'; this.armOkSince = null; this.cue({ level: 'warn', msg: 'Ponte en posición' }); });
+    this.countdown(5, () => { this.phase = 'arming'; this.armOkSince = null; this.cue({ level: 'warn', msg: 'Ponte en posición' }); });
   },
 
   countdown(n, done) {
@@ -1062,6 +1062,7 @@ const Runner = {
   /** Un cuadro en que MediaPipe no encontró a nadie: limpia el dibujo y deja que el analizador cuente el tiempo sin ver. */
   processEmpty(t) {
     this.anotarCuadro();
+    this.ultimas = null;   // sin nadie a la vista no hay partes que nombrar
     // Sin persona a la vista igual se informa la inclinación (los sensores la saben).
     if (!this.tiltLocked && this.tiltEst) this.tilt = fuseTilt(this.sensorState()?.lastStill ?? null, this.level.state().tilt);
     this.renderLevel();
@@ -1198,10 +1199,11 @@ const Runner = {
     // De costado con la rotación bloqueada, el cuarto de vuelta se aplica siempre: sin él no hay prueba posible.
     const fc = correctFrame(frame, this.tilt, { quarterOnly: !S.settings.tiltCorrection });
     const joints = toJoints(fc);
+    this.ultimas = joints;
 
     if (this.phase === 'preview' || this.phase === 'countdown') {
       const c = this.analyzer.check(joints);
-      this.setPos(c.ok, c.ok ? 'Posición correcta' : c.msg);
+      this.setPos(c.ok, c.ok ? 'Posición correcta' : this.detalle(c.msg));
       // Si además la detección está inestable, conviene arreglarlo ahora y no
       // descubrirlo cuando el número ya salió corto. Va aparte del estado de
       // posición: la posición puede estar bien y la detección igual temblar, y
@@ -1212,7 +1214,7 @@ const Runner = {
       this.beginActive(frame.t); // el analizador de la plancha espera solo el segundo sostenido antes de partir el reloj
     } else if (this.phase === 'arming') {
       const c = this.analyzer.check(joints);
-      this.setPos(c.ok, c.ok ? 'Posición correcta: comienza' : c.msg);
+      this.setPos(c.ok, c.ok ? 'Posición correcta: comienza' : this.detalle(c.msg));
       if (c.ok) {
         if (this.armOkSince == null) this.armOkSince = frame.t;
         // Basta con estar en la posición de partida un momento (no 1 s quieto): quien hace las repeticiones sin pausa
@@ -1309,7 +1311,7 @@ const Runner = {
       $('hud-tr-sub').textContent = `no válidas: ${st.invalid || 0}`;
     }
     this.renderCells(st.metrics || {});
-    if (st.cue) this.cue(st.cue); else if (Date.now() - this.lastCueAt > 1500) this.cue(null);
+    if (st.cue) this.cue({ ...st.cue, msg: this.detalle(st.cue.msg) }); else if (Date.now() - this.lastCueAt > 1500) this.cue(null);
     if (!plank && st.log) {
       const box = $('replog');
       while (box.children.length < st.log.length) {
@@ -1329,11 +1331,17 @@ const Runner = {
     $('cells').innerHTML = defs.map(([l, v]) => `<div class="cell"><div class="lbl" style="font-size:12px">${esc(l)}</div><div class="v">${deg(v)}</div></div>`).join('');
   },
 
+  /** "No te veo completo" se cambia por qué parte falta y qué hacer (queFalta); los demás avisos pasan tal cual. */
+  detalle(msg) {
+    if (msg !== EX_CONFIG.msg.notVisible || !this.ultimas) return msg;
+    return queFalta(this.ultimas, this.test, S.profile.sex === 'F' ? 'knees' : 'toes') || msg;
+  },
+
   handleEvents(st) {
     for (const ev of st.events || []) {
       if (ev.type === 'rep') { Sound.beep(1046, 0.08, 0.12); Voice.say(String(st.value), true); }
       else if (ev.type === 'invalid') { Sound.beep(330, 0.18, 0.15); Voice.say(ev.msg || 'No válida', true); }
-      else if (ev.type === 'cue') { Voice.say(ev.msg, true); }
+      else if (ev.type === 'cue') { Voice.say(this.detalle(ev.msg), true); }
       else if (ev.type === 'start' && this.test === 'plank') { Voice.say('Tiempo corriendo', true); }
     }
     if (this.test === 'plank' && st.phase === 'active') {

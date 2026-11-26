@@ -598,4 +598,31 @@ function vistaDeFrente(j2) {
   return torso > 1e-6 ? Math.hypot(ls.x - rs.x, ls.y - rs.y) / torso : null;
 }
 
-export { EX_CONFIG, createAnalyzer, huellaDe, normalizarCodigo, codigoDeConteo, vistaDeFrente };
+/**
+ * Qué falta para que la app te vea, en palabras: "No veo tus tobillos: aléjate un poco o baja el teléfono".
+ * Mira las articulaciones clave de la prueba en el lado que mejor se ve. Solo arma el texto del aviso: no decide
+ * nada del conteo (no está en la huella de las reglas). Devuelve null si no falta ninguna.
+ * @param {object} jn Joints (skeleton.mjs#toJoints)
+ * @param {'pushup'|'squat'|'plank'} test
+ * @param {'toes'|'knees'} [variant]
+ * @returns {string|null}
+ */
+function queFalta(jn, test, variant = 'toes') {
+  const j2 = jn && jn.j2;
+  if (!j2) return null;
+  const claves = test === 'pushup' ? KEY_JOINTS.pushup[variant] || KEY_JOINTS.pushup.toes : KEY_JOINTS[test];
+  if (!claves) return null;
+  const vis = (p, n) => (j2[p + n] && finite(j2[p + n].v) ? j2[p + n].v : 0);
+  const lado = ['l_', 'r_'].map((p) => ({ p, s: claves.reduce((a, n) => a + vis(p, n), 0) }))
+    .sort((a, b) => b.s - a.s)[0].p;
+  const faltan = claves.filter((n) => vis(lado, n) < CM.visMean);
+  if (!faltan.length) return null;
+  const NOMBRE = { shoulder: 'tus hombros', elbow: 'tus codos', wrist: 'tus muñecas', hip: 'tu cadera', knee: 'tus rodillas', ankle: 'tus tobillos' };
+  const lista = faltan.map((n) => NOMBRE[n]);
+  const texto = lista.length === 1 ? lista[0] : `${lista.slice(0, -1).join(', ')} ni ${lista[lista.length - 1]}`;
+  const abajo = faltan.some((n) => n === 'knee' || n === 'ankle'), arriba = faltan.some((n) => n === 'shoulder' || n === 'elbow' || n === 'wrist');
+  const consejo = abajo && arriba ? 'aléjate de la cámara' : abajo ? 'aléjate un poco o baja el teléfono' : arriba ? 'aléjate un poco o sube el teléfono' : 'aléjate un poco de la cámara';
+  return `No veo ${texto}: ${consejo}`;
+}
+
+export { EX_CONFIG, createAnalyzer, huellaDe, normalizarCodigo, codigoDeConteo, vistaDeFrente, queFalta };

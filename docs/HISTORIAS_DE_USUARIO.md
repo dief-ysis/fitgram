@@ -159,7 +159,7 @@ Total: 66 historias (60 de la v1 de José y 6 agregadas al adaptar, épica M).
 **Como** persona que entrena **quiero** que la app compruebe que estoy bien puesta frente a la cámara **para** no perder una prueba por mal encuadre.
 - **Dado** que elijo una prueba, **cuando** me pongo en la posición de partida, **entonces** la app valida (`check`) que se me ve el cuerpo completo y me dice «OK» o qué corregir (por ejemplo, «Aléjate un poco»).
 - **Dado** que la posición no es válida, **cuando** intento empezar, **entonces** la prueba no parte y se muestra el motivo.
-- **Dado** una prueba en vivo, **cuando** toco «Iniciar», **entonces** hay una cuenta de 10 s para ponerme en posición, y la prueba parte cuando mantengo la posición válida 1 s (en la plancha, cuando el analizador la confirma).
+- **Dado** una prueba en vivo, **cuando** toco «Iniciar», **entonces** hay una cuenta de 5 s para ponerme en posición, y la prueba parte cuando mantengo la posición válida 0,3 s (en la plancha, cuando el analizador la confirma).
 - **Dado** que la posición es válida, **cuando** empiezo, **entonces** la fase pasa de «esperando» a «activa».
 - Prioridad: **Must** · Sprint: S1 · Estado: **Hecho en código**
 
