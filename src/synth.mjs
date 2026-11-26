@@ -1,18 +1,18 @@
-// FitGram synthetic pose generator: deterministic side-view PoseFrames (push-ups, squats, plank, pull-ups, dips) for
-// the tests and the demo mode. Scene frame (meters): x right along the floor, y DOWN (gravity), floor at y = 0 (body
-// points have y < 0), z = depth away from the level camera (near body side at -zSide). Cameras are [centerX, centerY,
-// distance]: a pinhole looking at (centerX, centerY, 0). opts.cameraRoll / cameraPitch (deg) turn that camera about its
-// optical axis / its x axis while it keeps looking at the same point, so lm are projected with the turned camera and
-// world landmarks (scene points - mid-hips) are expressed in its axes, like MediaPipe's. Gravity in camera axes is then
-// (sin r·cos p, cos r·cos p, -sin p): roll = atan2(down.x, down.y), pitch = asin(-down.z) as in orientation.js.
-// Output: { frames: PoseFrame[], fps, meta } with the expected analyzer outcome in meta (see synthSession).
+// FitGram, generador de poses sintéticas: PoseFrames deterministas vistos de lado (flexiones, sentadillas, plancha, dominadas,
+// fondos) para las pruebas y el modo demo. Sistema de la escena (metros): x a la derecha por el suelo, y HACIA ABAJO (gravedad),
+// suelo en y = 0 (el cuerpo tiene y < 0), z = profundidad alejándose de la cámara derecha (lado cercano en -zSide). Las cámaras
+// son [centroX, centroY, distancia]: una cámara estenopeica que mira a (centroX, centroY, 0). opts.cameraRoll / cameraPitch (grados)
+// giran esa cámara en torno a su eje óptico / su eje x mientras sigue mirando al mismo punto, así lm se proyectan con la cámara
+// girada y los puntos de mundo (puntos de escena - centro de caderas) quedan en sus ejes, como los de MediaPipe. La gravedad en ejes
+// de la cámara queda (sin r·cos p, cos r·cos p, -sin p): roll = atan2(down.x, down.y), pitch = asin(-down.z), como en orientation.mjs.
+// Salida: { frames: PoseFrame[], fps, meta } con el resultado esperado del analizador en meta (ver synthSession).
 
-/** Tunable constants of the generator: body model (m), camera, noise defaults and per-test motion timing. */
+/** Constantes ajustables del generador: modelo del cuerpo (m), cámara, ruido por defecto y tiempos de cada prueba. */
 const SYNTH_CONFIG = Object.freeze({
   fps: 30, noise: 0.004, seed: 1, aspect: 9 / 16,
-  vfov: 63,              // vertical field of view (deg), typical phone main camera in portrait
-  zSide: 0.15,           // depth offset of the near (-) / far (+) body side (m)
-  farShift: 0.025,       // far-side joints are drawn this far to the right so the limbs do not overlap exactly
+  vfov: 63,              // campo visual vertical (grados), cámara principal típica de teléfono en vertical
+  zSide: 0.15,           // desplazamiento en profundidad del lado cercano (-) / lejano (+) del cuerpo (m)
+  farShift: 0.025,       // las articulaciones del lado lejano se corren esto a la derecha para que los miembros no se tapen exacto
   visNear: 0.95, visFar: 0.7, visHidden: 0.1,
   arm1: 0.30, arm2: 0.27, thigh: 0.45, shank: 0.43, torso: 0.50, neck: 0.20,
   pushup: Object.freeze({ repDur: 1.6, rest: 0.45, top: 165, bottom: 75, shallow: 115, noLockout: 130, wobble: 132,
@@ -21,43 +21,43 @@ const SYNTH_CONFIG = Object.freeze({
     leanTop: 3, leanBottom: 35, lead: 1, tail: 1, cam: [0.1, -0.9, 3.0] }),
   plank: Object.freeze({ breath: 0.004, breathPeriod: 4.2, ramp: 0.5, sagDepth: 0.14, sagDur: 3,
     collapseDur: 1.2,
-    cueWindow: 5, cueLag: 1.45, restoreLag: 0.8, collapseLag: 1.45,   // forecast only: CONTRACT cue window; measured lags of the analyzer (s)
+    cueWindow: 5, cueLag: 1.45, restoreLag: 0.8, collapseLag: 1.45,   // solo para el pronóstico: ventana de aviso del CONTRACT; retrasos medidos del analizador (s)
     collapse: Object.freeze({ hip: 0.23, knee: 0.21, ankle: 0.22 }), cam: [0.45, -0.4, 3.4] }),
-  // Pull-up: the timeline variable is the lift (0 = dead hang, 1 = clean top with the chin ~5 cm over the bar).
-  // Bar 2.3 m high, wrist 8 cm under the bar centre, grip half-width 0.26 m (slightly wider than the shoulders);
-  // the arm is a planar chain whose joints sit at fixed lateral offsets (3D limb lengths exact). shallow = chin
-  // ~11 cm under the bar; noLockout = elbow ~131 deg at the bottom; wobble = elbow dips to ~138 deg (not an attempt).
+  // Dominadas: la variable de la línea de tiempo es la subida (0 = colgado, 1 = arriba limpio con el mentón ~5 cm sobre la barra).
+  // Barra a 2,3 m, muñeca 8 cm bajo el centro de la barra, medio agarre de 0,26 m (un poco más ancho que los hombros);
+  // el brazo es una cadena plana cuyas articulaciones van a distancias laterales fijas (largos 3D exactos). shallow = mentón
+  // ~11 cm bajo la barra; noLockout = codo ~131° abajo; wobble = el codo baja a ~138° (no es un intento).
   pullup: Object.freeze({ repDur: 2.6, rest: 0.6, top: 0, bottom: 1, shallow: 0.7, noLockout: 0.09, wobble: 0.065,
     lead: 1, tail: 1, bar: 2.3, wristDrop: 0.08, grip: 0.26, elbowLat: 0.21, hang: 176, topBack: 0.088, topBelow: 0.06,
     lean: 12, hollow: 10, knee: 170, headBack: 15, kipHip: 70, kipKnee: 60, kipSwing: 12, releaseDur: 1.0,
     cam: [0, -1.3, 3.0] }),
-  // Dip: the timeline variable is the 3D elbow angle. Bars 1.35 m high, wrist 4.5 cm above the bar centre, hands
-  // 0.24 m to each side; the forearm leans back up to 10 deg, the torso leans forward 5 -> 25 deg, knees bent 100 deg
-  // with the feet behind (they stay > 0.5 m above the floor). shallow = 108 deg, noLockout = 135 deg, wobble = 136 deg.
+  // Fondos: la variable de la línea de tiempo es el ángulo 3D del codo. Barras a 1,35 m, muñeca 4,5 cm sobre el centro de la
+  // barra, manos a 0,24 m de cada lado; el antebrazo se inclina hasta 10° hacia atrás, el torso se inclina adelante 5 -> 25°,
+  // rodillas dobladas 100° con los pies atrás (quedan > 0,5 m sobre el suelo). shallow = 108°, noLockout = 135°, wobble = 136°.
   dip: Object.freeze({ repDur: 2.0, rest: 0.5, top: 172, bottom: 82, shallow: 108, noLockout: 135, wobble: 136,
     lead: 1, tail: 1, bar: 1.35, wristUp: 0.045, grip: 0.24, elbowLat: 0.2, forearmLean: 10, leanTop: 5, leanBottom: 25,
     thigh: 10, knee: 100, kipKnee: 60, releaseDur: 1.2, cam: [0, -1.15, 3.0] }),
-  releaseLag: 1.0,       // forecast only: measured delay from the start of a release to the analyzer's 'position_lost' (s)
-  standArm: Object.freeze({ el: 0.17, wr: 0.19 }),   // lateral offsets of the elbow / wrist of a standing person (m)
+  releaseLag: 1.0,       // solo para el pronóstico: retraso medido desde que empieza a soltar hasta el 'position_lost' del analizador (s)
+  standArm: Object.freeze({ el: 0.17, wr: 0.19 }),   // distancias laterales del codo / muñeca de una persona de pie (m)
 });
 
-// squat.bottom = 65 deg: with ~25 deg shin lean that is thighs parallel to the floor (ACE depth).
+// squat.bottom = 65°: con la canilla inclinada ~25°, eso es muslos paralelos al suelo (profundidad ACE).
 const C = SYNTH_CONFIG;
 const RAD = Math.PI / 180;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const lerp = (a, b, k) => a + (b - a) * k;
 const smooth = (x) => { const k = clamp(x, 0, 1); return k * k * (3 - 2 * k); };
-const dir = (deg) => ({ x: Math.cos(deg * RAD), y: Math.sin(deg * RAD) });   // y DOWN: positive angle points down
-const up = (beta) => dir(beta - 90);                                         // beta: degrees clockwise from straight up
+const dir = (deg) => ({ x: Math.cos(deg * RAD), y: Math.sin(deg * RAD) });   // y HACIA ABAJO: un ángulo positivo apunta hacia abajo
+const up = (beta) => dir(beta - 90);                                         // beta: grados en sentido horario desde la vertical hacia arriba
 const mv = (p, d, k) => ({ x: p.x + d.x * k, y: p.y + d.y * k });
 const perp = (d) => ({ x: -d.y, y: d.x });
-const down = (deg) => ({ x: Math.sin(deg * RAD), y: Math.cos(deg * RAD) });  // deg from straight down toward the front (+x)
-/** Rotate point p about c by deg (y DOWN frame: positive = clockwise on screen). */
+const down = (deg) => ({ x: Math.sin(deg * RAD), y: Math.cos(deg * RAD) });  // grados desde la vertical hacia abajo hacia el frente (+x)
+/** Gira el punto p en torno a c en deg grados (y hacia abajo: positivo = sentido horario en pantalla). */
 const rotP = (p, c, deg) => {
   const k = Math.cos(deg * RAD), s = Math.sin(deg * RAD), dx = p.x - c.x, dy = p.y - c.y;
   return { x: c.x + dx * k - dy * s, y: c.y + dx * s + dy * k };
 };
-const planar = (len, dz) => Math.sqrt(len * len - dz * dz);   // in-plane length of a limb whose ends differ by dz laterally
+const planar = (len, dz) => Math.sqrt(len * len - dz * dz);   // largo en el plano de un miembro cuyos extremos difieren dz en lo lateral
 
 function mulberry32(a) {
   return () => {
@@ -69,13 +69,13 @@ function mulberry32(a) {
 }
 const gauss = (r) => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
 
-/** Root of an increasing f on [lo, hi] (f(lo) < 0 < f(hi)). */
+/** Raíz de una f creciente en [lo, hi] (f(lo) < 0 < f(hi)). */
 function bisect(f, lo, hi) {
   for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (f(m) < 0) lo = m; else hi = m; }
   return (lo + hi) / 2;
 }
 
-/** Point at distance r0 from p0 and r1 from p1, on the `side` (+1/-1) of the p0->p1 line (two-bone IK). */
+/** Punto a distancia r0 de p0 y r1 de p1, al lado `side` (+1/-1) de la recta p0->p1 (cinemática inversa de dos huesos). */
 function ik2(p0, p1, r0, r1, side) {
   const dx = p1.x - p0.x, dy = p1.y - p0.y, len = Math.hypot(dx, dy) || 1e-9;
   const d = Math.min(len, r0 + r1 - 1e-6), a = (r0 * r0 - r1 * r1 + d * d) / (2 * d);
@@ -83,16 +83,16 @@ function ik2(p0, p1, r0, r1, side) {
   return { x: p0.x + a * ux - side * h * uy, y: p0.y + a * uy + side * h * ux };
 }
 
-// BlazePose landmark tables. Face: [index, side, along front axis, along head axis] relative to the ear.
+// Tablas de puntos de BlazePose. Cara: [índice, lado, a lo largo del eje frontal, a lo largo del eje de la cabeza] respecto de la oreja.
 const FACE = [[0, 'm', 0.11, 0], [1, 'l', 0.085, 0.045], [2, 'l', 0.075, 0.05], [3, 'l', 0.06, 0.05],
   [4, 'r', 0.085, 0.045], [5, 'r', 0.075, 0.05], [6, 'r', 0.06, 0.05], [7, 'l', 0, 0], [8, 'r', 0, 0],
   [9, 'l', 0.085, -0.05], [10, 'r', 0.085, -0.05]];
-const JOINTS = [[11, 'sh'], [13, 'el'], [15, 'wr'], [23, 'hi'], [25, 'kn'], [27, 'an'], [29, 'he'], [31, 'fo']];  // left index; right = +1
-const HAND = [[17, 0.15, 0.015], [19, 0.18, 0], [21, 0.10, -0.015]];   // pinky, index, thumb: [left index, along hand, across]
-// Lateral half-distance (m) of the face points of the bar tests (v0 poses put them at zSide): eyes, ears, mouth corners.
+const JOINTS = [[11, 'sh'], [13, 'el'], [15, 'wr'], [23, 'hi'], [25, 'kn'], [27, 'an'], [29, 'he'], [31, 'fo']];  // índice izquierdo; derecho = +1
+const HAND = [[17, 0.15, 0.015], [19, 0.18, 0], [21, 0.10, -0.015]];   // meñique, índice, pulgar: [índice izquierdo, a lo largo de la mano, a lo ancho]
+// Media distancia lateral (m) de los puntos de la cara en las pruebas con barra (las poses v0 los ponen en zSide): ojos, orejas, boca.
 const FACE_LAT = { 1: 0.03, 2: 0.035, 3: 0.045, 4: 0.03, 5: 0.035, 6: 0.045, 7: 0.075, 8: 0.075, 9: 0.025, 10: 0.025 };
 
-/** Explicit pinky / index / thumb points of pose P (P.handPts, or along the hand direction from the wrist). */
+/** Puntos explícitos de meñique / índice / pulgar de la pose P (P.handPts, o a lo largo de la mano desde la muñeca). */
 function handPoints(P) {
   if (P.handPts) return P.handPts;
   const o = {};
@@ -101,8 +101,8 @@ function handPoints(P) {
 }
 
 /**
- * Expand the key joints of pose P into 33 scene points with a depth side and a near/far flag. Optional (bar tests):
- * P.lat {el, wr, hand} lateral offsets instead of zSide, P.handPts {17, 19, 21} explicit hand points, P.faceLat.
+ * Expande las articulaciones clave de la pose P a 33 puntos de escena, con lado de profundidad y marca cercano/lejano. Opcional
+ * (barra): P.lat {el, wr, hand} distancias laterales en vez de zSide, P.handPts {17, 19, 21} puntos de la mano, P.faceLat.
  */
 function scenePoints(P, nearSide, mirror) {
   const pts = [];
@@ -121,26 +121,26 @@ function scenePoints(P, nearSide, mirror) {
 }
 
 /**
- * Camera axes (unit vectors in scene coordinates) of a camera turned by roll about its optical axis and by pitch about
- * its x axis: R = Rx(pitch)·Rz(roll), columns ex (image right), ey (image down), ez (optical axis). Gravity (0, 1, 0)
- * in camera axes = (ex.y, ey.y, ez.y) = (sin r·cos p, cos r·cos p, -sin p); pitch > 0 looks above the horizon.
+ * Ejes (vectores unitarios en coordenadas de escena) de una cámara girada en roll en torno a su eje óptico y en pitch en torno
+ * a su eje x: R = Rx(pitch)·Rz(roll), columnas ex (derecha de la imagen), ey (abajo de la imagen), ez (eje óptico). La gravedad
+ * (0, 1, 0) en ejes de la cámara = (ex.y, ey.y, ez.y) = (sin r·cos p, cos r·cos p, -sin p); pitch > 0 mira sobre el horizonte.
  */
 function camBasis(rollDeg, pitchDeg) {
   const cr = Math.cos(rollDeg * RAD), sr = Math.sin(rollDeg * RAD), cp = Math.cos(pitchDeg * RAD), sp = Math.sin(pitchDeg * RAD);
   return { ex: { x: cr, y: cp * sr, z: sp * sr }, ey: { x: -sr, y: cp * cr, z: sp * cr }, ez: { x: 0, y: -sp, z: cp } };
 }
 
-/** Project the scene pose with a pinhole camera and add seeded noise; returns a PoseFrame (t in ms). */
+/** Proyecta la pose con una cámara estenopeica y agrega ruido con semilla; devuelve un PoseFrame (t en ms). */
 function buildFrame(P, cam, tMs, o, rnd, hidden) {
   const sY = 2 * Math.tan(C.vfov * RAD / 2), sX = sY * o.aspect, mirror = o.facing === 'left';
   const pts = scenePoints(P, mirror ? 'l' : 'r', mirror);
   const cx = mirror ? -cam[0] : cam[0];
   const hip = { x: (pts[23].x + pts[24].x) / 2, y: (pts[23].y + pts[24].y) / 2 };
-  const nz = o.noise, wn = o.noise * sY * cam[2];       // world noise = same error expressed in meters
+  const nz = o.noise, wn = o.noise * sY * cam[2];       // ruido de mundo = el mismo error expresado en metros
   const lm = [], world = [];
-  if (o.cameraRoll || o.cameraPitch) {                  // turned camera (v1); the level camera keeps the exact v0 path below
+  if (o.cameraRoll || o.cameraPitch) {                  // cámara girada (v1); la cámara derecha mantiene abajo el camino exacto de la v0
     const B = camBasis(o.cameraRoll || 0, o.cameraPitch || 0), D = cam[2];
-    const pos = { x: cx - D * B.ez.x, y: cam[1] - D * B.ez.y, z: -D * B.ez.z };     // orbits its look-at point (cx, cam[1], 0)
+    const pos = { x: cx - D * B.ez.x, y: cam[1] - D * B.ez.y, z: -D * B.ez.z };     // orbita su punto de mira (cx, cam[1], 0)
     const hz = (pts[23].z + pts[24].z) / 2, dot = (a, e) => a.x * e.x + a.y * e.y + a.z * e.z;
     const Zh = dot({ x: hip.x - pos.x, y: hip.y - pos.y, z: hz - pos.z }, B.ez);
     for (const p of pts) {
@@ -163,12 +163,12 @@ function buildFrame(P, cam, tMs, o, rnd, hidden) {
   return { t: tMs, lm, world, aspect: o.aspect };
 }
 
-// ---- Kinematics -------------------------------------------------------------------------------------
-const FOOT = { along: 0.10, perp: 0.20 };   // toes variant: ball-of-foot contact relative to the ankle (along body, below it)
+// ---- Cinemática -------------------------------------------------------------------------------------
+const FOOT = { along: 0.10, perp: 0.20 };   // variante en punta de pies: apoyo de la planta respecto del tobillo (a lo largo del cuerpo, bajo él)
 const dArm = (elbowDeg) => Math.sqrt(C.arm1 ** 2 + C.arm2 ** 2 - 2 * C.arm1 * C.arm2 * Math.cos(elbowDeg * RAD));
 const rigCache = {};
 
-/** Rigid body pivoting on the toes (or knees): shoulder position sh(phi) for body angle phi (deg) and the wrist anchor. */
+/** Cuerpo rígido que pivota en la punta de los pies (o rodillas): posición del hombro sh(phi) para el ángulo phi (grados) y el apoyo de la muñeca. */
 function rig(variant) {
   if (rigCache[variant]) return rigCache[variant];
   const knees = variant === 'knees';
@@ -182,7 +182,7 @@ function rig(variant) {
   return (rigCache[variant] = { knees, ty, sh, wrist: { x: sh(top).x, y: -0.04 } });
 }
 
-/** Leg/torso points of the rigid body at angle phi with pivot T; dev = hip drop (+ sag, - pike) from the shoulder-ankle line. */
+/** Puntos de piernas y torso del cuerpo rígido en el ángulo phi con pivote T; dev = caída de cadera (+ hundida, - alta) respecto de la línea hombro-tobillo. */
 function body(knees, T, phi, dev) {
   const u = dir(-phi), n = perp(u), at = (A, a, b) => mv(mv(A, u, a), n, b);
   if (knees) {
@@ -215,12 +215,12 @@ function squatPose(knee) {
   return { sh, el, wr, hi, kn, an, he: { x: -0.06, y: 0 }, fo: { x: 0.14, y: 0 }, ear: mv(sh, hv, C.neck), hv, fv: perp(hv), hand: a2 };
 }
 
-/** Forearm plank: elbow under the shoulder on the floor, toes on the floor; dev = hip sag, c = collapse 0..1. */
+/** Plancha en antebrazos: codo bajo el hombro en el suelo, punta de pies en el suelo; dev = cadera hundida, c = colapso 0..1. */
 function plankPose(dev, c, breath) {
   const R = rig('toes'), sh0 = { x: 0.9, y: -(0.05 + C.arm1) - breath * 0.5 };
   const phi = bisect((p) => sh0.y - R.sh(p).y, 0, 70);
   const b = body(false, { x: sh0.x - R.sh(phi).x, y: 0 }, phi, dev + breath);
-  if (c > 0) {                                    // knees and hips drop to the floor, shanks fold up behind
+  if (c > 0) {                                    // rodillas y caderas caen al suelo, las canillas se doblan hacia atrás
     const k = C.plank.collapse, an0 = b.an;
     b.hi = { x: b.hi.x, y: b.hi.y + k.hip * c };
     b.kn = { x: b.kn.x, y: b.kn.y + k.knee * c };
@@ -231,11 +231,11 @@ function plankPose(dev, c, breath) {
   return { ...b, sh: sh0, el, wr: { x: el.x + C.arm2, y: -0.05 }, ...headOf(sh0, phi), hand: { x: 1, y: 0 } };
 }
 
-// ---- Bar tests: pull-up and dip (person faces +x, hands fixed on the bar) ------------------------------------
+// ---- Pruebas con barra: dominadas y fondos (la persona mira hacia +x, manos fijas en la barra) ------------------------
 /**
- * Planar arm of a bar test whose joints sit at fixed lateral offsets (shoulder zSide, elbow elbowLat, wrist grip):
- * in-plane segment lengths a1/a2 keep the 3D lengths exact, and d2(deg) is the in-plane shoulder-wrist distance that
- * gives a 3D elbow angle of deg.
+ * Brazo plano de una prueba con barra cuyas articulaciones van a distancias laterales fijas (hombro zSide, codo elbowLat,
+ * muñeca grip): los largos en el plano a1/a2 mantienen exactos los largos 3D, y d2(deg) es la distancia hombro-muñeca en el
+ * plano que da un ángulo 3D de codo de deg.
  */
 function armRig(cfg) {
   const dz = cfg.grip - C.zSide;
@@ -247,10 +247,10 @@ const footOf = (an, sd) => ({ he: mv(mv(an, sd, 0.05), perp(sd), 0.05), fo: mv(m
 const BODY_KEYS = ['sh', 'el', 'wr', 'hi', 'kn', 'an', 'he', 'fo', 'ear'];
 
 /**
- * Pull-up: u = lift (0 dead hang, 1 clean top). The shoulder rises from straight under the wrist to 6 cm under the bar
- * and 9 cm behind it; the torso leans 12 deg and the hips flex 10 deg at the top; the head tilts back 15 deg.
- * kipF (rep phase 0..1, kip reps only): knee drive in the first half (hips +70 deg, knees +60 deg) and a ±12 deg swing
- * of the whole body about the hands.
+ * Dominadas: u = subida (0 colgado, 1 arriba limpio). El hombro sube desde justo bajo la muñeca hasta 6 cm bajo la barra
+ * y 9 cm detrás; arriba el torso se inclina 12° y la cadera se flexiona 10°; la cabeza se inclina 15° hacia atrás.
+ * kipF (fase de la repetición 0..1, solo repeticiones con impulso): rodillas arriba en la primera mitad (cadera +70°, rodillas
+ * +60°) y un balanceo de ±12° de todo el cuerpo en torno a las manos.
  */
 function pullupPose(u, kipF) {
   const g = C.pullup, R = PU_RIG, W = { x: 0, y: -g.bar + g.wristDrop }, B = { x: 0, y: -g.bar };
@@ -261,7 +261,7 @@ function pullupPose(u, kipF) {
   const an = mv(kn, sd, C.shank), hv = up(-g.headBack * u);
   const P = { sh, el: ik2(sh, W, R.a1, R.a2, 1), wr: W, hi, kn, an, ...footOf(an, sd), ear: mv(sh, hv, C.neck), hv, fv: perp(hv),
     hand: { x: 0, y: -1 }, lat: { el: g.elbowLat, wr: g.grip, hand: g.grip }, faceLat: true,
-    // overhand grip: index and pinky knuckles wrap the bar (their mean ~ bar centre), thumb under it
+    // agarre prono: los nudillos del índice y del meñique envuelven la barra (su promedio ~ centro de la barra), pulgar abajo
     handPts: { 17: { x: 0.005, y: B.y + 0.015 }, 19: { x: 0.03, y: B.y - 0.01 }, 21: { x: -0.025, y: B.y + 0.03 } } };
   const swing = kipF == null ? 0 : g.kipSwing * Math.sin(2 * Math.PI * kipF);
   if (swing) {
@@ -272,9 +272,9 @@ function pullupPose(u, kipF) {
 }
 
 /**
- * Dip: theta = 3D elbow angle. The forearm leans back up to 10 deg, the shoulder sits in front of the elbow (upper arm
- * ~horizontal at 82 deg), the torso leans forward 5 -> 25 deg, knees bent 100 deg with the feet behind.
- * kipF (kip reps only): the knees kick open by up to 60 deg during the push (second half of the rep).
+ * Fondos: theta = ángulo 3D del codo. El antebrazo se inclina hasta 10° atrás, el hombro queda delante del codo (brazo
+ * ~horizontal a 82°), el torso se inclina adelante 5 -> 25°, rodillas dobladas 100° con los pies atrás.
+ * kipF (solo repeticiones con impulso): las rodillas se abren de golpe hasta 60° durante el empuje (segunda mitad).
  */
 function dipPose(theta, kipF) {
   const g = C.dip, R = DIP_RIG, W = { x: 0, y: -g.bar - g.wristUp };
@@ -286,11 +286,11 @@ function dipPose(theta, kipF) {
   const an = mv(kn, sd, C.shank), hv = up(lean * 0.6);
   return { sh, el, wr: W, hi, kn, an, ...footOf(an, sd), ear: mv(sh, hv, C.neck), hv, fv: perp(hv), hand: { x: 1, y: 0 },
     lat: { el: g.elbowLat, wr: g.grip, hand: g.grip }, faceLat: true,
-    // hands on top of the bars, fingers forward around them (index/pinky knuckles ~ bar centre)
+    // manos sobre las barras, dedos adelante rodeándolas (nudillos de índice/meñique ~ centro de la barra)
     handPts: { 17: { x: W.x + 0.06, y: W.y + 0.04 }, 19: { x: W.x + 0.075, y: W.y + 0.035 }, 21: { x: W.x + 0.035, y: W.y + 0.045 } } };
 }
 
-/** Person standing on the floor at x, arms hanging at the sides (end of a release). */
+/** Persona de pie en el suelo en x, brazos colgando a los lados (fin de un soltar). */
 function standPose(x) {
   const g = C.standArm, an = { x, y: -0.08 }, kn = { x, y: an.y - C.shank }, hi = { x, y: kn.y - C.thigh }, sh = { x, y: hi.y - C.torso };
   const el = mv(sh, down(4), planar(C.arm1, g.el - C.zSide)), hand = down(8), wr = mv(el, hand, planar(C.arm2, g.wr - g.el)), hv = up(0);
@@ -299,15 +299,15 @@ function standPose(x) {
 }
 
 /**
- * Blend of two poses (w = 0 -> A, 1 -> B) for the release: body points move linearly, the arm segments turn about the
- * shoulder / elbow by the shorter way (an overhead arm comes down in front of the body), hand points follow the wrist.
+ * Mezcla de dos poses (w = 0 -> A, 1 -> B) para el soltar: los puntos del cuerpo se mueven en línea recta, los segmentos del
+ * brazo giran en torno al hombro / codo por el camino más corto (un brazo arriba baja por delante del cuerpo), la mano sigue a la muñeca.
  */
 function blendPose(A, B, w) {
   const P = { faceLat: true, handPts: {}, lat: {} }, ha = handPoints(A), hb = handPoints(B);
   const mix = (a, b) => ({ x: lerp(a.x, b.x, w), y: lerp(a.y, b.y, w) });
-  const ang = (v) => Math.atan2(v.x, v.y) / RAD;                       // direction angle, as in down()
+  const ang = (v) => Math.atan2(v.x, v.y) / RAD;                       // ángulo de dirección, como en down()
   const turn = (a0, a1) => a0 + (((((a1 - a0) % 360) + 540) % 360) - 180) * w;
-  const seg = (o, a0, a1, b0, b1) => {                                  // segment a0->a1 of A blended with b0->b1 of B, from o
+  const seg = (o, a0, a1, b0, b1) => {                                  // tramo a0->a1 de A mezclado con b0->b1 de B, desde o
     const da = { x: a1.x - a0.x, y: a1.y - a0.y }, db = { x: b1.x - b0.x, y: b1.y - b0.y };
     return mv(o, down(turn(ang(da), ang(db))), lerp(Math.hypot(da.x, da.y), Math.hypot(db.x, db.y), w));
   };
@@ -320,21 +320,21 @@ function blendPose(A, B, w) {
   return P;
 }
 
-/** Pose of a bar test at t: rep pose, then (opts.releaseAt) the person lets go / steps off and stands. */
+/** Pose de una prueba con barra en t: pose de la repetición y luego (opts.releaseAt) la persona suelta / se baja y queda de pie. */
 function barPose(plan, t, v, r) {
   const kipF = r.seg && r.seg.kind === 'kip' ? r.f : null;
   const P = plan.test === 'pullup' ? pullupPose(v, kipF) : dipPose(v, kipF), rel = plan.release;
   return !rel || t < rel.t0 ? P : blendPose(P, standPose(P.hi.x), smooth((t - rel.t0) / rel.dur));
 }
 
-// ---- Timelines --------------------------------------------------------------------------------------
-/** pauseAfter as {rep, seconds} (aliases k/after, dur/s) or [rep, seconds]; rep = number of reps done before the pause. */
+// ---- Líneas de tiempo --------------------------------------------------------------------------------------
+/** pauseAfter como {rep, seconds} (alias k/after, dur/s) o [rep, seconds]; rep = repeticiones hechas antes de la pausa. */
 function pauseOf(p) {
   if (!p) return null;
   return Array.isArray(p) ? { rep: p[0], seconds: p[1] } : { rep: p.rep ?? p.k ?? p.after, seconds: p.seconds ?? p.dur ?? p.s ?? 0 };
 }
 
-/** Push-up / squat timeline: one segment per rep (smooth cosine profile), small rest at the top between reps. */
+/** Línea de tiempo de flexiones / sentadillas: un tramo por repetición (perfil coseno suave), breve descanso arriba entre repeticiones. */
 function repPlan(test, o, rnd) {
   const cfg = C[test], pause = pauseOf(o.pauseAfter);
   let n = o.reps ?? 10;
@@ -350,30 +350,30 @@ function repPlan(test, o, rnd) {
     if (pause && pause.rep === k + 1) t += pause.seconds;
     segs[k].after = t;
   }
-  // v1 bar tests: opts.releaseAt (s) = let go of the bar / step off the bars. Reps starting at or after it are not done;
-  // the release starts at releaseAt or right after the last rep, lasts releaseDur and is followed by `tail` standing.
-  // opts.release: true = let go right after the last rep (its short rest at the bottom / top).
+  // Pruebas con barra (v1): opts.releaseAt (s) = soltar la barra / bajarse de las barras. Las repeticiones que parten en ese
+  // momento o después no se hacen; el soltar parte en releaseAt o justo después de la última, dura releaseDur y sigue `tail` de pie.
+  // opts.release: true = soltar justo después de la última repetición (en su breve descanso abajo / arriba).
   let tail = o.tail ?? (o.fatigueEnd ? 6 : cfg.tail), release = null, endT;
   if ((o.releaseAt != null || o.release) && cfg.releaseDur) {
     while (n && o.releaseAt != null && segs[n - 1].t0 >= o.releaseAt) { segs.pop(); n--; }
     release = { t0: Math.max(o.releaseAt ?? 0, n ? segs[n - 1].after : (o.lead ?? cfg.lead)), dur: cfg.releaseDur };
     tail = o.tail ?? cfg.tail; t = release.t0 + release.dur; endT = release.t0 + C.releaseLag;
   } else endT = t + tail;
-  // No-rest rule (CONTRACT: 4 s without completing a rep, a rep in progress excepted): pause when the rest before the
-  // next judged rep exceeds 3.6 s (the analyzer completes a rep ~0.1 s before t1 and sees the next one start ~0.3 s
-  // after t0), or when the set ends more than 4.2 s after the last rep. A wobble completes no rep: it is skipped.
+  // Regla de no descansar (CONTRACT: 4 s sin completar una repetición, salvo una en curso): pausa cuando el descanso antes de la
+  // próxima repetición juzgada pasa de 3,6 s (el analizador completa una repetición ~0,1 s antes de t1 y ve partir la siguiente
+  // ~0,3 s después de t0), o cuando la serie termina más de 4,2 s después de la última. Un titubeo no completa nada: se salta.
   const judged = segs.flatMap((s, k) => (s.kind === 'wobble' ? [] : [k]));
   const paused = (k) => { const j = judged.find((i) => i > k); return j == null ? endT - segs[k].t1 > 4.2 : segs[j].t0 - segs[k].t1 > 3.6; };
-  let valid = 0, invalid = 0, streak = 0, endReason = judged.length && segs[judged[0]].t1 > 15.2 ? 'pause' : null;   // expected outcome per CONTRACT.md
+  let valid = 0, invalid = 0, streak = 0, endReason = judged.length && segs[judged[0]].t1 > 15.2 ? 'pause' : null;   // resultado esperado según CONTRACT.md
   for (let k = 0; k < n && !endReason; k++) {
-    if (segs[k].kind === 'wobble') continue;                           // a hesitation at the top: not a repetition attempt
+    if (segs[k].kind === 'wobble') continue;                           // una duda arriba: no es un intento de repetición
     if (segs[k].kind) { invalid++; streak++; } else { valid++; streak = 0; }
     if (streak >= 2) endReason = 'technique';
     else if (paused(k)) endReason = 'pause';
   }
   if (!endReason && release) {
-    // Losing the bar ends the test once a rep has begun (pull-ups: also before, the hands drop under the shoulders);
-    // a dip release before any rep looks like standing in the support and ends by the 15 s first-rep rule instead.
+    // Perder la barra termina la prueba una vez que partió una repetición (dominadas: también antes, las manos bajan de los
+    // hombros); soltar los fondos antes de cualquier repetición parece estar de pie en el apoyo y termina por la regla de 15 s.
     if (n || test === 'pullup') endReason = !n && endT > 15.2 ? 'pause' : 'position_lost';
     else if (t + tail > 15.2) endReason = 'pause';
   }
@@ -381,16 +381,16 @@ function repPlan(test, o, rnd) {
     repEnds: segs.map((s) => s.t1), expectedValid: valid, expectedInvalid: invalid, endReason, releaseT: release ? release.t0 : null } };
 }
 
-/** Static plank timeline: hip-sag episodes (recovered or not) and an optional collapse to the floor. */
+/** Línea de tiempo de la plancha: episodios de cadera hundida (recuperados o no) y una caída al suelo opcional. */
 function plankPlan(o) {
   const g = C.plank, seconds = o.seconds ?? 60;
   const sag = (o.sagAt || []).map((e) => ({ t: e.t, depth: e.depth ?? g.sagDepth,
     end: e.recover === false ? (e.dur == null ? Infinity : e.t + e.dur) : e.t + (e.dur ?? g.sagDur) }));
   const lost = o.collapseAt == null ? Infinity : o.collapseAt + g.collapseLag;
-  // Expected outcome = the CONTRACT cue rules applied to the plan: cue ~1 s after the hip leaves the line, 5 s to restore,
-  // a still-sagging hip is cued again at once, two failed cues in a row end the test. Accurate to about +-1 s.
+  // Resultado esperado = las reglas de aviso del CONTRACT aplicadas al plan: aviso ~1 s después de que la cadera sale de la línea,
+  // 5 s para corregir, si sigue hundida se avisa de nuevo al tiro, dos avisos fallidos seguidos terminan la prueba. Precisión de ±1 s.
   let fails = 0, techT = Infinity;
-  const cues = [];                                  // {at, failAt}: when each corrective cue is issued and (if it fails) gives up
+  const cues = [];                                  // {at, failAt}: cuándo sale cada aviso de corrección y (si falla) cuándo se da por perdido
   for (const e of sag) {
     let cueAt = e.t + g.cueLag;
     while (cueAt < e.end && techT === Infinity) {
@@ -427,8 +427,8 @@ function poseAt(plan, t) {
     return plankPose(dev, c, g.breath * Math.sin(2 * Math.PI * t / g.breathPeriod));
   }
   const r = repState(plan, t);
-  const v = r.seg ? lerp(r.f < 0.5 ? r.top : r.seg.topEnd, r.seg.bottom, r.s) : r.top;     // elbow (push-up) or knee (squat) angle
-  if (plan.test === 'pullup' || plan.test === 'dip') return barPose(plan, t, v, r);         // lift (pull-up) or elbow (dip)
+  const v = r.seg ? lerp(r.f < 0.5 ? r.top : r.seg.topEnd, r.seg.bottom, r.s) : r.top;     // ángulo del codo (flexión) o de la rodilla (sentadilla)
+  if (plan.test === 'pullup' || plan.test === 'dip') return barPose(plan, t, v, r);         // subida (dominada) o codo (fondo)
   const dev = r.seg ? r.seg.dev * smooth(Math.min(1, 2 * Math.sin(Math.PI * r.f))) : 0;
   return plan.test === 'pushup' ? pushupPose(plan.variant, v, dev) : squatPose(v);
 }
@@ -445,7 +445,7 @@ function makePlan(test, o) {
   plan.test = test; plan.variant = o.variant;
   const B = camBasis(o.cameraRoll, o.cameraPitch);
   Object.assign(plan.meta, { test, fps: o.fps, duration: plan.total,
-    camera: { roll: o.cameraRoll, pitch: o.cameraPitch, down: { x: B.ex.y + 0, y: B.ey.y + 0, z: B.ez.y + 0 } } });   // + 0: no -0
+    camera: { roll: o.cameraRoll, pitch: o.cameraPitch, down: { x: B.ex.y + 0, y: B.ey.y + 0, z: B.ez.y + 0 } } });   // + 0: sin -0
   return plan;
 }
 
@@ -457,29 +457,29 @@ function makeFrame(plan, o, idx, tMs) {
 }
 
 /**
- * Generate a whole synthetic session (side view, seeded, deterministic).
+ * Genera una sesión sintética completa (vista de lado, con semilla, determinista).
  * @param {'pushup'|'squat'|'plank'|'pullup'|'dip'} test
  * @param {object} [opts]
- *   reps (10); invalidAt (0-based rep indices) + kind, or kinds ({index: kind}); kind = 'shallow' | 'sag' | 'pike' | 'no_lockout'
- *   (push-ups), 'shallow' | 'no_lockout' (squats), 'shallow' (chin stays ~11 cm under the bar) | 'no_lockout' (elbow ~131 deg
- *   at the bottom) | 'kip' (knee drive + body swing) (pull-ups), 'shallow' (elbow 108 deg) | 'no_lockout' (135 deg at the
- *   top) | 'kip' (knees kick open 60 deg during the push) (dips), 'wobble' (a dip that is not a rep attempt: counted as neither);
- *   seconds (plank, 60); fps (30); noise (0.004, normalized image units, gaussian); seed (1); sex ('M' toes | 'F' knees);
- *   variant ('toes' | 'knees'); aspect (9/16); facing ('right' | 'left'); lead / tail (s of stillness before / after the reps);
- *   pauseAfter ({rep, seconds}: stand still at the top for `seconds` once `rep` reps are done); fatigueEnd (6 s of stillness at
- *   the end); sagAt ([{t, dur, depth, recover}] plank hip-sag episodes, depth in m (negative = pike), recover:false without
- *   dur = never recovers); collapseAt (plank: second when knees and hips drop to the floor);
- *   releaseAt (pull-ups/dips, s: reps starting at or after it are dropped, then the person lets go of the bar / steps off the
- *   bars and stands; `tail` = seconds standing afterwards); release (true: the same right after the last rep);
- *   cameraRoll / cameraPitch (deg, all tests, default 0 = level camera, bit-identical to v0): the camera is turned about its
- *   optical axis (+ = clockwise seen from behind it, the scene looks turned counter-clockwise) / its x axis (+ = looks up)
- *   while it keeps looking at the same point; lm use the turned pinhole, world uses its axes;
- *   hide ([{t, dur}]: all visibilities 0.1 during those windows).
- * @returns {{frames: object[], fps: number, meta: object}} PoseFrames (t in ms from 0) and the expected outcome:
- *   push-ups/squats/pull-ups/dips: expectedValid, expectedInvalid, endReason ('technique' | 'pause' | 'position_lost' | null),
- *   repEnds (s), kinds, releaseT (s or null); plank: expectedSeconds, expectedInvalid (failed cues), expectedCues,
- *   endReason ('technique' | 'position_lost' | null), endT (s, accurate to about 1 s). All tests: camera {roll, pitch, down}
- *   with down = gravity in camera axes. `hide` windows are not part of the forecast.
+ *   reps (10); invalidAt (índices de repetición desde 0) + kind, o kinds ({índice: kind}); kind = 'shallow' | 'sag' | 'pike' | 'no_lockout'
+ *   (flexiones), 'shallow' | 'no_lockout' (sentadillas), 'shallow' (el mentón queda ~11 cm bajo la barra) | 'no_lockout' (codo ~131°
+ *   abajo) | 'kip' (rodillas arriba + balanceo) (dominadas), 'shallow' (codo 108°) | 'no_lockout' (135° arriba) | 'kip' (las
+ *   rodillas se abren 60° al empujar) (fondos), 'wobble' (una bajada que no es intento: no cuenta ni como válida ni como no válida);
+ *   seconds (plancha, 60); fps (30); noise (0,004, unidades de imagen normalizadas, gaussiano); seed (1); sex ('M' punta de pies | 'F' rodillas);
+ *   variant ('toes' | 'knees'); aspect (9/16); facing ('right' | 'left'); lead / tail (s quieto antes / después de las repeticiones);
+ *   pauseAfter ({rep, seconds}: quieto arriba `seconds` después de `rep` repeticiones); fatigueEnd (6 s quieto al
+ *   final); sagAt ([{t, dur, depth, recover}] episodios de cadera hundida en la plancha, depth en m (negativo = cadera alta), recover:false sin
+ *   dur = no se recupera); collapseAt (plancha: segundo en que rodillas y caderas caen al suelo);
+ *   releaseAt (dominadas/fondos, s: se quitan las repeticiones que parten en ese momento o después, y la persona suelta la barra / se
+ *   baja de las barras y queda de pie; `tail` = segundos de pie después); release (true: lo mismo justo después de la última);
+ *   cameraRoll / cameraPitch (grados, todas las pruebas, 0 por defecto = cámara derecha, idéntica bit a bit a la v0): la cámara
+ *   se gira en torno a su eje óptico (+ = sentido horario visto desde atrás, la escena se ve girada en sentido antihorario) / su
+ *   eje x (+ = mira arriba) mientras sigue mirando al mismo punto; lm usan la cámara girada, world usa sus ejes;
+ *   hide ([{t, dur}]: todas las visibilidades en 0,1 durante esas ventanas).
+ * @returns {{frames: object[], fps: number, meta: object}} PoseFrames (t en ms desde 0) y el resultado esperado:
+ *   flexiones/sentadillas/dominadas/fondos: expectedValid, expectedInvalid, endReason ('technique' | 'pause' | 'position_lost' | null),
+ *   repEnds (s), kinds, releaseT (s o null); plancha: expectedSeconds, expectedInvalid (avisos fallidos), expectedCues,
+ *   endReason ('technique' | 'position_lost' | null), endT (s, precisión de ~1 s). Todas las pruebas: camera {roll, pitch, down}
+ *   con down = la gravedad en ejes de la cámara. Las ventanas `hide` no entran en el pronóstico.
  */
 function synthSession(test, opts) {
   const o = resolve(test, opts), plan = makePlan(test, o), n = Math.round(plan.total * o.fps), frames = [];
@@ -488,11 +488,11 @@ function synthSession(test, opts) {
 }
 
 /**
- * One frame of the same session at time `tSeconds`, looping over the session length (demo playback). The pose and
- * noise are those of the nearest session frame; `frame.t` is `tSeconds` in ms (not wrapped, so it stays monotonic).
+ * Un cuadro de la misma sesión en el instante `tSeconds`, repitiendo la sesión en bucle (reproducción del demo). La pose y
+ * el ruido son los del cuadro más cercano; `frame.t` es `tSeconds` en ms (sin dar la vuelta, así sigue creciendo).
  * @param {'pushup'|'squat'|'plank'|'pullup'|'dip'} test
  * @param {number} tSeconds
- * @param {object} [opts] same as {@link synthSession}; reuse the same object between calls to skip rebuilding the plan.
+ * @param {object} [opts] igual que {@link synthSession}; reusar el mismo objeto entre llamadas evita rearmar el plan.
  * @returns {object} PoseFrame
  */
 function synthFrameAt(test, tSeconds, opts) {
