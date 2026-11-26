@@ -397,6 +397,9 @@ body.run-mode .stand-bar { display: none; }
     </div>
     <div class="test-list" id="test-list"></div>
     <button class="btn" id="btn-hub" type="button"></button>
+    <div class="lbl" style="margin-top:6px">Con barra · opcionales</div>
+    <p class="small muted" style="margin:-6px 0 0">Necesitas una barra fija o barras paralelas. No entran en el índice FitGram.</p>
+    <div class="test-list" id="test-list-barra"></div>
     <button class="game-card" id="btn-open-game" type="button">
       <span class="test-n" aria-hidden="true">★</span>
       <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
@@ -6523,7 +6526,7 @@ return { newRecord, addRecord, removeRecord, replaceRecord, loadRecords, mergeRe
 __mods["app"] = (() => {
 // FitGram v0 — la app: pantallas, cámara, MediaPipe Pose Landmarker, corredor de pruebas, resultados.
 // build.mjs junta los módulos en un solo archivo; estos import se reescriben al construir.
-const { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } = __mods["norms"];
+const { NORMS, classifyPushups, classifySquats, classifyPlank, classifyPullups, classifyDips, fitnessProfile } = __mods["norms"];
 const { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG, vistaDeFrente, queFalta } = __mods["exercises"];
 const { siluetaPara, opacidadSilueta } = __mods["silueta"];
 const { datosTelarana, svgTelarana } = __mods["telarana"];
@@ -6562,7 +6565,12 @@ const URLS = {
 const STORE_KEY = 'fitgram.v0';
 const ARM_HOLD_MS = 300; // cuánto hay que estar en la posición de partida para que empiece la prueba
 const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false, mostrarJuego: true, silueta: true });
+// Las tres pruebas de la evaluación base (índice, perfil, telaraña, validación).
 const ORDER = ['pushup', 'squat', 'plank'];
+// Pruebas con barra, opcionales (traídas de la v1 de José, 26-nov-2026): necesitan barra fija o paralelas.
+const BARRA = ['pullup', 'dip'];
+// Todas las que se pueden guardar en el historial.
+const TODAS = [...ORDER, ...BARRA];
 const COLORS = { left: '#2f9bd3', right: '#e8613c', axial: '#8a96a3', axis: '#8a96a3' };
 
 const TESTS = {
@@ -6598,13 +6606,35 @@ const TESTS = {
       'El reloj parte solo cuando la app confirma la posición durante 1 segundo.',
     ],
   },
+  pullup: {
+    n: '04', name: 'Dominadas', short: 'Dominadas', measures: 'Resistencia de espalda y brazos (tracción)',
+    unit: 'rep', unitLong: 'dominadas válidas', equipment: 'Barra fija',
+    measure: 'Cómo lo mide FitGram: partes colgado con los brazos estirados. La repetición cuenta cuando el mentón sube por sobre tus manos (la barra) y vuelves a estirar los brazos por completo. Si te balanceas o te impulsas con las piernas, no cuenta. Si sueltas la barra o apoyas los pies, la prueba termina.',
+    setup: [
+      'Deja el teléfono en vertical, apoyado a la altura de la cintura.',
+      'Ponte de lado a la cámara, a unos 2,5 a 3 metros de la barra.',
+      'Revisa que se vean la barra, tus manos y tus pies durante toda la prueba.',
+    ],
+  },
+  dip: {
+    n: '05', name: 'Fondos en paralelas', short: 'Fondos', measures: 'Resistencia de pecho y tríceps (empuje)',
+    unit: 'rep', unitLong: 'fondos válidos', equipment: 'Barras paralelas',
+    measure: 'Cómo lo mide FitGram: partes con los brazos estirados sobre las paralelas. La repetición cuenta cuando el codo llega a 90° o menos y vuelves a estirar los brazos. Sin ayuda de las piernas. Si apoyas los pies o te bajas de las paralelas, la prueba termina.',
+    setup: [
+      'Deja el teléfono en vertical, apoyado a la altura de la cintura.',
+      'Ponte de lado a la cámara, a unos 2,5 a 3 metros de las paralelas.',
+      'Revisa que se vea todo tu cuerpo, de las manos a los pies, también abajo en cada fondo.',
+    ],
+  },
 };
 
 const END_TEXT = {
   manual: 'terminaste la prueba',
-  technique: { pushup: 'dos repeticiones seguidas no válidas', squat: 'dos repeticiones seguidas no válidas', plank: 'dos avisos seguidos sin corregir la postura' },
+  technique: { pushup: 'dos repeticiones seguidas no válidas', squat: 'dos repeticiones seguidas no válidas', plank: 'dos avisos seguidos sin corregir la postura',
+    pullup: 'dos repeticiones seguidas no válidas', dip: 'dos repeticiones seguidas no válidas' },
   pause: 'pausa de más de 4 s; el protocolo no permite descansar',
-  position_lost: 'se perdió la posición',
+  position_lost: { pushup: 'se perdió la posición', squat: 'se perdió la posición', plank: 'se perdió la posición',
+    pullup: 'soltaste la barra o apoyaste los pies', dip: 'dejaste las paralelas o apoyaste los pies' },
   not_visible: 'la cámara dejó de verte',
   video_end: 'terminó el video',
 };
@@ -6820,7 +6850,7 @@ const Engine = {
 /* ------------------------------------------------------------------ estado */
 
 const stored = loadStore();
-const restored = Hist.migrateStore(stored, ORDER);
+const restored = Hist.migrateStore(stored, TODAS);
 const S = {
   profile: stored.profile || { age: null, sex: null },
   // `history` es la fuente: la serie completa de cada prueba.
@@ -6841,6 +6871,8 @@ function classify(test, value, profile = S.profile) {
   const { age, sex } = profile;
   if (test === 'pushup') return classifyPushups({ age, sex, reps: value });
   if (test === 'squat') return classifySquats({ age, sex, reps: value });
+  if (test === 'pullup') return classifyPullups({ age, sex, reps: value });
+  if (test === 'dip') return classifyDips({ age, sex, reps: value });
   return classifyPlank({ age, sex, seconds: value });
 }
 
@@ -6869,7 +6901,7 @@ function show(name) {
   const t = S.test ? TESTS[S.test] : null;
   $('stand-bar').hidden = !S.stand || name === 'run';
   $('head-right').textContent = name === 'onb' ? (S.stand ? 'Modo stand' : `${AGE_RANGE.min} a ${AGE_RANGE.max} años`)
-    : (name === 'intro' || name === 'run' || name === 'result') && t ? `Prueba ${t.n} de 03` : profileTag();
+    : (name === 'intro' || name === 'run' || name === 'result') && t ? numeroPrueba(t) : profileTag();
   window.scrollTo(0, 0);
   if (name === 'hub') renderHub();
   if (name === 'profile') renderProfile();
@@ -6929,24 +6961,36 @@ function resultText(test, value) {
   return TESTS[test].unit === 's' ? `${mmss(value)}` : `${value} rep`;
 }
 
-function renderHub() {
-  const list = $('test-list');
-  list.innerHTML = '';
-  const next = nextPending();
-  for (const id of ORDER) {
+/** «Prueba 02 de 03» para la evaluación base; las de barra son opcionales y van aparte: «Con barra · opcional». */
+function numeroPrueba(t) {
+  return t.equipment ? 'Con barra · opcional' : `Prueba ${t.n} de 03`;
+}
+
+/** Tarjeta de una prueba en la pantalla de evaluación (con su último resultado, si hay). */
+function tarjetaPrueba(id, next) {
     const t = TESTS[id], r = S.results[id];
     let cls = null;
     if (r) { try { cls = classify(id, r.value, r.profile || S.profile); } catch { cls = null; } }
+    if (cls && !cls.category) cls = null;   // fondos en mujeres: sin baremo publicado
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'card test-card' + (id === next ? ' next' : '');
     b.innerHTML = `<span class="test-n">${t.n}</span>
       <span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="test-name">${esc(t.name)}</span><span class="test-q">${esc(t.measures)}</span></span>
-      <span class="test-status">${r ? `<span class="test-val">${esc(resultText(id, r.value))}</span>${cls ? `<span class="chip cat">${esc(cls.category.label)}</span>` : ''}${deltaChip(id)}` : '<span class="test-val muted" style="font-size:18px">Pendiente</span>'}</span>`;
+      <span class="test-status">${r ? `<span class="test-val">${esc(resultText(id, r.value))}</span>${cls ? `<span class="chip cat">${esc(cls.category.label)}</span>` : ''}${deltaChip(id)}` : `<span class="test-val muted" style="font-size:18px">${t.equipment ? esc(t.equipment) : 'Pendiente'}</span>`}</span>`;
     b.setAttribute('aria-label', `${t.name}: ${r ? resultText(id, r.value) + (cls ? ', ' + cls.category.label : '') + deltaAria(id) : 'pendiente'}`);
     b.addEventListener('click', () => openIntro(id));
-    list.appendChild(b);
-  }
+    return b;
+}
+
+function renderHub() {
+  const list = $('test-list');
+  list.innerHTML = '';
+  const next = nextPending();
+  for (const id of ORDER) list.appendChild(tarjetaPrueba(id, next));
+  const barra = $('test-list-barra');
+  barra.innerHTML = '';
+  for (const id of BARRA) barra.appendChild(tarjetaPrueba(id, null));
   const done = ORDER.filter((t) => S.results[t]).length;
   $('hub-title').textContent = done === 3 ? 'Evaluación completa' : 'Tu evaluación';
   const sinTabla = S.profile.age != null && !coversAge(S.profile.age);
@@ -7001,7 +7045,7 @@ function placementTopSVG(test) {
 function openIntro(test) {
   S.test = test;
   const t = TESTS[test];
-  $('intro-kicker').textContent = `Prueba ${t.n} de 03 · ${t.measures}`;
+  $('intro-kicker').textContent = `${numeroPrueba(t)} · ${t.measures}`;
   $('intro-title').textContent = t.name;
   const variant = test === 'pushup' ? (S.profile.sex === 'F' ? ' Según el protocolo CSEP, en mujeres se hace con apoyo de rodillas.' : ' Según el protocolo CSEP, en hombres se hace desde la punta de los pies.') : '';
   $('intro-sub').textContent = (test === 'plank' ? 'Cuenta los segundos que mantienes la posición correcta.' : 'Cuenta solo las repeticiones completas y con buena técnica.') + variant;
@@ -7803,7 +7847,7 @@ const Runner = {
     const m = this.st?.metrics || {};
     const angles = [];
     if (S.settings.angles) {
-      if (this.test === 'pushup' && m.elbow != null) angles.push({ joint: `${side}_elbow`, value: m.elbow });
+      if ((this.test === 'pushup' || this.test === 'pullup' || this.test === 'dip') && m.elbow != null) angles.push({ joint: `${side}_elbow`, value: m.elbow });
       if (this.test === 'squat' && m.knee != null) angles.push({ joint: `${side}_knee`, value: m.knee });
       if (this.test === 'plank' && (m.line ?? m.hip) != null) angles.push({ joint: `${side}_hip`, value: m.line ?? m.hip, between: [`${side}_shoulder`, `${side}_ankle`] });
     }
@@ -7907,7 +7951,9 @@ const Runner = {
   renderCells(m) {
     const defs = this.test === 'pushup' ? [['Codo', m.elbow], ['Línea corporal', m.line], ['Cadera', m.hip]]
       : this.test === 'squat' ? [['Rodilla', m.knee], ['Cadera', m.hip], ['Tronco', m.torso]]
-        : [['Línea corporal', m.line], ['Codo', m.elbow], ['Cadera', m.hip]];
+        : this.test === 'pullup' ? [['Codo', m.elbow], ['Cadera', m.hip], ['Rodilla', m.knee]]
+          : this.test === 'dip' ? [['Codo', m.elbow], ['Tronco', m.torso], ['Cadera', m.hip]]
+            : [['Línea corporal', m.line], ['Codo', m.elbow], ['Cadera', m.hip]];
     $('cells').innerHTML = defs.map(([l, v]) => `<div class="cell"><div class="lbl" style="font-size:12px">${esc(l)}</div><div class="v">${deg(v)}</div></div>`).join('');
   },
 
@@ -8034,8 +8080,8 @@ const Runner = {
       reglas: REGLAS,
       profile: { age: S.profile.age, sex: S.profile.sex } };
     if (this.mode !== 'demo') {
-      S.history = Hist.pushResult(S.history, this.test, result, ORDER);
-      S.results = Hist.latestMap(S.history, ORDER);
+      S.history = Hist.pushResult(S.history, this.test, result, TODAS);
+      S.results = Hist.latestMap(S.history, TODAS);
       saveStore();
     }
     S.last = { test: this.test, result, rec: this.rec, demo: this.mode === 'demo', video: null };
@@ -8069,6 +8115,9 @@ function waitFor(pred, ms) {
 function buildDemo(test, sex) {
   const opts = test === 'pushup' ? { reps: 15, invalidAt: [13, 14], kind: 'sag', sex, seed: 7, fps: 30, noise: 0.003, fatigueEnd: true }
     : test === 'squat' ? { reps: 16, invalidAt: [14, 15], kind: 'shallow', sex, seed: 11, fps: 30, noise: 0.003 }
+      // Barra: las sesiones de demostración que propuso José (las revisa test/barra-conteo.test.mjs).
+      : test === 'pullup' ? { reps: 8, kinds: { 3: 'kip' }, release: true, seed: 3, fps: 30, noise: 0.003 }
+      : test === 'dip' ? { reps: 11, kinds: { 4: 'no_lockout', 9: 'shallow', 10: 'shallow' }, seed: 9, fps: 30, noise: 0.003 }
       : { seconds: 48, sagAt: [{ t: 20, dur: 2.5, depth: 0.12, recover: true }], collapseAt: 46, sex, seed: 5, fps: 30, noise: 0.002 };
   const s = synthSession(test, opts);
   // Caja que encierra todo el movimiento (unidades de imagen corregidas por aspecto) para encuadrar en pantalla.
@@ -8096,8 +8145,10 @@ function renderResult(test) {
   // El perfil con el que se midió, no el de ahora: «Cambiar edad o sexo» en
   // Ajustes no puede reescribir con qué tabla se comparó una medición vieja.
   const perfil = r.profile || S.profile;
-  let cls = null;
+  let cls = null, sinBaremo = null;
   try { cls = classify(test, r.value, perfil); } catch (e) { console.warn(e); }
+  // Fondos en mujeres: no hay baremo publicado; se guarda la marca, pero no se inventa una categoría.
+  if (cls && !cls.category) { sinBaremo = cls.references?.[0]?.text || null; cls = null; }
   $('res-kicker').textContent = `Prueba ${t.n} · ${t.name}${L?.demo ? ' · demostración' : ''}`;
   $('res-title').textContent = L?.demo ? 'Resultado de la demostración' : 'Tu resultado';
   const shortPlank = t.unit === 's' && r.value < 60;
@@ -8135,7 +8186,9 @@ function renderResult(test) {
     if (cls.flags?.includes('unverified_cut')) flags.push('Este corte de la banda 15–19 no se confirmó en una fuente primaria; conviene verificarlo en las ACSM\'s Guidelines.');
     if (cls.flags?.includes('questionable_source')) flags.push(normsFor('squat').caveat || 'La tabla de ACE coincide con un baremo de abdominales; úsala como referencia práctica.');
     if (cls.flags?.includes('extrapolated')) flags.push('Tu tiempo está fuera del rango P10–P90 del estudio; el percentil es una estimación.');
-    if (test === 'plank') flags.push(normsFor('plank').caveat);
+    if (test === 'plank' || test === 'pullup' || test === 'dip') flags.push(normsFor(test).caveat);
+    for (const ref of cls.references || []) flags.push(`${ref.label}: ${ref.text}`);
+    if (cls.flags?.includes('age_outside_sample')) flags.push('Tu edad queda fuera de la muestra del estándar de China (estudiantes universitarios); úsalo como referencia.');
     if (L?.demo) flags.push('Esto es una demostración con una persona simulada: no se guarda en tu perfil.');
     $('res-flags').innerHTML = flags.filter(Boolean).map((f) => `<div class="flag">${esc(f)}</div>`).join('');
     $('res-src').innerHTML = `${esc(cls.source.apa)} ${cls.source.url ? `<a href="${esc(cls.source.url)}" target="_blank" rel="noopener">${esc(cls.source.url)}</a>` : ''}`;
@@ -8144,9 +8197,9 @@ function renderResult(test) {
     $('res-table').innerHTML = '';
     $('res-src').innerHTML = '';
     $('res-table-lbl').textContent = 'Sin tabla de referencia';
-    const porque = !coversAge(perfil.age)
+    const porque = sinBaremo || (!coversAge(perfil.age)
       ? `Los baremos de esta versión van de ${AGE_RANGE.min} a ${AGE_RANGE.max} años, y la edad registrada es ${perfil.age ?? '—'}. FitGram contó las repeticiones válidas y corrigió la técnica, pero no puede decir en qué nivel estás: inventar una categoría con una tabla de otra población sería un número falso.`
-      : 'No se pudo clasificar este resultado con las tablas disponibles.';
+      : 'No se pudo clasificar este resultado con las tablas disponibles.');
     $('res-flags').innerHTML = `<div class="flag">${esc(porque)}</div>`;
   }
 
@@ -8524,7 +8577,7 @@ function renderTelarana() {
 /** Todas las mediciones guardadas, la más nueva primero, con su botón de borrar (HU-38). */
 function renderHistList() {
   const rows = [];
-  for (const t of ORDER) for (const r of S.history?.[t] || []) rows.push({ t, r });
+  for (const t of TODAS) for (const r of S.history?.[t] || []) rows.push({ t, r });
   rows.sort((a, b) => String(b.r.date).localeCompare(String(a.r.date)));
   $('prof-hist-list').innerHTML = rows.length
     ? rows.map(({ t, r }) => `<div class="prof-row" style="grid-template-columns:1fr auto auto">
@@ -9421,7 +9474,7 @@ const standStatus = (msg) => { $('stand-status').textContent = msg; };
 /** Borra lo de la persona anterior. Solo en memoria: en modo stand nunca se guardó. */
 function nextPerson() {
   S.profile = { age: null, sex: null };
-  S.history = Hist.emptyHistory(ORDER);
+  S.history = Hist.emptyHistory(TODAS);
   S.results = {};
   S.last = null;
   S.test = null;
@@ -9675,11 +9728,11 @@ function bind() {
     const t = b.dataset.delTest, d = b.dataset.delDate;
     if (!window.confirm(`¿Borrar ${TESTS[t].short.toLowerCase()} del ${dateLabel(d)}? No se puede deshacer.`)) return;
     S.history = Hist.removeResult(S.history, t, d);
-    S.results = Hist.latestMap(S.history, ORDER);
+    S.results = Hist.latestMap(S.history, TODAS);
     saveStore();
     renderProfile();
   });
-  $('btn-exp-csv').addEventListener('click', () => downloadText(`fitgram-mis-resultados-${stamp()}.csv`, '\ufeff' + Hist.toCSV(S.history, ORDER, describeForCsv), 'text/csv'));
+  $('btn-exp-csv').addEventListener('click', () => downloadText(`fitgram-mis-resultados-${stamp()}.csv`, '\ufeff' + Hist.toCSV(S.history, TODAS, describeForCsv), 'text/csv'));
   $('btn-exp-json').addEventListener('click', () => downloadText(`fitgram-mis-resultados-${stamp()}.json`,
     JSON.stringify({ schema: 1, app: 'fitgram', exportado: new Date().toISOString(), profile: S.profile, history: S.history }, null, 2), 'application/json'));
   $('btn-reset').addEventListener('click', () => { $('reset-confirm').hidden = false; });

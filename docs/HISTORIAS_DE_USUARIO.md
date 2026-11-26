@@ -31,7 +31,7 @@ Historias escritas por José para FitGram v1 (13-nov-2026), la versión paralela
 | B2 | ¿Se amplía el rango de edad 18–21? (Resuelta el 26-nov: 18–30, con las tablas de José.) |
 | B5 | ¿Se sigue usando la tabla de sentadillas de ACE? |
 | F1 | ¿Se calibra la profundidad de la sentadilla? |
-| F2 | ¿Entran dominadas, fondos y la pregunta de si entrenas o compites? |
+| F2 | ¿Entran dominadas, fondos y la pregunta de si entrenas o compites? (26-nov: dominadas y fondos entran como pruebas opcionales «con barra», portadas de la v1 de José; la pregunta de si entrenas o compites sigue abierta.) |
 | F3 | ¿El modo stand pone una edad mínima o pide autorización a menores? |
 | F4 | ¿Se oculta el juego antes del pitch? |
 | F5 | ¿La tabla del baremo va de menor a mayor (criterio) o de mayor a menor (app)? |

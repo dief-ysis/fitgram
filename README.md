@@ -79,7 +79,7 @@ sw.js  manifest.webmanifest
 
 | Módulo | Qué hace |
 |---|---|
-| `norms` | Baremos y clasificación (CSEP/ACSM, ACE, Strand et al. 2014). Solo 18–30 años. |
+| `norms` | Baremos y clasificación (CSEP/ACSM, ACE, Strand et al. 2014; con barra: China 2014, USMC, Thomas et al. 2020). Solo 18–30 años. |
 | `skeleton` | Landmarks de MediaPipe a articulaciones, suavizado, dibujo 2D y 3D. |
 | `synth` | Personas sintéticas para probar el pipeline sin cámara. |
 | `exercises` | Máquinas de estado que validan y cuentan cada repetición. |
