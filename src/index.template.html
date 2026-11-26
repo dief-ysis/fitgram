@@ -33,8 +33,8 @@
 @font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 500; font-display: swap; src: url('fonts/barlow-condensed-500.woff2') format('woff2'); }
 @font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 600; font-display: swap; src: url('fonts/barlow-condensed-600.woff2') format('woff2'); }
 @font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 700; font-display: swap; src: url('fonts/barlow-condensed-700.woff2') format('woff2'); }
-/* Layout: one mobile column (max 560px) with a sticky header; the test runner is a full-width camera stage.
-   Visual language inherited from the FitGram MVP: square corners, crop marks on cards, condensed uppercase labels. */
+/* Diseño: una columna para celular (máx. 560px) con encabezado fijo; la prueba es un escenario de cámara a todo el ancho.
+   Lenguaje visual heredado del MVP de FitGram: esquinas rectas, marcas de corte en las tarjetas, etiquetas condensadas en mayúsculas. */
 :root {
   --bg: #f2f2f3; --surface: #f8f8f9; --surface-2: #ffffff; --ink: #1d1f20; --muted: #565b61;
   --line: #c5c9ce; --line-soft: #dfe1e4; --accent: #4f77a0; /* 4,7:1 con blanco (antes #5980a6, 4,15:1, bajo el mínimo AA) */ --accent-ink: #44678a; --on-accent: #ffffff;
@@ -74,7 +74,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .small { font-size: 14px; }
 .wrap { width: 100%; max-width: 560px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 
-/* Header */
+/* Encabezado */
 .app-head { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--ink); }
 .app-head .wrap { height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { font-family: var(--font-cd); font-size: 26px; font-weight: 700; letter-spacing: .14em; background: none; border: 0; padding: 0; min-height: 44px; }
@@ -82,13 +82,13 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .icon-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: transparent; }
 .ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
-/* Screens */
+/* Pantallas */
 main { padding-block: 20px 112px; }
 .screen { display: flex; flex-direction: column; gap: 18px; }
 .screen-title { margin: 0; font-family: var(--font-cd); font-size: 40px; line-height: 1; font-weight: 700; text-transform: uppercase; text-wrap: balance; }
 .screen-sub { margin: 4px 0 0; color: var(--muted); max-width: 60ch; }
 
-/* Cards with crop marks (FitGram MVP signature) */
+/* Tarjetas con marcas de corte (firma del MVP de FitGram) */
 .card { position: relative; border: 1px solid var(--line); background: var(--surface); }
 .card.marks::before { content: ""; position: absolute; inset: -5px; pointer-events: none; background:
   linear-gradient(var(--mark), var(--mark)) 0 4px/9px 1px no-repeat, linear-gradient(var(--mark), var(--mark)) 4px 0/1px 9px no-repeat,
@@ -97,7 +97,7 @@ main { padding-block: 20px 112px; }
   linear-gradient(var(--mark), var(--mark)) 100% calc(100% - 4px)/9px 1px no-repeat, linear-gradient(var(--mark), var(--mark)) calc(100% - 4px) 100%/1px 9px no-repeat; }
 .pad { padding: 16px; }
 
-/* Buttons */
+/* Botones */
 .btn { min-height: 52px; width: 100%; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); font-family: var(--font-cd); font-size: 20px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 16px; }
 .btn.ghost { background: transparent; color: var(--ink); border-color: var(--ink); }
 .btn.quiet { background: transparent; color: var(--ink); border-color: var(--line); }
@@ -109,10 +109,10 @@ main { padding-block: 20px 112px; }
 .pill { min-height: 48px; flex: 1 1 0; min-width: 64px; border: 1px solid var(--line); background: transparent; font-family: var(--font-cd); font-size: 20px; font-weight: 600; padding: 0 8px; }
 .pill[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
-/* Onboarding */
+/* Bienvenida */
 .field { display: flex; flex-direction: column; gap: 8px; }
 
-/* Test list */
+/* Lista de pruebas */
 .test-list { display: flex; flex-direction: column; gap: 12px; }
 .test-card { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 14px; text-align: left; width: 100%; color: inherit; }
 .test-card.next { border-color: var(--accent); }
@@ -124,7 +124,7 @@ main { padding-block: 20px 112px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 2px 8px; border: 1px solid var(--line); font-family: var(--font-cd); font-size: 14px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 .chip.cat { border-color: var(--accent); color: var(--accent-ink); }
 
-/* Intro */
+/* Introducción */
 .steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .steps li { display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 10px; }
 .steps .k { font-family: var(--font-cd); font-size: 18px; font-weight: 700; color: var(--accent-ink); }
@@ -134,8 +134,8 @@ main { padding-block: 20px 112px; }
 .mode-list { display: flex; flex-direction: column; gap: 10px; }
 .mode-hint { font-size: 14px; color: var(--muted); }
 
-/* Runner */
-/* Run mode: header hidden, the camera stage fills the screen minus the control bar (portrait and landscape). */
+/* Prueba */
+/* Modo prueba: sin encabezado, el escenario de la cámara llena la pantalla menos la barra de controles (vertical y horizontal). */
 body.run-mode .app-head { display: none; }
 body.run-mode main { padding-block: 0 32px; }
 #scr-run { gap: 12px; }
@@ -210,7 +210,7 @@ body.run-mode main.wrap { max-width: 960px; }
 .replog i.ok { background: var(--accent); border-color: var(--accent); }
 .replog i.bad { background: transparent; border-color: var(--bad); }
 
-/* Result */
+/* Resultado */
 .result-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .result-big { font-family: var(--font-cd); font-size: 72px; line-height: .9; font-weight: 700; font-variant-numeric: tabular-nums; }
 .result-unit { font-family: var(--font-cd); font-size: 24px; font-weight: 600; color: var(--muted); margin-left: 4px; }
@@ -237,7 +237,7 @@ table.norm td.r { text-align: right; font-family: var(--font-cd); font-size: 18p
 .seg button { flex: 1; min-height: 44px; border: 0; background: transparent; font-family: var(--font-cd); font-size: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 
-/* Profile */
+/* Perfil */
 .overall { display: flex; flex-direction: column; gap: 10px; }
 .overall-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .overall-val { font-family: var(--font-cd); font-size: 56px; font-weight: 700; line-height: .9; font-variant-numeric: tabular-nums; }
@@ -306,14 +306,14 @@ body.run-mode .stand-bar { display: none; }
 .game-card { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); }
 .prof-val { font-family: var(--font-cd); font-size: 24px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-/* Bottom tabs */
+/* Pestañas de abajo */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg); border-top: 1px solid var(--ink); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .tabs .wrap { display: flex; }
 .tabs button { flex: 1; height: 62px; border: 0; border-top: 3px solid transparent; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); }
 .tabs button[aria-current="page"] { border-top-color: var(--accent); color: var(--ink); }
 .tabs span { font-family: var(--font-cd); font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 
-/* Settings sheet */
+/* Hoja de ajustes */
 .sheet { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.45); }
 .sheet .panel { width: 100%; max-width: 560px; background: var(--bg); border-top: 1px solid var(--ink); padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 14px; max-height: 88vh; overflow-y: auto; }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }

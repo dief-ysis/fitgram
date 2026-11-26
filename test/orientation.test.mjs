@@ -1,5 +1,5 @@
-// Unit tests of src/orientation.js: frame conversions, sensor estimator, start-posture estimator, fusion,
-// frame correction and UI text. Synthetic sensor streams and rolled synthetic poses are built here.
+// Pruebas unitarias de src/orientation.mjs: cambios de sistema, estimador con sensores, estimador con la postura
+// inicial, fusión, corrección de cuadros y textos. Aquí se arman flujos de sensores sintéticos y poses sintéticas giradas.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ORIENT_CONFIG } from '../src/orientation.mjs';
@@ -33,7 +33,7 @@ function rng(seed) {
 }
 const gauss = (r) => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
 
-/** The same scene seen by a camera rolled `deg` clockwise (seen from behind it): gravity becomes (sin, cos) in the image. */
+/** La misma escena vista por una cámara girada `deg` en sentido horario (vista desde atrás): la gravedad queda (sin, cos) en la imagen. */
 function rollFrame(f, deg) {
   const c = Math.cos(deg * RAD), s = Math.sin(deg * RAD), a = f.aspect;
   const lm = f.lm.map((p) => {
@@ -44,17 +44,17 @@ function rollFrame(f, deg) {
   return { ...f, lm, world };
 }
 
-// ---- 1. Frames and math -----------------------------------------------------------------------------------------
+// ---- 1. Sistemas y cálculos -----------------------------------------------------------------------------------------
 
 test('upFromEuler: hand-checked device poses', () => {
-  nearVec(upFromEuler(0, 0), [0, 0, 1]);            // flat on a table, screen up: up = out of the screen
-  nearVec(upFromEuler(180, 0), [0, 0, -1]);         // flat, screen down
-  nearVec(upFromEuler(90, 0), [0, 1, 0]);           // upright portrait: up = top edge
-  nearVec(upFromEuler(-90, 0), [0, -1, 0]);         // upside-down portrait
-  nearVec(upFromEuler(0, -90), [1, 0, 0]);          // landscape, right edge up (top edge to the user's left)
-  nearVec(upFromEuler(0, 90), [-1, 0, 0]);          // landscape, left edge up
-  nearVec(upFromEuler(70, 0), [0, Math.sin(70 * RAD), Math.cos(70 * RAD)]);   // leaning back 20°: screen looks a bit up
-  nearVec(upFromEuler(90, 37), [0, 1, 0]);          // gimbal lock: gamma is meaningless at beta = 90, the vector is not
+  nearVec(upFromEuler(0, 0), [0, 0, 1]);            // acostado en la mesa, pantalla arriba: arriba = saliendo de la pantalla
+  nearVec(upFromEuler(180, 0), [0, 0, -1]);         // acostado, pantalla abajo
+  nearVec(upFromEuler(90, 0), [0, 1, 0]);           // vertical: arriba = borde de arriba
+  nearVec(upFromEuler(-90, 0), [0, -1, 0]);         // vertical de cabeza
+  nearVec(upFromEuler(0, -90), [1, 0, 0]);          // horizontal, borde derecho arriba (borde de arriba a la izquierda)
+  nearVec(upFromEuler(0, 90), [-1, 0, 0]);          // horizontal, borde izquierdo arriba
+  nearVec(upFromEuler(70, 0), [0, Math.sin(70 * RAD), Math.cos(70 * RAD)]);   // inclinado 20° hacia atrás: la pantalla mira un poco hacia arriba
+  nearVec(upFromEuler(90, 37), [0, 1, 0]);          // bloqueo de cardán: gamma no significa nada con beta = 90, el vector sí
   const u = upFromEuler(-41, 63);
   near(Math.hypot(u.x, u.y, u.z), 1, 1e-12, 'unit length');
   assert.equal(upFromEuler(null, 0), null);
@@ -63,7 +63,7 @@ test('upFromEuler: hand-checked device poses', () => {
 });
 
 test('upFromEuler matches the full W3C rotation matrix for any alpha', () => {
-  // R = Rz(alpha)·Rx(beta)·Ry(gamma) maps device -> earth; "up" in device axes is R^T·[0,0,1] = third row of R.
+  // R = Rz(alpha)·Rx(beta)·Ry(gamma) lleva aparato -> tierra; "arriba" en ejes del aparato es R^T·[0,0,1] = tercera fila de R.
   const mul = (A, B) => A.map((row) => B[0].map((_, j) => row.reduce((q, v, k) => q + v * B[k][j], 0)));
   const Rz = (a) => [[Math.cos(a), -Math.sin(a), 0], [Math.sin(a), Math.cos(a), 0], [0, 0, 1]];
   const Rx = (b) => [[1, 0, 0], [0, Math.cos(b), -Math.sin(b)], [0, Math.sin(b), Math.cos(b)]];
@@ -86,19 +86,19 @@ test('deviceToImage: upright portrait, rear camera, is level', () => {
 });
 
 test('deviceToImage: known roll, rear vs front camera', () => {
-  // Phone upright, its top edge tipped 10° towards the user's right: "up" lies 10° to the left of the device y axis.
+  // Teléfono vertical, con el borde de arriba inclinado 10° a la derecha: "arriba" queda 10° a la izquierda del eje y del aparato.
   const up = { x: -Math.sin(10 * RAD), y: Math.cos(10 * RAD), z: 0 };
   const rear = deviceToImage(up, { screenAngle: 0, facing: 'environment' });
-  near(rear.roll, 10, 1e-9, 'rear roll');           // seen from behind the rear camera the phone turned clockwise
+  near(rear.roll, 10, 1e-9, 'rear roll');           // visto desde atrás de la cámara trasera, el teléfono giró en sentido horario
   nearVec(rear.down, [Math.sin(10 * RAD), Math.cos(10 * RAD), 0]);
   const front = deviceToImage(up, { screenAngle: 0, facing: 'user' });
-  near(front.roll, -10, 1e-9, 'front roll');        // the front camera looks the other way: same tip is counter-clockwise
+  near(front.roll, -10, 1e-9, 'front roll');        // la cámara frontal mira al revés: la misma inclinación es antihoraria
   near(front.pitch, 0, 1e-9);
   assert.equal(deviceToImage(up).roll, rear.roll, 'rear camera and angle 0 are the defaults');
 });
 
 test('deviceToImage: pitch sign, rear vs front camera', () => {
-  // Leaning back 20° (screen faces slightly up): the rear camera looks 20° below the horizon, the front one 20° above.
+  // Inclinado 20° hacia atrás (la pantalla mira un poco arriba): la trasera mira 20° bajo el horizonte, la frontal 20° sobre él.
   const up = upFromEuler(70, 0);
   const rear = deviceToImage(up, { screenAngle: 0, facing: 'environment' });
   near(rear.pitch, -20, 1e-9); near(rear.roll, 0, 1e-9);
@@ -109,27 +109,27 @@ test('deviceToImage: pitch sign, rear vs front camera', () => {
 });
 
 test('deviceToImage: landscape both ways follows the screen angle', () => {
-  // Top edge to the user's left (device turned counter-clockwise): right edge up, screen angle 90.
+  // Borde de arriba a la izquierda (aparato girado en sentido antihorario): borde derecho arriba, ángulo de pantalla 90.
   const a = deviceToImage(upFromEuler(0, -90), { screenAngle: 90, facing: 'environment' });
   near(a.roll, 0, 1e-9); near(a.pitch, 0, 1e-9); assert.equal(a.sideways, false);
-  // Top edge to the user's right: left edge up, screen angle 270 (window.orientation -90).
+  // Borde de arriba a la derecha: borde izquierdo arriba, ángulo de pantalla 270 (window.orientation -90).
   const b = deviceToImage(upFromEuler(0, 90), { screenAngle: 270, facing: 'environment' });
   near(b.roll, 0, 1e-9); assert.equal(b.sideways, false);
   const c = deviceToImage(upFromEuler(0, 90), { screenAngle: -90, facing: 'user' });
   near(c.roll, 0, 1e-9, 'negative angles are normalized');
-  // Landscape plus an extra 8° clockwise turn of the phone as the user sees it (rear camera): roll +8.
-  const up = { x: Math.cos(8 * RAD), y: Math.sin(8 * RAD), z: 0 };      // device x is 8° clockwise from up, so up has a +y part
+  // Horizontal más un giro extra de 8° en sentido horario visto por la persona (cámara trasera): roll +8.
+  const up = { x: Math.cos(8 * RAD), y: Math.sin(8 * RAD), z: 0 };      // x del aparato está 8° en sentido horario desde arriba, así "arriba" tiene una parte +y
   near(deviceToImage(up, { screenAngle: 90, facing: 'environment' }).roll, 8, 1e-9);
   near(deviceToImage(up, { screenAngle: 90, facing: 'user' }).roll, -8, 1e-9);
 });
 
 test('deviceToImage: rotation lock and wrong screen angle show up as sideways / upside down', () => {
-  // Phone lying in landscape while the page stays in portrait (rotation lock): the picture is turned 90°.
+  // Teléfono de costado con la página en vertical (rotación bloqueada): la imagen está girada 90°.
   const locked = deviceToImage(upFromEuler(0, -90), { screenAngle: 0, facing: 'environment' });
   near(locked.roll, -90, 1e-9);
   assert.equal(locked.sideways, true);
   assert.equal(locked.correctable, false);
-  // Safari 16.4 bug pattern: 90 and 270 swapped -> the sensor claims an upside-down picture (roll 180).
+  // Patrón del error de Safari 16.4: 90 y 270 cambiados -> el sensor dice que la imagen está de cabeza (roll 180).
   const swapped = deviceToImage(upFromEuler(0, -90), { screenAngle: 270, facing: 'environment' });
   near(Math.abs(swapped.roll), 180, 1e-9);
   assert.equal(swapped.sideways, true);
@@ -137,7 +137,7 @@ test('deviceToImage: rotation lock and wrong screen angle show up as sideways / 
 
 test('deviceToImage: flat phone has no usable roll; bad input gives null', () => {
   const flat = deviceToImage(upFromEuler(0, 0), { screenAngle: 0, facing: 'environment' });
-  near(flat.pitch, -90, 1e-9);                      // rear camera looks straight down
+  near(flat.pitch, -90, 1e-9);                      // la cámara trasera mira derecho hacia abajo
   assert.equal(flat.confidence, 0);
   assert.equal(flat.correctable, false);
   assert.equal(deviceToImage(null), null);
@@ -147,7 +147,7 @@ test('deviceToImage: flat phone has no usable roll; bad input gives null', () =>
 });
 
 test('resolveScreenAngle prefers window.orientation and normalizes', () => {
-  assert.equal(resolveScreenAngle({ windowOrientation: -90, screenAngle: 90 }), 270);   // Safari 16.4: trust window.orientation
+  assert.equal(resolveScreenAngle({ windowOrientation: -90, screenAngle: 90 }), 270);   // Safari 16.4: confiar en window.orientation
   assert.equal(resolveScreenAngle({ windowOrientation: 90, screenAngle: 90 }), 90);
   assert.equal(resolveScreenAngle({ screenAngle: 180 }), 180);
   assert.equal(resolveScreenAngle({ windowOrientation: undefined, screenAngle: null }), 0);
@@ -166,9 +166,9 @@ test('ORIENT_CONFIG is frozen and consistent', () => {
   assert.ok(ORIENT_CONFIG.windowMs >= 500 && ORIENT_CONFIG.windowMs <= 1000);
 });
 
-// ---- 2. Sensor estimator ----------------------------------------------------------------------------------------
+// ---- 2. Estimador con sensores ----------------------------------------------------------------------------------------
 
-/** Device "up" for an upright portrait phone rolled `roll`° (rear-camera sign) and pitched `pitch`° (rear camera up = +). */
+/** "Arriba" del aparato para un teléfono vertical girado `roll`° (signo de la cámara trasera) e inclinado `pitch`° (trasera hacia arriba = +). */
 function upFor(roll, pitch = 0) {
   const r = roll * RAD, p = pitch * RAD;
   return { x: -Math.sin(r) * Math.cos(p), y: Math.cos(r) * Math.cos(p), z: -Math.sin(p) };
@@ -176,8 +176,8 @@ function upFor(roll, pitch = 0) {
 const eulerOf = (u) => ({ beta: Math.asin(u.y) / RAD, gamma: Math.atan2(-u.x, u.z) / RAD });
 
 /**
- * Feeds `ms` of 60 Hz events. platform: 'android' (accG points up), 'ios' (accG points down), 'desktop' (null fields).
- * shake: rotation-rate amplitude (deg/s) and matching wobble of the attitude; parts: which events/fields exist.
+ * Entrega `ms` de eventos a 60 Hz. platform: 'android' (accG apunta arriba), 'ios' (accG apunta abajo), 'desktop' (campos null).
+ * shake: amplitud de la velocidad de giro (grados/s) y el bamboleo de actitud que va con ella; parts: qué eventos/campos existen.
  */
 function feed(est, { t0 = 0, ms = 1200, up = upFor(0), platform = 'android', noise = 0.03, shake = 0, seed = 7,
   orientation = true, motion = true, gyro = true, accel = true } = {}) {
@@ -189,7 +189,7 @@ function feed(est, { t0 = 0, ms = 1200, up = upFor(0), platform = 'android', noi
       est.pushMotion({ t, accG: { x: null, y: null, z: null }, acc: null, rot: { alpha: null, beta: null, gamma: null } });
       continue;
     }
-    const wob = shake * 0.25 * Math.sin(t / 60) * RAD;                 // attitude wobble that goes with the shaking
+    const wob = shake * 0.25 * Math.sin(t / 60) * RAD;                 // bamboleo de actitud que acompaña al movimiento
     const u = { x: up.x * Math.cos(wob) - up.y * Math.sin(wob), y: up.x * Math.sin(wob) + up.y * Math.cos(wob), z: up.z };
     if (orientation) {
       const e = eulerOf(u);
@@ -229,7 +229,7 @@ test('tilt estimator: resting phone with all sensors gives a still, accurate til
 
 test('tilt estimator: iOS and Android acceleration signs give the same tilt', () => {
   for (const platform of ['android', 'ios']) {
-    // accelerometer only (no deviceorientation events): the sign must be worked out, not assumed
+    // solo acelerómetro (sin eventos deviceorientation): el signo hay que deducirlo, no suponerlo
     const est = createTiltEstimator();
     feed(est, { up: upFor(-9, 5), platform, orientation: false });
     const s = est.state();
@@ -239,13 +239,13 @@ test('tilt estimator: iOS and Android acceleration signs give the same tilt', ()
     assert.equal(s.accelSignFrom, 'screen');
     near(s.tilt.roll, -9, 0.3, `${platform} roll`); near(s.tilt.pitch, 5, 0.3, `${platform} pitch`);
     assert.equal(s.still, true);
-    // with deviceorientation present the sign is learnt from it and both sources agree
+    // con deviceorientation el signo se aprende de él y ambas fuentes coinciden
     const both = createTiltEstimator();
     feed(both, { up: upFor(-9, 5), platform });
     assert.equal(both.state().accelSign, platform === 'ios' ? -1 : 1);
     assert.ok(both.state().disagreeDeg < 1);
   }
-  // an explicit option is used when the screen heuristic is not needed
+  // una opción explícita se usa cuando no hace falta adivinar por la pantalla
   const opt = createTiltEstimator({ accelSign: -1 });
   feed(opt, { up: upFor(4), platform: 'ios', orientation: false });
   assert.equal(opt.state().accelSignFrom, 'option');
@@ -271,7 +271,7 @@ test('tilt estimator: desktop null events report no sensors', () => {
   assert.equal(s.still, null);
   assert.equal(s.samples, 0);
   est.pushMotion(null); est.pushOrientation(undefined); est.pushMotion({ t: NaN, accG: { x: 0, y: 9.8, z: 0 } });
-  est.pushMotion({ t: 1, accG: { x: 0, y: 0, z: 0 }, rot: null });       // all-zero accelerometer is not a sensor
+  est.pushMotion({ t: 1, accG: { x: 0, y: 0, z: 0 }, rot: null });       // un acelerómetro todo en cero no es un sensor
   assert.equal(est.state().sensors.accelerometer, false);
 });
 
@@ -282,7 +282,7 @@ test('tilt estimator: phone without gyroscope still works and says so', () => {
   assert.deepEqual(s.sensors, { orientation: true, accelerometer: true, gyroscope: false });
   assert.equal(s.still, true);
   near(s.tilt.roll, 3, 0.2);
-  // orientation events only (motion permission denied)
+  // solo eventos de orientación (permiso de movimiento negado)
   const only = createTiltEstimator();
   feed(only, { up: upFor(-5), motion: false });
   assert.deepEqual(only.state().sensors, { orientation: true, accelerometer: false, gyroscope: false });
@@ -295,14 +295,14 @@ test('tilt estimator: a motion burst clears `still`, keeps the last still tilt a
   let t = feed(est, { up: upFor(6), ms: 1500 });
   assert.equal(est.state().still, true);
   const conf = est.state().tilt.confidence;
-  t = feed(est, { t0: t, up: upFor(14), ms: 700, shake: 40, seed: 3 });  // someone grabs and turns the phone
+  t = feed(est, { t0: t, up: upFor(14), ms: 700, shake: 40, seed: 3 });  // alguien toma y gira el teléfono
   const moving = est.state();
   assert.equal(moving.still, false);
   assert.equal(moving.tilt.still, false);
   assert.ok(moving.tilt.confidence < conf * 0.5, 'confidence drops while moving');
   near(moving.lastStill.roll, 6, 0.3, 'last still tilt is kept');
   assert.equal(describeTilt(moving.tilt).msg, 'No muevas el teléfono');
-  t = feed(est, { t0: t, up: upFor(14), ms: 1400, seed: 5 });            // put down again, 14° this time
+  t = feed(est, { t0: t, up: upFor(14), ms: 1400, seed: 5 });            // se vuelve a dejar, esta vez a 14°
   const after = est.state();
   assert.equal(after.still, true);
   near(after.tilt.roll, 14, 0.3);
@@ -310,7 +310,7 @@ test('tilt estimator: a motion burst clears `still`, keeps the last still tilt a
 });
 
 test('tilt estimator: the gyroscope alone can veto stillness', () => {
-  // attitude samples look steady, but the rotation rate says the phone is being handled
+  // las muestras de actitud parecen estables, pero la velocidad de giro dice que alguien lo tiene en la mano
   const est = createTiltEstimator();
   const r = rng(11);
   for (let t = 0; t < 1200; t += 1000 / 60) {
@@ -323,7 +323,7 @@ test('tilt estimator: the gyroscope alone can veto stillness', () => {
 test('tilt estimator: outliers do not move the median; stale data is not available', () => {
   const est = createTiltEstimator();
   const t = feed(est, { up: upFor(5), ms: 1000, motion: false });
-  est.pushOrientation({ t: t + 1, alpha: 0, beta: 20, gamma: 60 });       // one wild sample
+  est.pushOrientation({ t: t + 1, alpha: 0, beta: 20, gamma: 60 });       // una muestra disparatada
   est.pushOrientation({ t: t + 2, alpha: 0, beta: -70, gamma: -10 });
   const s = est.state();
   near(s.tilt.roll, 5, 0.3, 'median ignores two wild samples');
@@ -351,7 +351,7 @@ test('tilt estimator: setScreen remaps without a reset; reset clears everything'
 
 test('tilt estimator: bounded work per state() and cached between events', () => {
   const est = createTiltEstimator();
-  feed(est, { up: upFor(2), ms: 20000 });                                  // 20 s of events
+  feed(est, { up: upFor(2), ms: 20000 });                                  // 20 s de eventos
   const s = est.state();
   assert.ok(s.samples <= ORIENT_CONFIG.maxSamples);
   assert.equal(est.state(), s, 'same object until a new event arrives');
@@ -359,9 +359,9 @@ test('tilt estimator: bounded work per state() and cached between events', () =>
   assert.notEqual(est.state(), s);
 });
 
-// ---- 3. Start-posture (image) estimator ---------------------------------------------------------------------------
+// ---- 3. Estimador con la postura inicial (imagen) ---------------------------------------------------------------------------
 
-/** Feeds the first `seconds` of a rolled synthetic session; returns the estimator state. */
+/** Entrega los primeros `seconds` de una sesión sintética girada; devuelve el estado del estimador. */
 function estimateLead(testId, synthOpts, roll, seconds = 1, estOpts) {
   const sess = synthSession(testId, synthOpts), est = createPoseLevelEstimator(testId, estOpts);
   let accepted = 0;
@@ -405,32 +405,33 @@ test('pose level: null until enough frames, then latched', () => {
 });
 
 test('pose level: frames that are not the start posture are rejected', () => {
-  // bottom half of every repetition: knee / elbow far from extension
+  // mitad baja de cada repetición: rodilla / codo lejos de estar extendidos
   for (const [testId, opts] of [['squat', { reps: 3 }], ['pushup', { reps: 3 }]]) {
     const sess = synthSession(testId, opts), est = createPoseLevelEstimator(testId);
-    const ends = sess.meta.repEnds, dur = ends[0] - 1;                    // lead = 1 s, first rep lasts `dur`
+    const ends = sess.meta.repEnds, dur = ends[0] - 1;                    // lead = 1 s, la primera repetición dura `dur`
     const bottoms = sess.frames.filter((f) => ends.some((e) => Math.abs(f.t / 1000 - (e - dur / 2)) < dur * 0.2));
     assert.ok(bottoms.length > 20);
     for (const f of bottoms) assert.equal(est.push(toJoints(rollFrame(f, 10))), false, `${testId} bottom frame accepted`);
     assert.equal(est.state().tilt, null);
     assert.equal(est.state().seen, bottoms.length);
   }
-  // a collapsed plank (hips and knees on the floor) is not a plank
+  // una plancha caída (caderas y rodillas en el suelo) no es plancha
   const plank = synthSession('plank', { seconds: 8, collapseAt: 2 }), pe = createPoseLevelEstimator('plank');
   const down = plank.frames.filter((f) => f.t > 4500);
   assert.equal(down.filter((f) => pe.push(toJoints(f))).length, 0);
   assert.equal(pe.state().tilt, null);
-  // wrong test for the posture: a standing person is not a push-up, a plank is not a squat stance
+  // prueba equivocada para la postura: una persona de pie no es una flexión, una plancha no es estar de pie
   const stand = synthSession('squat', { reps: 1 }).frames.slice(0, 30), pu = createPoseLevelEstimator('pushup');
   assert.equal(stand.filter((f) => pu.push(toJoints(f))).length, 0);
-  // Known ambiguity: a rigid body lying in a line looks exactly like a standing body in a picture turned 90°.
-  // It can never be corrected by mistake: it is reported as sideways and not correctable.
+  // Ambigüedad conocida: un cuerpo rígido acostado en línea se ve igual que uno de pie en una imagen girada 90°.
+  // Con solo la imagen nunca se corrige por error: se informa como de costado y no corregible (el cuarto de vuelta
+  // exige que un sensor lo confirme).
   const sq = createPoseLevelEstimator('squat');
   plank.frames.slice(0, 30).forEach((f) => sq.push(toJoints(f)));
   assert.equal(sq.state().tilt.sideways, true);
   assert.equal(sq.state().tilt.correctable, false);
   assert.equal(correctFrame(plank.frames[0], sq.state().tilt).corrected, false);
-  // invisible person, empty input
+  // persona invisible, entrada vacía
   const hidden = synthSession('squat', { reps: 1, hide: [{ t: 0, dur: 1 }] }).frames.slice(0, 30), hs = createPoseLevelEstimator('squat');
   assert.equal(hidden.filter((f) => hs.push(toJoints(f))).length, 0);
   assert.equal(hs.push(null), false);
@@ -439,7 +440,7 @@ test('pose level: frames that are not the start posture are rejected', () => {
 });
 
 test('pose level: an unsteady posture is not trusted (spread gate)', () => {
-  // the same standing frames seen through a camera that wobbles ±8°: accepted frame by frame, but never confident
+  // los mismos cuadros de pie vistos por una cámara que se bambolea ±8°: aceptados uno a uno, pero nunca confiables
   const sess = synthSession('squat', { reps: 1 }), est = createPoseLevelEstimator('squat');
   sess.frames.slice(0, 30).forEach((f, i) => est.push(toJoints(rollFrame(f, 8 * Math.sin(i * 1.3)))));
   const s = est.state();
@@ -457,18 +458,18 @@ test('pose level: the push-up reference survives the whole set and a sideways pi
   near(side.tilt.roll, 88, 1.5);
   assert.equal(side.tilt.sideways, true);
   assert.equal(side.tilt.correctable, false);
-  // floor references never claim a sideways picture (a standing person reaching forward would look like one)
+  // las referencias del suelo nunca dicen que la imagen está de costado (una persona de pie estirando los brazos lo parecería)
   const turned = estimateLead('plank', { seconds: 3 }, -100);
   assert.equal(turned.tilt, null); assert.equal(turned.accepted, 0);
   near(estimateLead('plank', { seconds: 3 }, -40).tilt.roll, -40, 2, 'but large rolls below 45° are still measured');
 });
 
-/** Stick figure (side view, metres, y down, floor at 0) -> Joints of a camera rolled `roll`°, with landmark noise. */
+/** Monito de palitos (vista de lado, metros, y hacia abajo, suelo en 0) -> Joints de una cámara girada `roll`°, con ruido. */
 function figureJoints(points, roll, i, noise = 0.003) {
   const r = rng(1000 + i), c = Math.cos(roll * RAD), s = Math.sin(roll * RAD), j2 = {};
   for (const [name, [mx, my]] of Object.entries(points)) {
     for (const [prefix, v, dx] of [['l_', 0.95, 0], ['r_', 0.7, 0.008]]) {
-      const X = mx / 3.7 + dx, Y = (my + 1.2) / 3.7;                       // image-centred, aspect-corrected units
+      const X = mx / 3.7 + dx, Y = (my + 1.2) / 3.7;                       // unidades centradas en la imagen y corregidas por aspecto
       j2[prefix + name] = { x: X * c + Y * s + 0.28 + noise * gauss(r), y: -X * s + Y * c + 0.5 + noise * gauss(r), v };
     }
   }
@@ -501,7 +502,7 @@ test('pose level: pull-up dead hang (straight or bent legs) and dip support', ()
     'the weaker reference reports less confidence');
 });
 
-// ---- 4. Fusion --------------------------------------------------------------------------------------------------
+// ---- 4. Fusión --------------------------------------------------------------------------------------------------
 
 const sensorTilt = (roll, pitch = 0, still = true) => {
   const t = deviceToImage(upFor(roll, pitch), { screenAngle: 0, facing: 'environment' });
@@ -535,28 +536,28 @@ test('fuseTilt: agreement prefers the still sensor, keeps its pitch and reports 
 });
 
 test('fuseTilt: convention problems (about 90° or 180° apart) fall back to the picture', () => {
-  const upsideDown = fuseTilt(sensorTilt(-170), imageTilt(6));              // swapped 90/270 or wrong acceleration sign
+  const upsideDown = fuseTilt(sensorTilt(-170), imageTilt(6));              // 90/270 cambiados o signo de aceleración equivocado
   assert.equal(upsideDown.reason, 'sensor_convention_180');
   assert.equal(upsideDown.source, 'image'); near(upsideDown.roll, 6, 1e-9);
   near(upsideDown.conflictDeg, 176, 1e-9);
   assert.equal(upsideDown.correctable, true);
-  const quarter = fuseTilt(sensorTilt(-90), imageTilt(-3));                 // frames did not follow the reported screen angle
+  const quarter = fuseTilt(sensorTilt(-90), imageTilt(-3));                 // los cuadros no siguieron el ángulo de pantalla informado
   assert.equal(quarter.reason, 'sensor_convention_90');
   near(quarter.roll, -3, 1e-9); assert.equal(quarter.sideways, false);
   assert.ok(quarter.confidence < 0.8);
 });
 
 test('fuseTilt: other conflicts keep the safer estimate and flag it', () => {
-  const a = fuseTilt(sensorTilt(-6), imageTilt(6, 0.8));                    // e.g. a mirrored convention: 12° apart
+  const a = fuseTilt(sensorTilt(-6), imageTilt(6, 0.8));                    // p. ej. una convención en espejo: 12° de diferencia
   assert.equal(a.reason, 'conflict_image'); near(a.roll, 6, 1e-9); near(a.conflictDeg, 12, 1e-9);
   near(a.confidence, 0.56, 1e-9);
-  const b = fuseTilt(sensorTilt(4), imageTilt(20, 0.3));                    // weak picture estimate: rotate as little as possible
+  const b = fuseTilt(sensorTilt(4), imageTilt(20, 0.3));                    // estimación de imagen débil: girar lo menos posible
   assert.equal(b.reason, 'conflict_smaller'); assert.equal(b.source, 'sensor'); near(b.roll, 4, 1e-9);
   const c = fuseTilt(sensorTilt(22), imageTilt(3, 0.3));
   assert.equal(c.source, 'image'); near(c.roll, 3, 1e-9);
   assert.equal(describeTilt(a).level, 'warn');
   assert.equal(describeTilt(a).msg, 'Revisa que el teléfono esté derecho');
-  const lying = fuseTilt(sensorTilt(2), imageTilt(-84));                    // person lying down during a standing test
+  const lying = fuseTilt(sensorTilt(2), imageTilt(-84));                    // persona acostada en una prueba de pie
   assert.equal(lying.reason, 'image_sideways_ignored'); assert.equal(lying.source, 'sensor'); near(lying.roll, 2, 1e-9);
   assert.equal(lying.sideways, false); near(lying.conflictDeg, 86, 1e-9);
   const edge = fuseTilt(sensorTilt(0), imageTilt(ORIENT_CONFIG.conflictDeg));
@@ -586,8 +587,8 @@ test('correctFrame: round trip restores the unrolled frame', () => {
 });
 
 test('correctFrame: gravity ends on +y (a plumb line becomes vertical), in non-square images too', () => {
-  // two points on a plumb line, as a camera rolled 12° sees them in a 16:9 picture
-  const aspect = 16 / 9, roll = 12, top = { x: 0.1, y: -0.3 }, bottom = { x: 0.1, y: 0.25 };   // centred aspect units, level camera
+  // dos puntos de una plomada, como los ve una cámara girada 12° en una imagen 16:9
+  const aspect = 16 / 9, roll = 12, top = { x: 0.1, y: -0.3 }, bottom = { x: 0.1, y: 0.25 };   // unidades centradas corregidas por aspecto, cámara derecha
   const raw = { t: 0, aspect, world: null, lm: [top, bottom].map((p) => ({ x: p.x / aspect + 0.5, y: p.y + 0.5, z: 0, visibility: 1 })) };
   const seen = rollFrame(raw, roll);
   assert.ok(Math.abs((seen.lm[0].x - seen.lm[1].x) * aspect) > 0.1, 'the rolled camera sees the plumb line leaning');
@@ -595,7 +596,7 @@ test('correctFrame: gravity ends on +y (a plumb line becomes vertical), in non-s
   near(fixed.lm[0].x, fixed.lm[1].x, 1e-12, 'vertical again');
   near(fixed.lm[1].y - fixed.lm[0].y, 0.55, 1e-12, 'lengths are preserved');
   assert.equal(fixed.world, null);
-  // rotating in normalized units instead of aspect-corrected units would NOT restore it
+  // girar en unidades normalizadas en vez de corregidas por aspecto NO la recuperaría
   const naive = seen.lm.map((p) => ({ x: (p.x - 0.5) * Math.cos(roll * RAD) - (p.y - 0.5) * Math.sin(roll * RAD) + 0.5 }));
   assert.ok(Math.abs(naive[0].x - naive[1].x) > 0.02);
 });
@@ -614,22 +615,22 @@ test('correctFrame: never mutates the input and keeps extra fields', () => {
 });
 
 test('correctFrame: world is levelled with roll and pitch', () => {
-  // A camera pitched up 20° and rolled 10° looks at a 1 m plumb line (hip at the origin, head above) and a floor arrow.
+  // Una cámara inclinada 20° hacia arriba y girada 10° mira una plomada de 1 m (cadera en el origen, cabeza arriba) y una flecha en el suelo.
   const roll = 10, pitch = 20, down = deviceToImage(upFor(roll, pitch)).down;
   near(deviceToImage(upFor(roll, pitch)).roll, roll, 1e-9); near(deviceToImage(upFor(roll, pitch)).pitch, pitch, 1e-9);
-  const head = { x: -down.x, y: -down.y, z: -down.z, visibility: 1 };       // 1 m against gravity, in camera axes
+  const head = { x: -down.x, y: -down.y, z: -down.z, visibility: 1 };       // 1 m contra la gravedad, en ejes de la cámara
   const cr = Math.cos(roll * RAD), sr = Math.sin(roll * RAD);
-  const side = { x: cr, y: -sr, z: 0, visibility: 0.7 };                    // horizontal, across the view (camera x, rolled)
+  const side = { x: cr, y: -sr, z: 0, visibility: 0.7 };                    // horizontal, a lo ancho de la vista (x de la cámara, girada)
   const lm = [0, 1].map(() => ({ x: 0.5, y: 0.5, z: 0, visibility: 1 }));
   const out = correctFrame({ t: 1, aspect: 1, lm, world: [head, side] }, deviceToImage(upFor(roll, pitch)));
-  nearVec(out.world[0], [0, -1, 0], 1e-9);                                  // straight up
-  nearVec(out.world[1], [1, 0, 0], 1e-9);                                   // still horizontal, still across
+  nearVec(out.world[0], [0, -1, 0], 1e-9);                                  // derecho hacia arriba
+  nearVec(out.world[1], [1, 0, 0], 1e-9);                                   // sigue horizontal y a lo ancho
   assert.equal(out.world[1].visibility, 0.7);
-  // roll only (image estimate): the pitch stays in the data
+  // solo roll (estimación con imagen): el pitch queda en los datos
   const rollOnly = correctFrame({ t: 1, aspect: 1, lm, world: [head, side] }, tiltOf(roll));
   near(rollOnly.world[0].x, 0, 1e-9); near(rollOnly.world[0].z, Math.sin(pitch * RAD), 1e-9);
   near(rollOnly.world[0].y, -Math.cos(pitch * RAD), 1e-9);
-  // rotations keep lengths and angles between segments
+  // los giros mantienen largos y ángulos entre segmentos
   near(Math.hypot(out.world[0].x, out.world[0].y, out.world[0].z), 1, 1e-12);
   near(out.world[0].x * out.world[1].x + out.world[0].y * out.world[1].y + out.world[0].z * out.world[1].z, 0, 1e-12);
 });
@@ -649,12 +650,12 @@ test('correctFrame: refuses what must not be corrected automatically', () => {
   assert.equal(correctFrame(null, tiltOf(4)), null);
 });
 
-/** Pinhole projection (long-side field of view `fov`) of 3D points given in LEVEL camera axes by a camera pitched/rolled. */
+/** Proyección estenopeica (campo visual `fov` en el lado largo) de puntos 3D en ejes de cámara DERECHA, vistos por una cámara inclinada/girada. */
 function project(points, { roll = 0, pitch = 0, aspect = 9 / 16, fov = 63 }) {
   const f = (Math.max(aspect, 1) / 2) / Math.tan(fov * RAD / 2), cr = Math.cos(roll * RAD), sr = Math.sin(roll * RAD), cp = Math.cos(pitch * RAD), sp = Math.sin(pitch * RAD);
   const lm = points.map((p) => {
-    const y1 = p.y * cp + p.z * sp, z1 = -p.y * sp + p.z * cp;              // level -> pitched camera (inverse of the correction)
-    const x2 = p.x * cr + y1 * sr, y2 = -p.x * sr + y1 * cr;                // then rolled about the optical axis
+    const y1 = p.y * cp + p.z * sp, z1 = -p.y * sp + p.z * cp;              // cámara derecha -> inclinada (la inversa de la corrección)
+    const x2 = p.x * cr + y1 * sr, y2 = -p.x * sr + y1 * cr;                // luego girada en torno al eje óptico
     return { x: (f * x2 / z1) / aspect + 0.5, y: f * y2 / z1 + 0.5, z: 0, visibility: 1 };
   });
   return { t: 0, aspect, lm, world: null };
@@ -666,13 +667,13 @@ test('correctFrame: optional 2D pitch warp is exact with the right field of view
   const tilt = { ...tiltOf(8, 18), source: 'sensor' };
   const warped = correctFrame(seen, tilt, { pitch2D: true });
   for (let i = 0; i < body.length; i++) { near(warped.lm[i].x, level.lm[i].x, 1e-9, `x ${i}`); near(warped.lm[i].y, level.lm[i].y, 1e-9, `y ${i}`); }
-  // default: roll only. The plumb line (points 0-1, off-centre) keeps a small keystone lean, far smaller than the roll.
+  // por defecto: solo roll. La plomada (puntos 0-1, fuera del centro) queda con una leve inclinación trapezoidal, mucho menor que el roll.
   const plain = correctFrame(seen, tilt);
   const lean = (fr) => Math.atan2((fr.lm[0].x - fr.lm[1].x) * fr.aspect, fr.lm[1].y - fr.lm[0].y) / RAD;
   assert.ok(Math.abs(lean(seen)) > 6, 'uncorrected lean is about the roll');
   assert.ok(Math.abs(lean(plain)) > 0.5 && Math.abs(lean(plain)) < 3, `keystone residual ${lean(plain)}`);
   near(lean(warped), 0, 1e-6);
-  // why it is off: a wrong assumed field of view (50° instead of the real 63°) leaves the same order of error it removes
+  // por qué está apagada: un campo visual supuesto equivocado (50° en vez de los 63° reales) deja un error del mismo orden que el que quita
   const wrong = correctFrame(seen, tilt, { pitch2D: true, longFovDeg: 50 });
   const err = (fr) => Math.max(...fr.lm.map((p, i) => Math.hypot((p.x - level.lm[i].x) * fr.aspect, p.y - level.lm[i].y)));
   assert.ok(err(wrong) > 0.02, `wrong-fov error ${err(wrong)}`);
@@ -696,7 +697,7 @@ test('describeTilt: Spanish UI messages and levels', () => {
   assert.deepEqual(describeTilt(null), { level: 'warn', msg: 'Sin sensor de inclinación: pon el teléfono derecho' });
   assert.deepEqual(describeTilt({ source: 'none', roll: 0 }), describeTilt(null));
   assert.deepEqual(describeTilt(imageTilt(9)), { level: 'ok', msg: 'Inclinado 9°: lo corregimos' });
-  // the message and correctFrame agree on what gets corrected
+  // el mensaje y correctFrame coinciden en qué se corrige
   for (const roll of [0, 5, 14, 29, 31, 50, 120]) {
     const t = sensorTilt(roll);
     assert.equal(describeTilt(t).level === 'bad', !isCorrectable(t) && !quarterTurn(t), `roll ${roll}`);

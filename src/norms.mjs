@@ -1,6 +1,6 @@
-// FitGram v0 — norms (baremos) and classification for ages 18–21.
+// FitGram v0 — baremos y clasificación para edades de 18 a 21 años.
 // Push-ups: CSEP/ACSM · Squats: ACE (Mackenzie 2005) · Plank: Strand et al. (2014).
-// Each table is only valid with its own protocol (see NORMS[test].protocol).
+// Cada tabla vale solo con su propio protocolo (ver NORMS[test].protocol).
 
 const PUSHUP_CATS = [['needs_improvement', 'Necesita mejorar'], ['fair', 'Regular'], ['good', 'Bueno'], ['very_good', 'Muy bueno'], ['excellent', 'Excelente']];
 const SQUAT_CATS = [['very_poor', 'Muy pobre'], ['poor', 'Pobre'], ['below_average', 'Bajo el promedio'], ['average', 'Promedio'], ['above_average', 'Sobre el promedio'], ['good', 'Bueno'], ['excellent', 'Excelente']];
@@ -15,8 +15,8 @@ function deepFreeze(o) {
 }
 
 /**
- * Frozen norm data, protocol notes, caveats and sources.
- * `mins` = lowest score of each category from the second one upward (category 0 starts at 0).
+ * Datos de baremos congelados, notas de protocolo, advertencias y fuentes.
+ * `mins` = puntaje mínimo de cada categoría desde la segunda en adelante (la categoría 0 parte en 0).
  * @type {Readonly<Record<'pushup'|'squat'|'plank', object>>}
  */
 const NORMS = deepFreeze({
@@ -72,12 +72,12 @@ const NORMS = deepFreeze({
     name: 'Plancha prona en antebrazos',
     categories: PLANK_CATS,
     band: 'universitarios (Strand 2014)',
-    // Table 2, deciles P10..P90 in seconds.
+    // Tabla 2, deciles P10..P90 en segundos.
     deciles: {
       M: [62, 79, 89, 97, 110, 122, 137, 157, 201],
       F: [35, 48, 58, 63, 72, 84, 95, 108, 142],
     },
-    // Table 3, sex x athletic status, deciles P10..P90 (reference only).
+    // Tabla 3, sexo x condición de deportista, deciles P10..P90 (solo de referencia).
     byAthleticStatus: {
       F_nonVarsity: [34, 47, 56, 62, 70, 79, 91, 103, 130],
       F_varsity: [45, 59, 63, 74, 87, 97, 110, 162, 194],
@@ -86,7 +86,7 @@ const NORMS = deepFreeze({
     },
     meanSD: { M: [124, 72], F: [83, 63] },
     sample: { n: 471, meanAge: 20.4 },
-    // Category cut points as percentiles: <P10, <P30, <P70, <P90, else.
+    // Cortes de categoría como percentiles: <P10, <P30, <P70, <P90, resto.
     cutPercentiles: [10, 30, 70, 90],
     protocol: [
       'Apoyo en antebrazos y punta de los pies, con los codos bajo los hombros.',
@@ -103,7 +103,7 @@ const NORMS = deepFreeze({
   },
 });
 
-/* ---------------------------------------------------------------- helpers */
+/* ---------------------------------------------------------------- utilidades */
 
 /**
  * Edades que cubren los baremos de esta versión.
@@ -127,7 +127,7 @@ function checkValue(v, what) {
   if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) throw new RangeError(`${what} debe ser un número mayor o igual a 0.`);
 }
 
-/** Index of the category for `value`, given the lower bounds of categories 1..n-1. */
+/** Índice de la categoría de `value`, dados los límites inferiores de las categorías 1..n-1. */
 function categoryIndex(value, mins) {
   let i = 0;
   while (i < mins.length && value >= mins[i]) i++;
@@ -153,12 +153,12 @@ function result(test, value, unit, band, cats, index, position, percentile, tabl
   return { test, value, unit, band, category: { key, label, index, of: cats.length }, position, percentile, table, next, flags, source: { ...NORMS[test].source } };
 }
 
-/* ---------------------------------------------------------------- push-ups */
+/* ---------------------------------------------------------------- flexiones */
 
 /**
- * CSEP/ACSM band used for an age: 18–19 → '15–19', 20–21 → '20–29'.
+ * Banda CSEP/ACSM que corresponde a una edad: 18–19 → '15–19', 20–21 → '20–29'.
  * @param {number} age
- * @returns {'15–19'|'20–29'|null} null outside 18–21
+ * @returns {'15–19'|'20–29'|null} null fuera de 18–21
  */
 function ageBandPushups(age) {
   if (!coversAge(age)) return null;
@@ -166,7 +166,7 @@ function ageBandPushups(age) {
 }
 
 /**
- * Classifies a push-up score (max consecutive, CSEP protocol; men toes, women knees).
+ * Clasifica un puntaje de flexiones (máximo consecutivo, protocolo CSEP; hombres en punta de pies, mujeres de rodillas).
  * @param {{age:number, sex:'M'|'F', reps:number}} p
  */
 function classifyPushups({ age, sex, reps }) {
@@ -182,11 +182,11 @@ function classifyPushups({ age, sex, reps }) {
   return result('pushup', value, 'rep', band, PUSHUP_CATS, idx, Math.round(idx / 4 * 100), null, table, next, flags);
 }
 
-/* ---------------------------------------------------------------- squats */
+/* ---------------------------------------------------------------- sentadillas */
 
 /**
- * Classifies a bodyweight squat score (ACE, until fatigue, thighs parallel), band 18–25.
- * Every result carries the flag 'questionable_source'.
+ * Clasifica un puntaje de sentadillas sin carga (ACE, hasta la fatiga, muslos paralelos), banda 18–25.
+ * Todo resultado lleva la marca 'questionable_source'.
  * @param {{age:number, sex:'M'|'F', reps:number}} p
  */
 function classifySquats({ age, sex, reps }) {
@@ -200,14 +200,14 @@ function classifySquats({ age, sex, reps }) {
   return result('squat', value, 'rep', NORMS.squat.band, SQUAT_CATS, idx, Math.round(idx / 6 * 100), null, table, next, ['questionable_source']);
 }
 
-/* ---------------------------------------------------------------- plank */
+/* ---------------------------------------------------------------- plancha */
 
 /**
- * Percentile of a plank time by linear interpolation between deciles (Strand 2014, Table 2).
- * Below P10: 10·s/P10. Above P90: min(99, 90 + 10·(s − P90)/(P90 − P80)).
+ * Percentil de un tiempo de plancha por interpolación lineal entre deciles (Strand 2014, Tabla 2).
+ * Bajo P10: 10·s/P10. Sobre P90: min(99, 90 + 10·(s − P90)/(P90 − P80)).
  * @param {number} seconds
  * @param {'M'|'F'} sex
- * @returns {{percentile:number, extrapolated:boolean}} percentile not rounded
+ * @returns {{percentile:number, extrapolated:boolean}} percentil sin redondear
  */
 function plankPercentile(seconds, sex) {
   const d = NORMS.plank.deciles[sex];
@@ -220,17 +220,17 @@ function plankPercentile(seconds, sex) {
 }
 
 /**
- * Classifies a prone forearm plank time (Strand et al. 2014). Not age-banded (university students).
+ * Clasifica un tiempo de plancha en antebrazos boca abajo (Strand et al. 2014). Sin bandas de edad (universitarios).
  * @param {{age:number, sex:'M'|'F', seconds:number}} p
  */
 function classifyPlank({ age, sex, seconds }) {
   checkAgeSex(age, sex);
   checkValue(seconds, 'El tiempo de plancha');
   const d = NORMS.plank.deciles[sex];
-  const cuts = [d[0], d[2], d[6], d[8]]; // P10, P30, P70, P90 in seconds
+  const cuts = [d[0], d[2], d[6], d[8]]; // P10, P30, P70, P90 en segundos
   const idx = categoryIndex(seconds, cuts);
   const { percentile, extrapolated } = plankPercentile(seconds, sex);
-  // Truncate (not round) so a time just under P10 never reports "percentil 10" next to "Muy bajo (<P10)".
+  // Truncar (no redondear): un tiempo apenas bajo P10 nunca dice "percentil 10" junto a "Muy bajo (<P10)".
   const p = Math.floor(percentile + 1e-9);
   const table = PLANK_CATS.map(([key, label], i) => {
     const min = i === 0 ? 0 : cuts[i - 1];
@@ -243,11 +243,11 @@ function classifyPlank({ age, sex, seconds }) {
   return result('plank', seconds, 's', NORMS.plank.band, PLANK_CATS, idx, position, p, table, next, extrapolated ? ['extrapolated'] : []);
 }
 
-/* ---------------------------------------------------------------- profile */
+/* ---------------------------------------------------------------- perfil */
 
 /**
- * Exploratory FitGram index: mean of the available tests' positions (0–100).
- * @param {{pushup?:object|null, squat?:object|null, plank?:object|null}} parts classify* results
+ * Índice FitGram exploratorio: promedio de las posiciones de las pruebas disponibles (0–100).
+ * @param {{pushup?:object|null, squat?:object|null, plank?:object|null}} parts resultados de classify*
  * @returns {{position:number|null, label:string|null, parts:Array<{test:string, position:number, label:string}>, note:string}}
  */
 function fitnessProfile({ pushup = null, squat = null, plank = null } = {}) {

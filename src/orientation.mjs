@@ -1,126 +1,129 @@
-// FitGram orientation (traído de fitgram-v1 de Jose, 2026-11-13): phone tilt -> gravity direction in the camera image -> pose correction. Pure (no DOM, no imports).
-// Receives: deviceorientation/devicemotion samples (plain objects pushed by sensors.js), the screen angle and camera
-//   facing, uncorrected Joints (skeleton.js#toJoints) for the image-only estimate, and raw PoseFrames.
-// Delivers: a `Tilt` (roll, pitch, gravity `down` in image axes, confidence, flags), a fused Tilt (sensor vs. start
-//   posture), a Spanish UI hint, and corrected PoseFrames in which image +y (and world +y) is gravity, which is what
-//   every analyzer in exercises.js assumes.
+// FitGram, orientación (traído de fitgram-v1 de José, 2026-11-13): inclinación del teléfono -> dirección de la gravedad en
+//   la imagen de la cámara -> corrección de la pose. Puro (sin DOM, sin imports).
+// Recibe: muestras de deviceorientation/devicemotion (objetos simples que empuja sensors.mjs), el ángulo de pantalla y la
+//   cámara en uso, Joints sin corregir (skeleton.mjs#toJoints) para la estimación solo con imagen, y PoseFrames crudos.
+// Entrega: un `Tilt` (roll, pitch, gravedad `down` en ejes de imagen, confianza, marcas), un Tilt fusionado (sensor vs.
+//   postura inicial), un texto para la interfaz, y PoseFrames corregidos en que +y de la imagen (y del mundo) es la
+//   gravedad, que es lo que suponen todos los analizadores de exercises.mjs.
 //
-// ---- Frames (all right-handed) ------------------------------------------------------------------------------
-// DEVICE (W3C DeviceOrientation §3.1): x = right edge of the screen in its natural (portrait) orientation, y = top
-//   edge, z = out of the screen towards the viewer. Sensor data never follows the screen rotation.
-// SCREEN: the device frame rotated about z by the screen angle A (0/90/180/270): A = 90 means the device was turned
-//   90° counter-clockwise (top edge to the user's left), so screen-right = -y_dev and screen-up = +x_dev:
+// ---- Sistemas de referencia (todos dextrógiros) ------------------------------------------------------------------------------
+// APARATO (W3C DeviceOrientation §3.1): x = borde derecho de la pantalla en su orientación natural (vertical), y = borde
+//   de arriba, z = saliendo de la pantalla hacia quien mira. Los datos del sensor nunca siguen la rotación de pantalla.
+// PANTALLA: el sistema del aparato girado en z por el ángulo de pantalla A (0/90/180/270): A = 90 significa que el aparato
+//   se giró 90° en sentido antihorario (borde de arriba a la izquierda), así pantalla-derecha = -y_ap y pantalla-arriba = +x_ap:
 //     v_scr = [ cosA·x - sinA·y,  sinA·x + cosA·y,  z ]
-// IMAGE (raw frame given to MediaPipe, `lm`/`world`): x right, y DOWN, z = optical axis, + away from the camera.
-//   Browsers deliver getUserMedia frames upright with respect to the SCREEN, so:
-//     rear camera  (facing 'environment', looks along -z_dev):  v_img = [  x_scr, -y_scr, -z_scr ]
-//     front camera (facing 'user', looks along +z_dev, raw frame NOT mirrored):  v_img = [ -x_scr, -y_scr,  z_scr ]
-// EULER (W3C intrinsic Z-X'-Y'', R = Rz(alpha)·Rx(beta)·Ry(gamma) maps device -> earth, earth z = up):
-//   up_dev = R^T·ez = third row of R = [ -cos(beta)·sin(gamma), sin(beta), cos(beta)·cos(gamma) ]  (alpha drops out).
-// TILT: down = -up in image axes; roll = atan2(down.x, down.y) (+ = camera turned clockwise seen from behind it, so
-//   the scene looks turned counter-clockwise); pitch = asin(-down.z) (+ = camera looks above the horizon).
-//   Level camera: down = (0, 1, 0), roll = 0, pitch = 0.
+// IMAGEN (cuadro crudo que recibe MediaPipe, `lm`/`world`): x a la derecha, y HACIA ABAJO, z = eje óptico, + alejándose.
+//   Los navegadores entregan los cuadros de getUserMedia derechos respecto de la PANTALLA, así:
+//     cámara trasera (facing 'environment', mira hacia -z_ap):  v_img = [  x_pan, -y_pan, -z_pan ]
+//     cámara frontal (facing 'user', mira hacia +z_ap, cuadro crudo SIN espejo):  v_img = [ -x_pan, -y_pan,  z_pan ]
+// EULER (W3C intrínseco Z-X'-Y'', R = Rz(alpha)·Rx(beta)·Ry(gamma) lleva aparato -> tierra, z de la tierra = arriba):
+//   up_ap = R^T·ez = tercera fila de R = [ -cos(beta)·sin(gamma), sin(beta), cos(beta)·cos(gamma) ]  (alpha no influye).
+// INCLINACIÓN: down = -up en ejes de imagen; roll = atan2(down.x, down.y) (+ = cámara girada en sentido horario vista desde
+//   atrás, así la escena se ve girada en sentido antihorario); pitch = asin(-down.z) (+ = la cámara mira sobre el horizonte).
+//   Cámara derecha: down = (0, 1, 0), roll = 0, pitch = 0.
 //
-// ---- Platform findings (checked 2026-11; they drive the design below) ----------------------------------------
-// (a) accelerationIncludingGravity sign. The spec says a device lying flat, screen up, reads {0, 0, +9.8}
-//     (https://www.w3.org/TR/orientation-event/ §1 examples): at rest the vector points UP. Android browsers follow
-//     it; iOS Safari reports the opposite sign (z = -9.81 flat, screen up):
-//     https://lists.w3.org/Archives/Public/public-geolocation/2014Jul/0024.html . beta/gamma do not have this
-//     problem, so gravity is taken from deviceorientation first; the accelerometer is the fallback and its sign is
-//     never assumed: it is learnt from beta/gamma when both exist, else taken from opts.accelSign, else chosen so
-//     that "up" falls on the upper half of the screen (a camera image is never upside down on purpose).
-// (b) Screen angle. Screen Orientation: angle = degrees the screen is rotated counter-clockwise from its natural
-//     orientation; 90 = landscape-primary, 270 = landscape-secondary on a portrait-natural phone
-//     (https://w3c.github.io/screen-orientation). Safari has screen.orientation only since 16.4, and 16.4 shipped
-//     with 90/270 swapped with respect to window.orientation and Chrome (https://bugs.webkit.org/show_bug.cgi?id=254863,
-//     fixed later by https://bugs.webkit.org/show_bug.cgi?id=255388). window.orientation (0, 90 = counter-clockwise,
-//     -90 = clockwise, 180; deprecated but present on iOS and Chrome Android:
-//     https://developer.mozilla.org/en-US/docs/Web/API/Window/orientation) is the consistent source, hence
-//     resolveScreenAngle() prefers it. A swapped angle shows up as a roll of ~180° and is caught by fuseTilt.
-// (c) Camera frames. The capture is rotated to follow the UI orientation: track width/height swap when the phone
-//     is turned (e.g. 480x640 -> 640x480, https://bugs.webkit.org/show_bug.cgi?id=220326). This is browser
-//     behaviour, not specified by Media Capture. With the rotation lock on, the UI stays in portrait, the angle
-//     stays 0 and a phone lying in landscape delivers a picture turned 90°: reported as `sideways`, never corrected.
-// (d) Mirroring. getUserMedia frames of the front camera are not mirrored; pages mirror the <video> with CSS
-//     (https://lists.w3.org/Archives/Public/public-media-capture/2017Apr/0017.html). The app mirrors only the display.
-// (e) Missing sensors. Desktop browsers fire the events once with null fields (spec §4/§6: "null if it cannot be
-//     provided"); a sensor counts as present only after several numeric samples. rotationRate is in deg/s.
-//     iOS needs DeviceMotionEvent.requestPermission() inside a user gesture (done by sensors.js).
-// Because (a)-(c) can still be wrong on some phone, nothing here trusts a single convention: the image estimate of
-// createPoseLevelEstimator is measured in the very frame that is corrected, and fuseTilt lets it overrule a sensor
-// that disagrees (in particular the ~90°/~180° signatures of a wrong screen angle or acceleration sign).
+// ---- Lo que hacen las plataformas (revisado 2026-11; define el diseño de abajo) ----------------------------------------
+// (a) Signo de accelerationIncludingGravity. La norma dice que un aparato acostado, pantalla arriba, marca {0, 0, +9,8}
+//     (https://www.w3.org/TR/orientation-event/ §1 ejemplos): en reposo el vector apunta HACIA ARRIBA. Los navegadores
+//     de Android la siguen; iOS Safari entrega el signo contrario (z = -9,81 acostado, pantalla arriba):
+//     https://lists.w3.org/Archives/Public/public-geolocation/2014Jul/0024.html . beta/gamma no tienen este problema,
+//     así que la gravedad se toma primero de deviceorientation; el acelerómetro es el respaldo y nunca se supone su
+//     signo: se aprende de beta/gamma cuando existen ambos, si no se toma de opts.accelSign, y si no se elige para que
+//     "arriba" caiga en la mitad superior de la pantalla (una imagen de cámara nunca está de cabeza a propósito).
+// (b) Ángulo de pantalla. Screen Orientation: angle = grados que la pantalla está girada en sentido antihorario desde su
+//     orientación natural; 90 = landscape-primary, 270 = landscape-secondary en un teléfono naturalmente vertical
+//     (https://w3c.github.io/screen-orientation). Safari tiene screen.orientation recién desde la 16.4, y la 16.4 salió
+//     con 90/270 cambiados respecto de window.orientation y Chrome (https://bugs.webkit.org/show_bug.cgi?id=254863,
+//     arreglado después en https://bugs.webkit.org/show_bug.cgi?id=255388). window.orientation (0, 90 = antihorario,
+//     -90 = horario, 180; obsoleto pero presente en iOS y Chrome Android:
+//     https://developer.mozilla.org/en-US/docs/Web/API/Window/orientation) es la fuente coherente, por eso
+//     resolveScreenAngle() la prefiere. Un ángulo cambiado aparece como un roll de ~180° y lo detecta fuseTilt.
+// (c) Cuadros de la cámara. La captura se gira para seguir la orientación de la interfaz: ancho y alto se intercambian
+//     al girar el teléfono (p. ej. 480x640 -> 640x480, https://bugs.webkit.org/show_bug.cgi?id=220326). Es conducta del
+//     navegador, no está en Media Capture. Con la rotación bloqueada, la interfaz queda vertical, el ángulo queda en 0 y
+//     un teléfono de costado entrega una imagen girada 90°: los sensores lo ven y correctFrame la gira un cuarto de
+//     vuelta (quarterTurn, desde 25-nov-2026); sin sensores se informa como `sideways` y no se corrige.
+// (d) Espejo. Los cuadros de getUserMedia de la cámara frontal no vienen en espejo; las páginas ponen en espejo el <video>
+//     con CSS (https://lists.w3.org/Archives/Public/public-media-capture/2017Apr/0017.html). La app espeja solo lo que muestra.
+// (e) Sensores que faltan. Los navegadores de escritorio disparan los eventos una vez con campos null (norma §4/§6: "null
+//     si no se puede entregar"); un sensor cuenta como presente solo después de varias muestras numéricas. rotationRate
+//     va en grados/s. iOS necesita DeviceMotionEvent.requestPermission() dentro de un toque (lo hace sensors.mjs).
+// Como (a)-(c) igual pueden fallar en algún teléfono, aquí nada confía en una sola convención: la estimación con imagen
+// de createPoseLevelEstimator se mide en el mismo cuadro que se corrige, y fuseTilt la deja mandar sobre un sensor que no
+// coincide (en especial las firmas de ~90°/~180° de un ángulo de pantalla o un signo de aceleración equivocados).
 
 /**
- * Thresholds of the orientation module (frozen). Each number says where it comes from.
- * Angles in degrees, times in ms, accelerations in m/s², rotation rates in deg/s.
+ * Umbrales del módulo de orientación (congelados). Cada número dice de dónde sale.
+ * Ángulos en grados, tiempos en ms, aceleraciones en m/s², velocidades de giro en grados/s.
  */
 const ORIENT_CONFIG = Object.freeze({
-  // ---- sensor estimator
-  windowMs: 800,            // engineering: task asks for a 0.5-1 s stillness window
-  maxSamples: 64,           // engineering: ring size, ~1 s of 60 Hz events; state() cost is bounded by it
-  minSamples: 6,            // engineering: fewer gravity samples than this in the window = no estimate yet
-  minSpanMs: 350,           // engineering: `still` needs evidence over at least this much of the window
-  minSensorEvents: 3,       // engineering: numeric events needed before a sensor counts as present (desktops fire one null event)
-  staleMs: 1500,            // engineering: no events for this long = sensor not available any more
-  stillRotRate: 3,          // engineering: RMS rotation rate of a resting phone is < 1 deg/s (gyro noise); hand-held is 5-30
-  stillUpSpread: 1.2,       // engineering: every "up" sample within this angle of the window median (1° ~ 2 % thigh-length error)
-  stillAccStd: 0.35,        // engineering: std of |accelerationIncludingGravity| at rest is ~0.05; footsteps and taps exceed 0.5
-  gravityMin: 8.3,          // physics: |accG| must be within ~15 % of g = 9.81 to be read as gravity ...
-  gravityMax: 11.3,         // ... (a sensor reporting zeros or in other units is ignored)
-  accelAgree: 10,           // engineering: Euler-derived and accelerometer-derived "up" further apart than this = suspicious
-  signVoteMin: 0.8,         // engineering: |cos| between both "up" estimates needed to learn the accelerometer sign
-  screenUpMin: 0.26,        // engineering: sin(15°); below it the phone is too flat to guess the accelerometer sign from the screen
-  movingConfidence: 0.4,    // engineering: confidence factor of a tilt measured while the phone moves
-  // ---- geometry / limits
-  sidewaysDeg: 45,          // CONTRACT: |roll| > 45° = picture turned on its side
-  flatPitchDeg: 60,         // engineering: beyond this the camera looks at the floor/ceiling; roll is ill-defined (in-plane gravity < 50 %)
-  maxAutoDeg: 30,           // task: automatic correction refused beyond 25-30°; the user must straighten the phone
-  okDeg: 2,                 // engineering: below this the UI says "Teléfono derecho" (2° ~ 3.5 % of thigh length, inside the 15 % tolerance)
-  warnDeg: 15,              // engineering: corrected, but the framing is poor and the person is partly cropped; UI warns
-  pitchWarnDeg: 25,         // engineering: vertical lengths shrink by cos(25°) = 9 % in the 2D picture; UI warns
-  pitchBadDeg: 40,          // engineering: 23 % foreshortening, 2D up/down ratios are no longer trustworthy
-  // ---- fusion
-  conflictDeg: 8,           // task: sensor vs. posture disagreement threshold (8-10°); 8° ~ 14 % thigh-length error
-  patternTolDeg: 15,        // engineering: |difference - 90| or |difference - 180| within this = convention problem, not posture
-  conflictImageMin: 0.5,    // engineering: in a conflict the posture estimate wins only with at least this confidence
-  // ---- image (start posture) estimator
-  visMin: 0.5,              // same as EX_CONFIG.common.visMean: joints below this visibility are not used
-  minFrames: 12,            // engineering: 0.4 s of accepted frames at 30 fps before reporting
-  fullFrames: 30,           // engineering: 1 s of accepted frames = full confidence
-  windowFrames: 45,         // engineering: accepted frames kept (1.5 s at 30 fps)
-  maxAgeMs: 5000,           // engineering: accepted frames older than this are dropped
-  maxSpreadDeg: 3,          // engineering: robust spread (1.4826·MAD) above this = not a still start posture (walking, swinging)
-  extendedElbow: 150,       // = EX_CONFIG.pushup.startElbowMin: arms extended (push-up top, dead hang, dip support)
-  straightKnee: 160,        // = EX_CONFIG.squat.standKnee: standing
-  straightHip: 160,         // engineering: shoulder-hip-knee angle of an upright stance
-  bodyLine: 150,            // engineering: shoulder-hip-knee angle of a plank-like body (loose: a sagging hip keeps the contacts on the floor)
-  plankElbowMin: 55,        // EX_CONFIG.plank elbow 70-110° with 15° slack (2D angles are noisier) ...
+  // ---- estimador con sensores
+  windowMs: 800,            // ingeniería: la tarea pide una ventana de quietud de 0,5-1 s
+  maxSamples: 64,           // ingeniería: tamaño del anillo, ~1 s de eventos a 60 Hz; acota el costo de state()
+  minSamples: 6,            // ingeniería: menos muestras de gravedad que esto en la ventana = todavía sin estimación
+  minSpanMs: 350,           // ingeniería: `still` necesita evidencia en al menos esta parte de la ventana
+  minSensorEvents: 3,       // ingeniería: eventos numéricos para que un sensor cuente como presente (los escritorios mandan uno null)
+  staleMs: 1500,            // ingeniería: sin eventos este tiempo = el sensor ya no está
+  stillRotRate: 3,          // ingeniería: el giro RMS de un teléfono quieto es < 1 grado/s (ruido del giroscopio); en la mano, 5-30
+  stillUpSpread: 1.2,       // ingeniería: cada muestra de "arriba" a este ángulo o menos de la mediana (1° ~ 2 % de error en el muslo)
+  stillAccStd: 0.35,        // ingeniería: la desviación de |accelerationIncludingGravity| en reposo es ~0,05; pasos y toques pasan de 0,5
+  gravityMin: 8.3,          // física: |accG| debe estar a ~15 % de g = 9,81 para leerse como gravedad ...
+  gravityMax: 11.3,         // ... (se ignora un sensor que entrega ceros o en otras unidades)
+  accelAgree: 10,           // ingeniería: "arriba" de Euler y del acelerómetro más separados que esto = sospechoso
+  signVoteMin: 0.8,         // ingeniería: |cos| entre ambas estimaciones de "arriba" para aprender el signo del acelerómetro
+  screenUpMin: 0.26,        // ingeniería: sin(15°); bajo esto el teléfono está muy acostado para adivinar el signo por la pantalla
+  movingConfidence: 0.4,    // ingeniería: factor de confianza de una inclinación medida con el teléfono en movimiento
+  // ---- geometría / límites
+  sidewaysDeg: 45,          // CONTRACT: |roll| > 45° = imagen de costado
+  flatPitchDeg: 60,         // ingeniería: pasado esto la cámara mira al suelo o al techo; el roll queda mal definido (gravedad en el plano < 50 %)
+  maxAutoDeg: 30,           // tarea: la corrección automática se rechaza pasado 25-30°; hay que enderezar el teléfono
+  okDeg: 2,                 // ingeniería: bajo esto la interfaz dice "Teléfono derecho" (2° ~ 3,5 % del muslo, dentro del 15 % de tolerancia)
+  warnDeg: 15,              // ingeniería: se corrige, pero el encuadre es malo y la persona queda en parte cortada; la interfaz avisa
+  pitchWarnDeg: 25,         // ingeniería: los largos verticales se acortan cos(25°) = 9 % en la imagen 2D; la interfaz avisa
+  pitchBadDeg: 40,          // ingeniería: 23 % de acortamiento, las proporciones arriba/abajo en 2D ya no son confiables
+  // ---- fusión
+  conflictDeg: 8,           // tarea: umbral de desacuerdo sensor vs. postura (8-10°); 8° ~ 14 % de error en el muslo
+  patternTolDeg: 15,        // ingeniería: |diferencia - 90| o |diferencia - 180| bajo esto = problema de convención, no de postura
+  conflictImageMin: 0.5,    // ingeniería: en un conflicto la postura gana solo con al menos esta confianza
+  // ---- estimador con imagen (postura inicial)
+  visMin: 0.5,              // igual que EX_CONFIG.common.visMean: no se usan articulaciones con menos visibilidad
+  minFrames: 12,            // ingeniería: 0,4 s de cuadros aceptados a 30 fps antes de informar
+  fullFrames: 30,           // ingeniería: 1 s de cuadros aceptados = confianza completa
+  windowFrames: 45,         // ingeniería: cuadros aceptados que se guardan (1,5 s a 30 fps)
+  maxAgeMs: 5000,           // ingeniería: se descartan los cuadros aceptados más viejos que esto
+  maxSpreadDeg: 3,          // ingeniería: dispersión robusta (1,4826·MAD) sobre esto = no es una postura inicial quieta (camina, se balancea)
+  extendedElbow: 150,       // = EX_CONFIG.pushup.startElbowMin: brazos extendidos (arriba en flexión, colgado, apoyo de fondos)
+  straightKnee: 160,        // = EX_CONFIG.squat.standKnee: de pie
+  straightHip: 160,         // ingeniería: ángulo hombro-cadera-rodilla de una postura de pie
+  bodyLine: 150,            // ingeniería: ángulo hombro-cadera-rodilla de un cuerpo en plancha (holgado: con la cadera hundida los apoyos siguen en el suelo)
+  plankElbowMin: 55,        // codo de EX_CONFIG.plank 70-110° con 15° de holgura (los ángulos 2D son más ruidosos) ...
   plankElbowMax: 125,       // ...
-  plankKnee: 140,           // EX_CONFIG.plank.kneeMin 150 with slack
-  alignDeg: 12,             // engineering: two "vertical" references of one posture must agree within this
-  dipArmTorsoDeg: 40,       // engineering: straight arm vs. torso in the dip support (the torso leans 10-20° forward)
-  trunkFloorDeg: 50,        // engineering: shoulder->hip within this of the floor line (knee push-up top leans ~35°)
-  armFloorDeg: 40,          // engineering: support arm (contact->shoulder) within this of the floor normal
-  floorLineMin: 1.2,        // engineering: floor contacts at least 1.2 torso lengths apart (hands near the feet is not a plank)
-  // height of the joint centre above the floor for each floor contact, in torso lengths (shoulder-hip ~ 0.5 m):
-  // wrist 4 cm (palm flat), elbow 4.5 cm (forearm flat), knee 5 cm (kneeling), toe tip 1.5 cm. Anthropometric estimate
-  // (engineering); it removes a ~1.5° bias of the wrist-toe line, and being wrong by 1 cm costs only 0.5°.
+  plankKnee: 140,           // EX_CONFIG.plank.kneeMin 150 con holgura
+  alignDeg: 12,             // ingeniería: dos referencias "verticales" de una postura deben coincidir a esto o menos
+  dipArmTorsoDeg: 40,       // ingeniería: brazo recto vs. torso en el apoyo de fondos (el torso se inclina 10-20° adelante)
+  trunkFloorDeg: 50,        // ingeniería: hombro->cadera a esto o menos de la línea del suelo (arriba en flexión de rodillas se inclina ~35°)
+  armFloorDeg: 40,          // ingeniería: brazo de apoyo (apoyo->hombro) a esto o menos de la normal al suelo
+  floorLineMin: 1.2,        // ingeniería: apoyos en el suelo separados al menos 1,2 troncos (manos cerca de los pies no es plancha)
+  // altura del centro de la articulación sobre el suelo para cada apoyo, en troncos (hombro-cadera ~ 0,5 m):
+  // muñeca 4 cm (palma plana), codo 4,5 cm (antebrazo plano), rodilla 5 cm (de rodillas), punta del pie 1,5 cm. Estimación
+  // antropométrica (ingeniería); quita un sesgo de ~1,5° de la línea muñeca-pie, y equivocarse en 1 cm cuesta solo 0,5°.
   contactLift: Object.freeze({ wrist: 0.08, elbow: 0.09, knee: 0.10, foot: 0.03 }),
-  // base confidence of each reference: floor contacts are physical facts; a stance is only "about vertical" (±2°);
-  // a hang swings; in the dip support the hands may be in front of or behind the shoulders (±4°)
+  // confianza base de cada referencia: los apoyos en el suelo son hechos físicos; estar de pie es solo "más o menos
+  // vertical" (±2°); colgado se balancea; en el apoyo de fondos las manos pueden ir delante o detrás de los hombros (±4°)
   baseConfidence: Object.freeze({ pushup: 0.9, plank: 0.9, squat: 0.75, pullup: 0.7, dip: 0.6 }),
-  // dead-band of the image estimate: a posture-only roll this small is within the anatomical uncertainty of the
-  // reference and is reported as level (roll 0, `estimatedRoll` keeps the measurement), so a level camera is never
-  // "corrected" by the posture itself. Measured on the synthetic person with a level camera: dead hang 2.2°, dip
-  // support 4.0-4.4° (the torso leans 5° and the arm follows it; sign = facing direction). Engineering decision: a
-  // little above those biases; the floor and standing references are unbiased (< 1°) and need none.
+  // zona muerta de la estimación con imagen: un roll de postura así de chico está dentro de la incertidumbre anatómica de
+  // la referencia y se informa como derecho (roll 0, `estimatedRoll` guarda la medida), así la postura misma nunca
+  // "corrige" una cámara derecha. Medido en la persona sintética con cámara derecha: colgado 2,2°, apoyo de fondos
+  // 4,0-4,4° (el torso se inclina 5° y el brazo lo sigue; signo = hacia dónde mira). Decisión de ingeniería: un poco sobre
+  // esos sesgos; las referencias del suelo y de pie no tienen sesgo (< 1°) y no la necesitan.
   imageDeadbandDeg: Object.freeze({ pullup: 3, dip: 5 }),
-  // ---- 2D pitch correction (virtual level camera, homography)
-  pitch2D: false,           // decision: OFF. It needs the focal length, which the browser does not expose (zoom, crop and
-                            // lens differ per phone); a wrong value warps the pose. Without it horizontals stay horizontal
-                            // and verticals shrink by cos(pitch) (< 10 % up to 25°), which the analyzers tolerate.
-  longFovDeg: 63,           // field of view along the long image side assumed when pitch2D is on (phone main camera in
-                            // video mode, 26-28 mm equivalent; same as SYNTH_CONFIG.vfov)
+  // ---- corrección 2D del pitch (cámara virtual derecha, homografía)
+  pitch2D: false,           // decisión: APAGADA. Necesita la distancia focal, que el navegador no entrega (zoom, recorte y
+                            // lente cambian por teléfono); un valor equivocado deforma la pose. Sin ella las horizontales
+                            // siguen horizontales y las verticales se acortan cos(pitch) (< 10 % hasta 25°), y los
+                            // analizadores lo toleran.
+  longFovDeg: 63,           // campo visual en el lado largo de la imagen que se supone con pitch2D encendido (cámara
+                            // principal en modo video, equivalente 26-28 mm; igual que SYNTH_CONFIG.vfov)
   msg: Object.freeze({
     level: 'Teléfono derecho',
     corrected: 'Inclinado {n}°: lo corregimos',
@@ -143,10 +146,10 @@ const RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
 const fin = (v) => typeof v === 'number' && Number.isFinite(v);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-const clean = (v) => (Math.abs(v) < 1e-12 ? 0 : v);   // no -0 and no 1e-17 leftovers of cos(90°)
+const clean = (v) => (Math.abs(v) < 1e-12 ? 0 : v);   // sin -0 ni restos de 1e-17 de cos(90°)
 
 /**
- * Wraps an angle to (-180, 180].
+ * Lleva un ángulo a (-180, 180].
  * @param {number} deg
  * @returns {number}
  */
@@ -168,9 +171,9 @@ function median(values) {
 const angleBetween = (a, b) => Math.acos(clamp(a.x * b.x + a.y * b.y + a.z * b.z, -1, 1)) * DEG;
 
 /**
- * Screen angle to use with {@link deviceToImage}, normalized to 0/90/180/270.
- * Prefers `window.orientation` (consistent on iOS and Chrome Android; Safari 16.4 shipped screen.orientation.angle
- * with 90/270 swapped), then `screen.orientation.angle`, then 0. The DOM layer passes both raw values.
+ * Ángulo de pantalla para usar con {@link deviceToImage}, normalizado a 0/90/180/270.
+ * Prefiere `window.orientation` (coherente en iOS y Chrome Android; Safari 16.4 salió con screen.orientation.angle
+ * con 90/270 cambiados), luego `screen.orientation.angle`, luego 0. La capa del DOM pasa ambos valores crudos.
  * @param {{windowOrientation?: number|null, screenAngle?: number|null}} [src]
  * @returns {0|90|180|270}
  */
@@ -180,13 +183,13 @@ function resolveScreenAngle(src = {}) {
 }
 
 /**
- * Unit "up" vector (opposite to gravity) in the DEVICE frame from the W3C Euler angles of a deviceorientation event.
- * up = [-cos(beta)·sin(gamma), sin(beta), cos(beta)·cos(gamma)]; alpha (compass) is irrelevant.
- * Examples: flat on a table, screen up (0, 0) -> (0, 0, 1); upright portrait (90, 0) -> (0, 1, 0);
- * upright landscape with the top edge to the left (0, -90) -> (1, 0, 0).
- * @param {number} beta degrees, rotation about the device x axis, [-180, 180)
- * @param {number} gamma degrees, rotation about the device y axis, [-90, 90)
- * @returns {{x:number, y:number, z:number}|null} null when an angle is not a finite number
+ * Vector unitario "arriba" (contrario a la gravedad) en el sistema del APARATO, desde los ángulos de Euler W3C de un
+ * evento deviceorientation. up = [-cos(beta)·sin(gamma), sin(beta), cos(beta)·cos(gamma)]; alpha (brújula) no importa.
+ * Ejemplos: acostado en la mesa, pantalla arriba (0, 0) -> (0, 0, 1); vertical (90, 0) -> (0, 1, 0);
+ * horizontal con el borde de arriba a la izquierda (0, -90) -> (1, 0, 0).
+ * @param {number} beta grados, giro en el eje x del aparato, [-180, 180)
+ * @param {number} gamma grados, giro en el eje y del aparato, [-90, 90)
+ * @returns {{x:number, y:number, z:number}|null} null si un ángulo no es un número finito
  */
 function upFromEuler(beta, gamma) {
   if (!fin(beta) || !fin(gamma)) return null;
@@ -195,8 +198,8 @@ function upFromEuler(beta, gamma) {
 }
 
 /**
- * True when a tilt may be corrected automatically: finite roll, not sideways, |roll| <= maxAutoDeg and the camera
- * is not looking at the floor/ceiling (|pitch| <= flatPitchDeg when the pitch is known).
+ * Verdadero si una inclinación se puede corregir sola: roll finito, no de costado, |roll| <= maxAutoDeg y la cámara no
+ * mira al suelo ni al techo (|pitch| <= flatPitchDeg cuando se conoce el pitch). El cuarto de vuelta va aparte (quarterTurn).
  * @param {object|null} tilt Tilt
  * @returns {boolean}
  */
@@ -214,22 +217,22 @@ function makeTilt(roll, pitch, down, source, confidence, still) {
 }
 
 /**
- * Converts the "up" vector of the device frame into the tilt of the camera image.
- * @param {{x:number, y:number, z:number}} upDevice "up" in device axes (any length; see {@link upFromEuler})
- * @param {{screenAngle?: number, facing?: 'user'|'environment'}} [view] screen angle (0/90/180/270, see
- *   {@link resolveScreenAngle}) and camera ('environment' = rear, default; 'user' = front, raw frame not mirrored)
+ * Convierte el vector "arriba" del sistema del aparato en la inclinación de la imagen de la cámara.
+ * @param {{x:number, y:number, z:number}} upDevice "arriba" en ejes del aparato (cualquier largo; ver {@link upFromEuler})
+ * @param {{screenAngle?: number, facing?: 'user'|'environment'}} [view] ángulo de pantalla (0/90/180/270, ver
+ *   {@link resolveScreenAngle}) y cámara ('environment' = trasera, por defecto; 'user' = frontal, cuadro crudo sin espejo)
  * @returns {{roll:number, pitch:number, down:{x:number,y:number,z:number}, source:'sensor', confidence:number,
- *   still:null, sideways:boolean, correctable:boolean}|null} Tilt, or null for an unusable vector.
- *   roll: + = camera turned clockwise seen from behind it; pitch: + = looking above the horizon;
- *   confidence falls from 1 (level) to 0 at |pitch| = flatPitchDeg, where roll stops being measurable.
+ *   still:null, sideways:boolean, correctable:boolean}|null} Tilt, o null si el vector no sirve.
+ *   roll: + = cámara girada en sentido horario vista desde atrás; pitch: + = mira sobre el horizonte;
+ *   la confianza baja de 1 (derecha) a 0 en |pitch| = flatPitchDeg, donde el roll deja de poder medirse.
  */
 function deviceToImage(upDevice, view = {}) {
   const u = upDevice && fin(upDevice.x) && fin(upDevice.y) && fin(upDevice.z) ? unit(upDevice) : null;
   if (!u) return null;
   const a = resolveScreenAngle({ screenAngle: view.screenAngle }) * RAD, c = Math.round(Math.cos(a)), s = Math.round(Math.sin(a));
-  const sx = c * u.x - s * u.y, sy = s * u.x + c * u.y, sz = u.z;               // "up" in screen axes
+  const sx = c * u.x - s * u.y, sy = s * u.x + c * u.y, sz = u.z;               // "arriba" en ejes de pantalla
   const front = view.facing === 'user';
-  // image = [x_scr, -y_scr, -z_scr] (rear) or [-x_scr, -y_scr, z_scr] (front); down = -up
+  // imagen = [x_pan, -y_pan, -z_pan] (trasera) o [-x_pan, -y_pan, z_pan] (frontal); down = -up
   const down = front ? { x: clean(sx), y: clean(sy), z: clean(-sz) } : { x: clean(-sx), y: clean(sy), z: clean(sz) };
   const inPlane = Math.hypot(down.x, down.y);
   const roll = inPlane > 1e-6 ? clean(Math.atan2(down.x, down.y) * DEG) : 0;
@@ -238,9 +241,9 @@ function deviceToImage(upDevice, view = {}) {
   return makeTilt(roll, pitch, down, 'sensor', (inPlane - minPlane) / (1 - minPlane), null);
 }
 
-// ---- Sensor estimator ----------------------------------------------------------------------------------------
+// ---- Estimador con sensores ----------------------------------------------------------------------------------------
 
-/** Fixed-size ring of numeric rows (O(1) push, no allocation after creation). */
+/** Anillo de tamaño fijo de filas numéricas (agregar es O(1), sin pedir memoria después de crearlo). */
 function makeRing(size, width) {
   const data = new Float64Array(size * width);
   let head = 0, count = 0;
@@ -250,7 +253,7 @@ function makeRing(size, width) {
       head = (head + 1) % size;
       if (count < size) count++;
     },
-    /** Rows with t (column 0) >= since, oldest first. */
+    /** Filas con t (columna 0) >= since, de la más vieja a la más nueva. */
     since(since) {
       const out = [];
       for (let i = count; i >= 1; i--) {
@@ -266,40 +269,40 @@ function makeRing(size, width) {
 
 const vec3 = (o) => (o && fin(o.x) && fin(o.y) && fin(o.z) ? o : null);
 
-/** Component-wise median of unit vectors [t, x, y, z], renormalized; fine for the tight clusters of a 1 s window. */
+/** Mediana por componente de vectores unitarios [t, x, y, z], renormalizada; sirve para los grupos apretados de una ventana de 1 s. */
 function medianUp(rows) {
   return rows.length ? unit({ x: median(rows.map((r) => r[1])), y: median(rows.map((r) => r[2])), z: median(rows.map((r) => r[3])) }) : null;
 }
 
 /**
- * Tilt estimator fed by the DOM layer with deviceorientation / devicemotion samples (plain objects; `t` in ms on one
- * monotonic clock, e.g. performance.now()). Cheap: O(1) per event, `state()` works on windows of at most
- * `maxSamples` rows and is cached between events.
+ * Estimador de inclinación que la capa del DOM alimenta con muestras de deviceorientation / devicemotion (objetos simples;
+ * `t` en ms de un reloj que solo avanza, p. ej. performance.now()). Liviano: O(1) por evento, `state()` trabaja sobre
+ * ventanas de a lo más `maxSamples` filas y queda guardado entre eventos.
  *
- * Gravity source: beta/gamma first (same convention on every platform); accelerationIncludingGravity as fallback
- * with a sign that is learnt from beta/gamma when both exist, else `opts.accelSign`, else chosen so that "up" is on
- * the upper half of the screen (see the platform notes at the top of the file).
+ * Fuente de gravedad: primero beta/gamma (misma convención en todas las plataformas); accelerationIncludingGravity de
+ * respaldo, con un signo aprendido de beta/gamma cuando existen ambos, si no `opts.accelSign`, y si no elegido para que
+ * "arriba" quede en la mitad superior de la pantalla (ver las notas de plataformas al inicio del archivo).
  *
- * @param {{screenAngle?: number, facing?: 'user'|'environment', accelSign?: 1|-1}} [opts] initial screen/camera;
- *   accelSign: +1 = spec/Android (vector points up at rest), -1 = iOS Safari; leave unset to let the estimator decide
+ * @param {{screenAngle?: number, facing?: 'user'|'environment', accelSign?: 1|-1}} [opts] pantalla y cámara iniciales;
+ *   accelSign: +1 = norma/Android (en reposo el vector apunta arriba), -1 = iOS Safari; sin definir, decide el estimador
  * @returns {{
  *   setScreen: (s: {angle?: number, facing?: 'user'|'environment'}) => void,
  *   pushOrientation: (e: {t:number, alpha?:number|null, beta:number|null, gamma:number|null}) => void,
  *   pushMotion: (e: {t:number, accG?:object|null, acc?:object|null, rot?:object|null}) => void,
  *   state: (now?: number) => object,
  *   reset: () => void }}
- *   `state(now)` returns `{ sensors: {orientation, accelerometer, gyroscope}, available, still, tilt, samples,
+ *   `state(now)` devuelve `{ sensors: {orientation, accelerometer, gyroscope}, available, still, tilt, samples,
  *   lastStill, gravitySource, accelSign, accelSignFrom, disagreeDeg, screen }`:
- *   - sensors: which sensors have really delivered numbers (gyroscope = rotationRate with three numbers);
- *   - available: fresh gravity data exists (events within `staleMs` of `now`; `now` defaults to the last event time);
- *   - still: true/false, or null when it cannot be judged; uses the rotation rate, the spread of "up" and |accG|;
- *   - tilt: Tilt of the current window (median "up"), `still` copied in, confidence reduced while moving; null if none;
- *   - lastStill: Tilt of the last window that was still (what the runner should lock at the start of a test);
- *   - gravitySource: 'orientation' | 'accelerometer' | null; accelSign: +1 | -1 | null and where it came from
- *     ('orientation' | 'option' | 'screen' | 'spec'); disagreeDeg: angle between both gravity estimates, if both exist.
+ *   - sensors: qué sensores entregaron números de verdad (gyroscope = rotationRate con tres números);
+ *   - available: hay datos de gravedad recientes (eventos a `staleMs` o menos de `now`; `now` es por defecto el último evento);
+ *   - still: true/false, o null si no se puede juzgar; usa la velocidad de giro, la dispersión de "arriba" y |accG|;
+ *   - tilt: Tilt de la ventana actual ("arriba" mediano), con `still` copiado, menos confianza en movimiento; null si no hay;
+ *   - lastStill: Tilt de la última ventana quieta (lo que el corredor debe fijar al empezar una prueba);
+ *   - gravitySource: 'orientation' | 'accelerometer' | null; accelSign: +1 | -1 | null y de dónde salió
+ *     ('orientation' | 'option' | 'screen' | 'spec'); disagreeDeg: ángulo entre ambas estimaciones de gravedad, si hay dos.
  */
 function createTiltEstimator(opts = {}) {
-  const ori = makeRing(OC.maxSamples, 4);     // t, up.x, up.y, up.z (device frame)
+  const ori = makeRing(OC.maxSamples, 4);     // t, up.x, up.y, up.z (sistema del aparato)
   const acc = makeRing(OC.maxSamples, 5);     // t, accG.x, accG.y, accG.z, |accG|
   const rot = makeRing(OC.maxSamples, 2);     // t, |rotationRate|
   const screen = { angle: resolveScreenAngle({ screenAngle: opts.screenAngle }), facing: opts.facing === 'user' ? 'user' : 'environment' };
@@ -322,7 +325,7 @@ function createTiltEstimator(opts = {}) {
     }
     if (learntSign) return { sign: learntSign, from: 'orientation' };
     if (optSign) return { sign: optSign, from: 'option' };
-    const a = screen.angle * RAD, d = aUnit.x * Math.sin(a) + aUnit.y * Math.cos(a);   // component along screen-up
+    const a = screen.angle * RAD, d = aUnit.x * Math.sin(a) + aUnit.y * Math.cos(a);   // componente hacia pantalla-arriba
     if (Math.abs(d) >= OC.screenUpMin) return { sign: d > 0 ? 1 : -1, from: 'screen' };
     return { sign: 1, from: 'spec' };
   }
@@ -340,7 +343,7 @@ function createTiltEstimator(opts = {}) {
     const rows = oriUp ? oRows : accUp ? gRows : [];
     const disagreeDeg = oriUp && accUp ? angleBetween(oriUp, accUp) : null;
 
-    // Stillness: every available cue must agree.
+    // Quietud: todas las señales disponibles deben coincidir.
     let still = null;
     if (up) {
       const cues = [];
@@ -381,13 +384,13 @@ function createTiltEstimator(opts = {}) {
   }
 
   return {
-    /** Screen angle (see resolveScreenAngle) and camera in use; may change at any time, no reset needed. */
+    /** Ángulo de pantalla (ver resolveScreenAngle) y cámara en uso; puede cambiar en cualquier momento, sin reiniciar. */
     setScreen(s = {}) {
       if (fin(s.angle)) screen.angle = resolveScreenAngle({ screenAngle: s.angle });
       if (s.facing === 'user' || s.facing === 'environment') screen.facing = s.facing;
       cache = null;
     },
-    /** One deviceorientation event; null/NaN angles (desktop) are ignored. */
+    /** Un evento deviceorientation; los ángulos null/NaN (escritorio) se ignoran. */
     pushOrientation(e) {
       if (!e || !fin(e.t)) return;
       const up = upFromEuler(e.beta, e.gamma);
@@ -396,7 +399,7 @@ function createTiltEstimator(opts = {}) {
       ori.push(e.t, up.x, up.y, up.z);
       touch(e.t);
     },
-    /** One devicemotion event: accG = accelerationIncludingGravity, acc = acceleration, rot = rotationRate (any may be null). */
+    /** Un evento devicemotion: accG = accelerationIncludingGravity, acc = acceleration, rot = rotationRate (cualquiera puede ser null). */
     pushMotion(e) {
       if (!e || !fin(e.t)) return;
       const g = vec3(e.accG), mag = g ? Math.hypot(g.x, g.y, g.z) : 0;
@@ -414,27 +417,27 @@ function createTiltEstimator(opts = {}) {
   };
 }
 
-// ---- Image-only estimate from the start posture ---------------------------------------------------------------
-// All gates use angles and length ratios, which do not change when the picture is rotated, so they work on
-// uncorrected frames. Every reference yields an "up" vector u in j2 units; roll = atan2(-u.x, -u.y).
+// ---- Estimación solo con imagen, desde la postura inicial ---------------------------------------------------------------
+// Todos los filtros usan ángulos y proporciones de largo, que no cambian al girar la imagen, así funcionan sobre cuadros
+// sin corregir. Cada referencia da un vector "arriba" u en unidades de j2; roll = atan2(-u.x, -u.y).
 
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
 const len2 = (v) => Math.hypot(v.x, v.y);
 const rollFromUp = (u) => Math.atan2(-u.x, -u.y) * DEG;
 
-/** Interior angle at b in degrees (2D), or null for degenerate segments. */
+/** Ángulo interior en b en grados (2D), o null si un segmento es degenerado. */
 function angle2(a, b, c) {
   const u = sub(a, b), w = sub(c, b), n = len2(u) * len2(w);
   return n > 1e-12 ? Math.acos(clamp((u.x * w.x + u.y * w.y) / n, -1, 1)) * DEG : null;
 }
 
-/** Unsigned angle between two 2D directions in degrees. */
+/** Ángulo sin signo entre dos direcciones 2D, en grados. */
 function between2(u, w) {
   const n = len2(u) * len2(w);
   return n > 1e-12 ? Math.acos(clamp((u.x * w.x + u.y * w.y) / n, -1, 1)) * DEG : 180;
 }
 
-/** Signed distance of p from the line a->b, positive on the side of `ref`; and the unit normal towards `ref`. */
+/** Distancia con signo de p a la recta a->b, positiva del lado de `ref`; y la normal unitaria hacia `ref`. */
 function floorLine(a, b, ref) {
   const h = sub(b, a), L = len2(h);
   if (!(L > 1e-9)) return null;
@@ -444,7 +447,7 @@ function floorLine(a, b, ref) {
   return { L, up: n, height: (p) => n.x * (p.x - a.x) + n.y * (p.y - a.y) };
 }
 
-/** Joints of one body side (prefix 'l_' | 'r_') that are visible enough; missing ones are null. */
+/** Articulaciones de un lado del cuerpo (prefijo 'l_' | 'r_') que se ven lo suficiente; las que faltan, null. */
 function sideJoints(j2, prefix) {
   const get = (name) => {
     const p = j2[prefix + name];
@@ -455,7 +458,7 @@ function sideJoints(j2, prefix) {
 }
 
 const POSE_REFS = {
-  /** Standing upright: ankle->shoulder is vertical; the torso must point the same way. */
+  /** De pie: tobillo->hombro es vertical; el torso debe apuntar igual. */
   squat(s) {
     if (!s.shoulder || !s.hip || !s.knee || !s.ankle) return null;
     const knee = angle2(s.hip, s.knee, s.ankle), hip = angle2(s.shoulder, s.hip, s.knee);
@@ -463,14 +466,14 @@ const POSE_REFS = {
     const up = sub(s.shoulder, s.ankle);
     return between2(up, sub(s.shoulder, s.hip)) <= OC.alignDeg ? up : null;
   },
-  /** Push-up top: wrist and toes (or knees) are on the floor; arms extended, body in a line above the floor. */
+  /** Arriba en flexión: muñeca y pies (o rodillas) en el suelo; brazos extendidos, cuerpo en línea sobre el suelo. */
   pushup(s, variant) {
     if (!s.shoulder || !s.elbow || !s.wrist || !s.hip) return null;
     const elbow = angle2(s.shoulder, s.elbow, s.wrist);
     if (elbow == null || elbow < OC.extendedElbow) return null;
     return floorUp(s, s.wrist, variant, 0.2, 0.95);
   },
-  /** Forearm plank: elbow and toes on the floor, upper arm roughly perpendicular to it. */
+  /** Plancha en antebrazos: codo y pies en el suelo, brazo más o menos perpendicular a él. */
   plank(s) {
     if (!s.shoulder || !s.elbow || !s.hip || !s.knee || !s.foot) return null;
     if (s.wrist) {
@@ -482,14 +485,14 @@ const POSE_REFS = {
     const up = floorUp(s, s.elbow, 'toes', 0.1, 0.6);
     return up;
   },
-  /** Dead hang: the body hangs below the grip, wrist->ankle (legs straight) or wrist->hip (knees bent) is vertical. */
+  /** Colgado: el cuerpo cuelga bajo el agarre, muñeca->tobillo (piernas rectas) o muñeca->cadera (rodillas dobladas) es vertical. */
   pullup(s) {
     if (!s.shoulder || !s.elbow || !s.wrist || !s.hip) return null;
     const elbow = angle2(s.shoulder, s.elbow, s.wrist);
     if (elbow == null || elbow < OC.extendedElbow) return null;
     const hang = sub(s.wrist, s.hip);
-    if (between2(hang, sub(s.wrist, s.shoulder)) > OC.alignDeg + 3) return null;          // arm in line with the body
-    if (len2(sub(s.wrist, s.shoulder)) > 0.9 * len2(hang)) return null;                    // shoulder between wrist and hip
+    if (between2(hang, sub(s.wrist, s.shoulder)) > OC.alignDeg + 3) return null;          // brazo en línea con el cuerpo
+    if (len2(sub(s.wrist, s.shoulder)) > 0.9 * len2(hang)) return null;                    // hombro entre la muñeca y la cadera
     const knee = s.knee && s.ankle ? angle2(s.hip, s.knee, s.ankle) : null;
     if (knee != null && knee >= OC.straightKnee - 10) {
       const full = sub(s.wrist, s.ankle);
@@ -497,7 +500,7 @@ const POSE_REFS = {
     }
     return hang;
   },
-  /** Dip support: straight arm, hand below the shoulder next to the hip: wrist->shoulder is vertical. */
+  /** Apoyo de fondos: brazo recto, mano bajo el hombro junto a la cadera: muñeca->hombro es vertical. */
   dip(s) {
     if (!s.shoulder || !s.elbow || !s.wrist || !s.hip) return null;
     const elbow = angle2(s.shoulder, s.elbow, s.wrist);
@@ -508,12 +511,12 @@ const POSE_REFS = {
   },
 };
 
-/** "Up" from the floor line between a front contact (wrist/elbow) and the rear contact (toes or knees). */
+/** "Arriba" desde la línea del suelo entre un apoyo delantero (muñeca/codo) y el trasero (pies o rodillas). */
 function floorUp(s, front, variant, minShoulder, maxShoulder) {
   if (!s.knee && !s.foot) return null;
   let rear = variant === 'knees' ? s.knee : variant === 'toes' ? s.foot : null;
   if (!rear && variant !== 'knees' && variant !== 'toes') {
-    // auto: the lower support. Toes hanging in the air (knee push-up) are above the wrist-knee line.
+    // auto: el apoyo más bajo. Los pies en el aire (flexión de rodillas) quedan sobre la línea muñeca-rodilla.
     rear = s.foot;
     if (s.knee && s.foot) {
       const viaKnee = floorLine(front, s.knee, s.shoulder);
@@ -523,39 +526,39 @@ function floorUp(s, front, variant, minShoulder, maxShoulder) {
   if (!rear) return null;
   const raw = floorLine(front, rear, s.shoulder), torso = len2(sub(s.shoulder, s.hip));
   if (!raw || raw.L < OC.floorLineMin * torso) return null;
-  // The landmarks are joint centres, not the skin on the floor: drop each one by its usual height before fitting.
+  // Los puntos son centros de articulación, no la piel en el suelo: se baja cada uno su altura usual antes de ajustar.
   const lift = OC.contactLift, drop = (p, k) => ({ x: p.x - raw.up.x * k * torso, y: p.y - raw.up.y * k * torso });
   const line = floorLine(drop(front, front === s.elbow ? lift.elbow : lift.wrist), drop(rear, rear === s.knee ? lift.knee : lift.foot), s.shoulder);
   if (!line) return null;
   const hs = line.height(s.shoulder) / line.L, hh = line.height(s.hip) / line.L;
-  if (hs < minShoulder || hs > maxShoulder || hh < 0.05) return null;                     // chest or hips on the floor
-  // the trunk lies along the floor and the supporting arm stands on it (a standing person with the arms forward does neither)
+  if (hs < minShoulder || hs > maxShoulder || hh < 0.05) return null;                     // pecho o caderas en el suelo
+  // el tronco va a lo largo del suelo y el brazo de apoyo se para sobre él (una persona de pie con los brazos adelante no hace ninguna de las dos)
   const along = sub(rear, front), trunk = between2(sub(s.hip, s.shoulder), along);
   if (trunk > OC.trunkFloorDeg || between2(sub(s.shoulder, front), line.up) > OC.armFloorDeg) return null;
   const far = rear === s.knee ? s.knee : (s.knee || rear);
   const body = angle2(s.shoulder, s.hip, far);
   if (body == null || body < OC.bodyLine) return null;
-  // A standing person reaching forward (or leaning on a wall) looks like a push-up in a picture turned ~70°: floor
-  // references are only used for moderate rolls, so they can never claim a sideways picture.
+  // Una persona de pie estirando los brazos (o apoyada en una pared) parece una flexión en una imagen girada ~70°: las
+  // referencias del suelo solo se usan con roll moderado, así nunca pueden decir que la imagen está de costado.
   return Math.abs(rollFromUp(line.up)) <= OC.sidewaysDeg ? line.up : null;
 }
 
 /**
- * Camera roll estimated from the picture alone, using the start posture of each test (for uploaded videos,
- * desktops and denied sensor permissions). References: squat = standing, ankle->shoulder vertical; push-up =
- * wrist and toes/knees on the floor; plank = elbow and toes on the floor; pull-up = dead hang, wrist->ankle (or
- * wrist->hip with bent knees) vertical; dip = top support, shoulder->wrist vertical. Frames that do not look like
- * the start posture are ignored; the estimate is the median over the accepted frames and is reported once at
- * least `minFrames` agree within `maxSpreadDeg`. The last confident estimate stays available (latched).
+ * Roll de la cámara estimado solo con la imagen, usando la postura inicial de cada prueba (para videos subidos,
+ * escritorios y permisos de sensores negados). Referencias: sentadilla = de pie, tobillo->hombro vertical; flexión =
+ * muñeca y pies/rodillas en el suelo; plancha = codo y pies en el suelo; barra = colgado, muñeca->tobillo (o
+ * muñeca->cadera con rodillas dobladas) vertical; fondos = apoyo arriba, hombro->muñeca vertical. Los cuadros que no
+ * parecen la postura inicial se ignoran; la estimación es la mediana de los cuadros aceptados y se informa cuando al
+ * menos `minFrames` coinciden dentro de `maxSpreadDeg`. La última estimación confiable queda disponible (retenida).
  * @param {'pushup'|'squat'|'plank'|'pullup'|'dip'} test
- * @param {{variant?: 'toes'|'knees'|'auto'}} [opts] push-up support; 'auto' (default) picks the lower one
+ * @param {{variant?: 'toes'|'knees'|'auto'}} [opts] apoyo de la flexión; 'auto' (por defecto) elige el más bajo
  * @returns {{push: (joints: object) => boolean, state: () => {tilt: object|null, n: number, spread: number|null,
  *   fresh: boolean, seen: number}, reset: () => void}}
- *   push(joints): Joints of an UNCORRECTED frame (toJoints); returns true when the frame was accepted.
- *   state(): tilt = Tilt (source 'image', pitch null, still null, `estimatedRoll` = the measured roll before the
- *   per-test dead-band `imageDeadbandDeg`, inside which `roll` is 0) or null until confident; n = accepted frames in the
- *   window; spread = robust spread of their rolls in degrees (1.4826·MAD); fresh = the current window is confident
- *   (false = tilt is the latched one); seen = frames pushed.
+ *   push(joints): Joints de un cuadro SIN CORREGIR (toJoints); devuelve true si el cuadro se aceptó.
+ *   state(): tilt = Tilt (source 'image', pitch null, still null, `estimatedRoll` = el roll medido antes de la zona muerta
+ *   de cada prueba `imageDeadbandDeg`, dentro de la cual `roll` es 0) o null hasta tener confianza; n = cuadros aceptados en
+ *   la ventana; spread = dispersión robusta de sus roll en grados (1,4826·MAD); fresh = la ventana actual es confiable
+ *   (false = tilt es el retenido); seen = cuadros recibidos.
  */
 function createPoseLevelEstimator(test, opts = {}) {
   const ref = POSE_REFS[test];
@@ -605,25 +608,25 @@ function createPoseLevelEstimator(test, opts = {}) {
   };
 }
 
-// ---- Fusion ---------------------------------------------------------------------------------------------------
+// ---- Fusión ---------------------------------------------------------------------------------------------------
 
 const usable = (t, source) => !!t && t.source === source && fin(t.roll) && t.confidence > 0;
 
 /**
- * Chooses the tilt to apply from the sensor estimate and the start-posture (image) estimate.
- * - only one usable -> that one (`reason` 'sensor_only' | 'image_only');
- * - both agree within `conflictDeg` -> the sensor if it is still (it also knows the pitch; `reason` 'sensor'),
- *   else the image ('image_sensor_moving');
- * - the image claims a sideways picture but a still sensor does not -> sensor ('image_sideways_ignored'): a person
- *   lying in a line looks like a standing person in a turned picture, so that claim is weak;
- * - they differ by ~180° or ~90° (within `patternTolDeg`) -> the sensor convention is wrong on this phone (screen
- *   angle or acceleration sign): image, `reason` 'sensor_convention_180' | 'sensor_convention_90';
- * - any other disagreement -> the image if its confidence >= `conflictImageMin` ('conflict_image'), otherwise the
- *   estimate that rotates the pose less ('conflict_smaller'); confidence is reduced.
- * The result always carries `reason` and `correctable`; `conflictDeg` (absolute roll difference) when both existed.
- * @param {object|null} sensorTilt Tilt with source 'sensor' (e.g. createTiltEstimator().state().lastStill or .tilt)
- * @param {object|null} imageTilt Tilt with source 'image' (createPoseLevelEstimator().state().tilt)
- * @returns {object|null} a new Tilt, or null when neither estimate is usable
+ * Elige la inclinación que se aplica entre la estimación de los sensores y la de la postura inicial (imagen).
+ * - solo una sirve -> esa (`reason` 'sensor_only' | 'image_only');
+ * - coinciden dentro de `conflictDeg` -> el sensor si está quieto (también sabe el pitch; `reason` 'sensor'),
+ *   si no la imagen ('image_sensor_moving');
+ * - la imagen dice que está de costado pero un sensor quieto no -> sensor ('image_sideways_ignored'): una persona
+ *   acostada en línea parece una persona de pie en una imagen girada, así que esa afirmación es débil;
+ * - difieren en ~180° o ~90° (dentro de `patternTolDeg`) -> la convención del sensor está mal en este teléfono (ángulo
+ *   de pantalla o signo de la aceleración): imagen, `reason` 'sensor_convention_180' | 'sensor_convention_90';
+ * - cualquier otro desacuerdo -> la imagen si su confianza >= `conflictImageMin` ('conflict_image'), si no la
+ *   estimación que gira menos la pose ('conflict_smaller'); la confianza baja.
+ * El resultado siempre lleva `reason` y `correctable`; `conflictDeg` (diferencia absoluta de roll) si existían ambas.
+ * @param {object|null} sensorTilt Tilt con source 'sensor' (p. ej. createTiltEstimator().state().lastStill o .tilt)
+ * @param {object|null} imageTilt Tilt con source 'image' (createPoseLevelEstimator().state().tilt)
+ * @returns {object|null} un Tilt nuevo, o null si ninguna estimación sirve
  */
 function fuseTilt(sensorTilt, imageTilt) {
   const s = usable(sensorTilt, 'sensor') ? sensorTilt : null, i = usable(imageTilt, 'image') ? imageTilt : null;
@@ -646,21 +649,23 @@ function fuseTilt(sensorTilt, imageTilt) {
   return out(Math.abs(s.roll) <= Math.abs(i.roll) ? s : i, 'conflict_smaller', 0.5, d);
 }
 
-// ---- Correction -----------------------------------------------------------------------------------------------
+// ---- Corrección -----------------------------------------------------------------------------------------------
 
 /**
- * Returns a NEW PoseFrame in which gravity points along +y, as the analyzers assume. The input is never mutated.
- * - `lm`: rotated by -roll about the image centre in aspect-corrected units (x·aspect, y) and converted back to
- *   normalized coordinates; z and visibility are kept. With `pitch2D` on (and a known pitch) the points are
- *   re-projected through a virtual level camera instead (pinhole, `longFovDeg` along the long image side).
- * - `world`: rotated in 3D about the optical axis by -roll and then about the camera x axis by the pitch (when it
- *   is known), so that `down` maps to (0, 1, 0). Hip-centred coordinates stay hip-centred.
- * - The result carries `tilt` and `corrected: true`. If the tilt is missing or not correctable (sideways, beyond
- *   `maxAutoDeg`, camera lying flat) the points are copied unchanged and `corrected` is false.
- * @param {{t:number, lm:Array<object>, world?:Array<object>|null, aspect:number}} frame raw PoseFrame
- * @param {object|null} tilt Tilt (from fuseTilt, createTiltEstimator or createPoseLevelEstimator)
- * @param {{pitch2D?: boolean, longFovDeg?: number}} [opts] overrides of the ORIENT_CONFIG defaults
- * @returns {object} new PoseFrame
+ * Devuelve un PoseFrame NUEVO en que la gravedad apunta hacia +y, como suponen los analizadores. Nunca cambia la entrada.
+ * - `lm`: girado en -roll en torno al centro de la imagen en unidades corregidas por aspecto (x·aspect, y) y vuelto a
+ *   coordenadas normalizadas; z y visibilidad se mantienen. Con `pitch2D` encendido (y pitch conocido) los puntos se
+ *   reproyectan en cambio por una cámara virtual derecha (estenopeica, `longFovDeg` en el lado largo de la imagen).
+ * - `world`: girado en 3D en torno al eje óptico en -roll y luego en el eje x de la cámara por el pitch (si se conoce),
+ *   para que `down` quede en (0, 1, 0). Las coordenadas centradas en la cadera siguen centradas en la cadera.
+ * - El resultado lleva `tilt` y `corrected: true`. Con el teléfono de costado (quarterTurn) se gira el cuarto de vuelta,
+ *   `aspect` se invierte y lleva `quarter: true`. Si falta la inclinación o no se puede corregir (pasada `maxAutoDeg`,
+ *   cámara acostada) los puntos se copian sin cambios y `corrected` es false.
+ * @param {{t:number, lm:Array<object>, world?:Array<object>|null, aspect:number}} frame PoseFrame crudo
+ * @param {object|null} tilt Tilt (de fuseTilt, createTiltEstimator o createPoseLevelEstimator)
+ * @param {{pitch2D?: boolean, longFovDeg?: number, quarterOnly?: boolean}} [opts] cambios a lo de ORIENT_CONFIG;
+ *   quarterOnly: solo el cuarto de vuelta (la corrección de inclinación está apagada en Ajustes)
+ * @returns {object} PoseFrame nuevo
  */
 /**
  * Cuarto de vuelta (±90°) de un teléfono de costado con la rotación bloqueada: la imagen llega girada y los
@@ -712,7 +717,7 @@ function rotateFrame(frame, rollDeg, pitchDeg, opts = {}) {
   const warp = (opts.pitch2D ?? OC.pitch2D) && hasPitch;
   // Lados de la imagen girada, en altos de imagen: pasado 45° el lado largo cambia de eje.
   const side = Math.abs(Math.sin(r)) > Math.SQRT1_2, outW = side ? 1 : aspect, outH = side ? aspect : 1;
-  const f = (Math.max(aspect, 1) / 2) / Math.tan(((opts.longFovDeg ?? OC.longFovDeg) * RAD) / 2);   // focal length in image heights
+  const f = (Math.max(aspect, 1) / 2) / Math.tan(((opts.longFovDeg ?? OC.longFovDeg) * RAD) / 2);   // distancia focal en altos de imagen
   const lm = Array.isArray(frame.lm) ? frame.lm.map((q) => {
     if (!q) return q;
     const X = (q.x - 0.5) * aspect, Y = q.y - 0.5;
@@ -731,13 +736,13 @@ function rotateFrame(frame, rollDeg, pitchDeg, opts = {}) {
   return { ...frame, lm, world, aspect: outW / outH };
 }
 
-// ---- UI text --------------------------------------------------------------------------------------------------
+// ---- Textos de la interfaz --------------------------------------------------------------------------------------------------
 
 /**
- * Short Spanish (Chile) status for the UI.
- * 'ok': level, or a small tilt that is corrected; 'warn': phone moving, no estimate, a large corrected tilt, a
- * steep camera or sensor/posture conflict; 'bad': the user must act (sideways picture, tilt beyond `maxAutoDeg`,
- * phone lying flat, camera pitched beyond `pitchBadDeg`).
+ * Estado corto en español de Chile para la interfaz.
+ * 'ok': derecho, una inclinación chica que se corrige, o de costado con sensores (se gira); 'warn': teléfono en
+ * movimiento, sin estimación, una inclinación grande corregida, cámara muy inclinada o conflicto sensor/postura; 'bad': hay
+ * que actuar (imagen de costado sin sensores, inclinación pasada `maxAutoDeg`, teléfono acostado, cámara pasada `pitchBadDeg`).
  * @param {object|null} tilt Tilt
  * @returns {{level: 'ok'|'warn'|'bad', msg: string}}
  */

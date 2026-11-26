@@ -1,6 +1,6 @@
-// Integration of src/orientation.js with the real analyzers (exercises.js), toJoints (skeleton.js) and synth.js:
-// a synthetic session seen through a rolled camera is miscounted, and the same session corrected with the tilt
-// estimated by this module gives exactly the result of the level camera.
+// Integración de src/orientation.mjs con los analizadores reales (exercises.mjs), toJoints (skeleton.mjs) y synth.mjs:
+// una sesión sintética vista por una cámara girada se cuenta mal, y la misma sesión corregida con la inclinación que
+// estima este módulo da exactamente el resultado de la cámara derecha.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ORIENT_CONFIG } from '../src/orientation.mjs';
@@ -15,7 +15,7 @@ import { createAnalyzer } from '../src/exercises.mjs';
 
 const RAD = Math.PI / 180;
 
-/** The same scene seen by a camera rolled `deg` clockwise (seen from behind it): lm about the image centre, world about z. */
+/** La misma escena vista por una cámara girada `deg` en sentido horario (vista desde atrás): lm en torno al centro de la imagen, world en torno a z. */
 function rollFrame(f, deg) {
   const c = Math.cos(deg * RAD), s = Math.sin(deg * RAD), a = f.aspect;
   const lm = f.lm.map((p) => {
@@ -26,7 +26,7 @@ function rollFrame(f, deg) {
   return { ...f, lm, world };
 }
 
-/** Runs a whole session through an analyzer, as the runner does; returns the outcome that matters to the user. */
+/** Pasa una sesión entera por un analizador, como lo hace el corredor; devuelve el resultado que le importa a la persona. */
 function analyze(testId, frames, anOpts = {}) {
   const an = createAnalyzer(testId, anOpts);
   const startOk = an.check(toJoints(frames[0])).ok;
@@ -37,14 +37,14 @@ function analyze(testId, frames, anOpts = {}) {
   return { startOk, value: st.value, invalid: st.invalid, endReason: st.endReason };
 }
 
-/** Tilt from the picture alone, using only the first second (the person waiting in the start position). */
+/** Inclinación solo con la imagen, usando solo el primer segundo (la persona esperando en la posición inicial). */
 function imageTiltOf(testId, frames, estOpts) {
   const est = createPoseLevelEstimator(testId, estOpts);
   for (const f of frames.slice(0, 30)) est.push(toJoints(f));
   return est.state().tilt;
 }
 
-/** Sensor tilt of a resting phone rolled `roll`° (upright portrait, rear camera); platform sets the acceleration sign. */
+/** Inclinación de sensores de un teléfono quieto girado `roll`° (vertical, cámara trasera); platform fija el signo de la aceleración. */
 function sensorTiltOf(roll, { platform = 'android', screenAngle = 0 } = {}) {
   const est = createTiltEstimator({ screenAngle, facing: 'environment' });
   const up = { x: -Math.sin(roll * RAD), y: Math.cos(roll * RAD), z: 0 }, k = platform === 'ios' ? -9.81 : 9.81;
@@ -85,7 +85,7 @@ test('squat: both roll directions, both facings and mixed valid/invalid reps mat
       const tilt = imageTiltOf('squat', rolled);
       assert.deepEqual(analyze('squat', rolled.map((f) => correctFrame(f, tilt))), level, `facing ${facing}, roll ${roll}`);
     }
-    // the roll that lifts the hip side of the thigh breaks the count; the opposite one makes the depth test laxer
+    // el roll que levanta el lado de la cadera del muslo arruina el conteo; el contrario hace más laxa la prueba de profundidad
     assert.equal(broken, 2, `facing ${facing}: uncorrected count wrong for one roll direction`);
   }
 });
@@ -128,7 +128,7 @@ test('push-ups (toes and knees): the corrected session matches the level camera'
       assert.deepEqual(analyze('pushup', rolled.map((f) => correctFrame(f, tilt)), anOpts), level);
     }
   }
-  // knees variant at +18°: the uncorrected start position is refused
+  // variante de rodillas a +18°: la posición inicial sin corregir se rechaza
   const knees = synthSession('pushup', { reps: 5, variant: 'knees' }).frames.map((f) => rollFrame(f, 18));
   assert.equal(analyze('pushup', knees, { variant: 'knees' }).startOk, false);
 });
@@ -158,7 +158,7 @@ test('fusion: sensor and picture agree -> sensor; a wrong screen angle is overru
   assert.ok(good.conflictDeg < ORIENT_CONFIG.conflictDeg);
   assert.deepEqual(analyze('squat', rolled.map((f) => correctFrame(f, good))), level);
 
-  // The browser reports the screen as upside down (angle 180) although the frames are upright: the sensor tilt is ~180° off.
+  // El navegador dice que la pantalla está de cabeza (ángulo 180) aunque los cuadros vienen derechos: el sensor se equivoca en ~180°.
   const wrong = sensorTiltOf(-12, { screenAngle: 180 }).lastStill;
   assert.ok(Math.abs(wrong.roll) > 150);
   assert.equal(correctFrame(rolled[0], wrong).corrected, false, 'the sensor tilt alone is refused, never applied');

@@ -1,26 +1,26 @@
-// FitGram v0 — src/skeleton.js (owner: skeleton agent)
+// FitGram v0 — src/skeleton.mjs
 //
-// Joint maps (BlazePose 33 → Human3.6M 17 / COCO 17), PoseFrame → Joints, 1€ smoothing,
-// the 2D overlay drawn over the live video, a dependency-free 3D viewer on a 2D canvas, and
-// the 2D→3D "lifter" interface (MediaPipe world landmarks now, VideoPose3D ONNX in phase 2).
+// Mapas de articulaciones (BlazePose 33 → Human3.6M 17 / COCO 17), PoseFrame → Joints, suavizado 1€,
+// el dibujo 2D sobre el video en vivo, un visor 3D sin dependencias sobre un canvas 2D, y la
+// interfaz de "elevador" 2D→3D (puntos de mundo de MediaPipe hoy, VideoPose3D ONNX en la fase 2).
 //
-// Module rules (CONTRACT.md): ES2022, no dependencies, no DOM access at module top level,
-// inline exports only, runs unchanged in Node 22 and mobile browsers.
+// Reglas del módulo (CONTRACT.md): ES2022, sin dependencias, sin tocar el DOM al cargar el módulo,
+// funciona igual en Node 22 y en navegadores de celular.
 //
-// Coordinate conventions used throughout:
-// - `lm`    : normalized image coords, x,y in [0,1], y DOWN, unmirrored (MediaPipe).
-// - `world` : meters, origin = mid-hips, x right, y DOWN, z depth (smaller z = closer to camera).
-// - 3D viewer internally uses a y-UP display frame: X = x, Y = -y, Z = -z (right-handed,
-//   camera of the "front" view sits at +Z looking toward -Z, like the phone camera).
+// Convenciones de coordenadas en todo el archivo:
+// - `lm`    : coordenadas de imagen normalizadas, x,y en [0,1], y HACIA ABAJO, sin espejo (MediaPipe).
+// - `world` : metros, origen = centro de caderas, x a la derecha, y HACIA ABAJO, z profundidad (z menor = más cerca).
+// - el visor 3D usa por dentro un sistema con y HACIA ARRIBA: X = x, Y = -y, Z = -z (dextrógiro; la
+//   cámara de la vista "frente" está en +Z mirando hacia -Z, como la cámara del teléfono).
 
 /**
- * Tunable constants of skeleton.js, grouped and frozen (CONTRACT: one frozen object per module).
- * - `headFactor`: head top ≈ midEars + headFactor × (midEars − thorax).
- * - `minVisibility`: below this, joints/bones are drawn faded and dashed.
- * - `colors`: mocap convention (subject's left blue, right orange, axial grey).
- * - `smoother`: PoseSmoother defaults (1€ filter, Casiez 2012) tuned for ~30 fps pose.
- * - `draw2D` / `view3D`: drawing styles (CSS px unless noted; 3D sizes in meters).
- * - `lifter`: VideoPose3D lifter defaults.
+ * Constantes ajustables de skeleton.mjs, agrupadas y congeladas (CONTRACT: un objeto congelado por módulo).
+ * - `headFactor`: coronilla ≈ centroOrejas + headFactor × (centroOrejas − tórax).
+ * - `minVisibility`: bajo esto, articulaciones y huesos se dibujan tenues y punteados.
+ * - `colors`: convención de captura de movimiento (izquierda del sujeto azul, derecha naranja, eje gris).
+ * - `smoother`: valores por defecto de PoseSmoother (filtro 1€, Casiez 2012) ajustados para pose a ~30 fps.
+ * - `draw2D` / `view3D`: estilos de dibujo (px de CSS salvo que se diga; tamaños 3D en metros).
+ * - `lifter`: valores por defecto del elevador VideoPose3D.
  * @type {Readonly<object>}
  */
 const SKELETON_CONFIG = Object.freeze({
@@ -28,8 +28,8 @@ const SKELETON_CONFIG = Object.freeze({
   minVisibility: 0.5,
   colors: Object.freeze({ left: '#2F9BD3', right: '#E8613C', axial: '#8A96A3' }),
   smoother: Object.freeze({
-    lm: Object.freeze({ minCutoff: 1.0, beta: 20 }),    // normalized image units (speed in units/s)
-    world: Object.freeze({ minCutoff: 1.0, beta: 10 }), // meters (speed in m/s)
+    lm: Object.freeze({ minCutoff: 1.0, beta: 20 }),    // unidades de imagen normalizadas (velocidad en unidades/s)
+    world: Object.freeze({ minCutoff: 1.0, beta: 10 }), // metros (velocidad en m/s)
     dCutoff: 1.0,
   }),
   draw2D: Object.freeze({
@@ -41,18 +41,18 @@ const SKELETON_CONFIG = Object.freeze({
     labelSize: 14, labelColor: '#FFFFFF', labelOutline: 'rgba(8,12,18,0.85)',
   }),
   view3D: Object.freeze({
-    fovDeg: 32,                 // field of view across the shorter canvas side
+    fovDeg: 32,                 // campo visual en el lado más corto del canvas
     near: 0.05, minDistance: 1.2, maxDistance: 12, minDepth: 0.6,
-    radiusDistance: 3.0,        // camera ≥ 3 body radii from the target (limits perspective distortion)
-    framing: 0.85,              // body extremes may reach 85% of the half viewport
+    radiusDistance: 3.0,        // cámara a ≥ 3 radios del cuerpo del objetivo (limita la distorsión de perspectiva)
+    framing: 0.85,              // los extremos del cuerpo pueden llegar al 85 % de media vista
     background: '#0E1318',
-    ankleHeight: 0.08, floorClearance: 0.03, // floor = min(lowest ankle − 8 cm, lowest joint − 3 cm)
+    ankleHeight: 0.08, floorClearance: 0.03, // suelo = mín(tobillo más bajo − 8 cm, articulación más baja − 3 cm)
     gridStep: 0.25, gridHalf: 2.0, gridAlphas: Object.freeze([0.28, 0.18, 0.10, 0.045]), gridRGB: '255,255,255',
     spotAlpha: 0.08, shadowAlpha: 0.24,
     boneRadius: 0.022, jointRadius: 0.03, headRadius: 0.1, minPx: 1.5, maxPx: 16, depthDarken: 0.5,
     fadedAlpha: 0.35, outline: 'rgba(4,7,10,0.55)', ring: 'rgba(255,255,255,0.85)', gloss: 'rgba(255,255,255,0.22)',
     easeSeconds: 0.18, followSeconds: 0.8, fitSeconds: 1.0, autoRotateSpeed: 0.35, // rad/s
-    dragPerSide: Math.PI,       // radians of orbit per drag across the shorter canvas side
+    dragPerSide: Math.PI,       // radianes de órbita por arrastre a lo ancho del lado más corto del canvas
     pitchMin: -0.2, pitchMax: 1.5,
     tapSlopPx: 10, tapMaxMs: 300, doubleTapMs: 350,
   }),
@@ -60,7 +60,7 @@ const SKELETON_CONFIG = Object.freeze({
 });
 
 /**
- * MediaPipe BlazePose landmark name → index (33 points; "l_" = the subject's left).
+ * Nombre de punto de MediaPipe BlazePose → índice (33 puntos; "l_" = la izquierda del sujeto).
  * @type {Readonly<Record<string, number>>}
  */
 const BP = Object.freeze({
@@ -79,10 +79,10 @@ const H36M_NAMES = Object.freeze([
 const H36M_PARENTS = Object.freeze([-1, 0, 1, 2, 0, 4, 5, 0, 7, 8, 9, 8, 11, 12, 8, 14, 15]);
 
 /**
- * Human3.6M 17-joint skeleton in VideoPose3D order.
- * - `names[i]`, `parents[i]` (−1 for the root `pelvis`),
- * - `left` / `right`: joint indices of the subject's left/right limbs (VideoPose3D joints_left/right),
- * - `bones`: 16 `[parent, child]` index pairs.
+ * Esqueleto Human3.6M de 17 articulaciones en el orden de VideoPose3D.
+ * - `names[i]`, `parents[i]` (−1 para la raíz `pelvis`),
+ * - `left` / `right`: índices de los miembros izquierdos/derechos del sujeto (joints_left/right de VideoPose3D),
+ * - `bones`: 16 pares de índices `[padre, hijo]`.
  * @type {Readonly<{names: string[], parents: number[], left: number[], right: number[], bones: number[][]}>}
  */
 const H36M = Object.freeze({
@@ -94,29 +94,29 @@ const H36M = Object.freeze({
 });
 
 /**
- * The 17 BlazePose indices in COCO keypoint order (nose, l/r eye, l/r ear, l/r shoulder,
- * l/r elbow, l/r wrist, l/r hip, l/r knee, l/r ankle) — the 2D input of VideoPose3D's
- * `pretrained_h36m_detectron_coco.bin` (Detectron COCO keypoints).
+ * Los 17 índices de BlazePose en el orden de puntos COCO (nariz, ojo i/d, oreja i/d, hombro i/d,
+ * codo i/d, muñeca i/d, cadera i/d, rodilla i/d, tobillo i/d) — la entrada 2D de
+ * `pretrained_h36m_detectron_coco.bin` de VideoPose3D (puntos COCO de Detectron).
  * @type {ReadonlyArray<number>}
  */
 const COCO17_FROM_BLAZEPOSE = Object.freeze([0, 2, 5, 7, 8, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]);
 
-// H36M joint index by name, and the drawing side ('left' | 'right' | 'axial') of each joint.
+// Índice H36M por nombre, y el lado de dibujo ('left' | 'right' | 'axial') de cada articulación.
 const HI = Object.freeze(Object.fromEntries(H36M_NAMES.map((n, i) => [n, i])));
 const H_SIDE = Object.freeze(H36M_NAMES.map((_, i) =>
   (H36M.left.includes(i) ? 'left' : H36M.right.includes(i) ? 'right' : 'axial')));
 
-// Joint names exposed by toJoints() (CONTRACT `Joints`).
+// Nombres de articulaciones que entrega toJoints() (CONTRACT `Joints`).
 const JOINT_NAMES = Object.freeze([
   'nose', 'l_shoulder', 'r_shoulder', 'l_elbow', 'r_elbow', 'l_wrist', 'r_wrist', 'l_hip', 'r_hip',
   'l_knee', 'r_knee', 'l_ankle', 'r_ankle', 'l_heel', 'r_heel', 'l_foot', 'r_foot',
 ]);
 
 /**
- * Converts a PoseFrame into the `Joints` structure consumed by exercises.js.
- * - `j2[name] = { x: lm.x * aspect, y: lm.y, v }` (aspect-corrected image units, y down),
- * - `j3[name] = { x, y, z, v }` copied from `frame.world` (meters, y down) or `j3 = null`,
- * - `v = visibility ?? 1`. Missing landmarks become `{ x: NaN, y: NaN, (z: NaN), v: 0 }`.
+ * Convierte un PoseFrame en la estructura `Joints` que usa exercises.mjs.
+ * - `j2[name] = { x: lm.x * aspect, y: lm.y, v }` (unidades de imagen corregidas por aspecto, y hacia abajo),
+ * - `j3[name] = { x, y, z, v }` copiado de `frame.world` (metros, y hacia abajo) o `j3 = null`,
+ * - `v = visibility ?? 1`. Los puntos que faltan quedan `{ x: NaN, y: NaN, (z: NaN), v: 0 }`.
  * @param {{t:number, lm:Array<object>, world?:Array<object>|null, aspect:number}} frame
  * @returns {{j2: Record<string, {x:number,y:number,v:number}>, j3: Record<string, {x:number,y:number,z:number,v:number}>|null, t:number}}
  */
@@ -138,33 +138,33 @@ function toJoints(frame) {
   return { j2, j3, t: frame ? frame.t : NaN };
 }
 
-// Recipe of every H36M joint as a weighted sum of BlazePose points: [indices, weights].
+// Receta de cada articulación H36M como suma ponderada de puntos BlazePose: [índices, pesos].
 const HEAD_K = SKELETON_CONFIG.headFactor;
 const H36M_RECIPE = Object.freeze([
-  [[23, 24], [0.5, 0.5]],                                         // 0 pelvis = mid hips
-  [[24], [1]], [[26], [1]], [[28], [1]],                          // 1-3 right leg
-  [[23], [1]], [[25], [1]], [[27], [1]],                          // 4-6 left leg
-  [[23, 24, 11, 12], [0.25, 0.25, 0.25, 0.25]],                   // 7 spine = mid(pelvis, thorax)
-  [[11, 12], [0.5, 0.5]],                                         // 8 thorax = mid shoulders
-  [[0], [1]],                                                     // 9 neck_nose = nose
-  [[7, 8, 11, 12], [(1 + HEAD_K) / 2, (1 + HEAD_K) / 2, -HEAD_K / 2, -HEAD_K / 2]], // 10 head top
-  [[11], [1]], [[13], [1]], [[15], [1]],                          // 11-13 left arm
-  [[12], [1]], [[14], [1]], [[16], [1]],                          // 14-16 right arm
+  [[23, 24], [0.5, 0.5]],                                         // 0 pelvis = centro de caderas
+  [[24], [1]], [[26], [1]], [[28], [1]],                          // 1-3 pierna derecha
+  [[23], [1]], [[25], [1]], [[27], [1]],                          // 4-6 pierna izquierda
+  [[23, 24, 11, 12], [0.25, 0.25, 0.25, 0.25]],                   // 7 columna = punto medio(pelvis, tórax)
+  [[11, 12], [0.5, 0.5]],                                         // 8 tórax = centro de hombros
+  [[0], [1]],                                                     // 9 neck_nose = nariz
+  [[7, 8, 11, 12], [(1 + HEAD_K) / 2, (1 + HEAD_K) / 2, -HEAD_K / 2, -HEAD_K / 2]], // 10 coronilla
+  [[11], [1]], [[13], [1]], [[15], [1]],                          // 11-13 brazo izquierdo
+  [[12], [1]], [[14], [1]], [[16], [1]],                          // 14-16 brazo derecho
 ].map((r) => Object.freeze(r)));
 
-/** Visibility of a point: MediaPipe `visibility`, or an already converted `v`, else 1. */
+/** Visibilidad de un punto: `visibility` de MediaPipe, o un `v` ya convertido, si no 1. */
 function visOf(p) {
   return p.visibility ?? p.v ?? 1;
 }
 
 /**
- * Converts 33 BlazePose points (2D `lm` or 3D `world`) into the 17 Human3.6M joints.
- * Derived joints: pelvis = mid hips; thorax = mid shoulders; spine = midpoint pelvis–thorax;
- * neck_nose = nose; head (top) = midEars + 0.45 × (midEars − thorax). Others map directly.
- * `z` is kept when every contributor has a numeric z; `v` = mean visibility of the contributors.
- * A joint with a missing contributor becomes `{ x: NaN, y: NaN, v: 0 }` (never throws).
+ * Convierte 33 puntos BlazePose (`lm` 2D o `world` 3D) en las 17 articulaciones Human3.6M.
+ * Derivadas: pelvis = centro de caderas; tórax = centro de hombros; columna = punto medio pelvis–tórax;
+ * neck_nose = nariz; cabeza (coronilla) = centroOrejas + 0,45 × (centroOrejas − tórax). Las demás van directo.
+ * `z` se mantiene si todos los puntos que aportan tienen z numérica; `v` = visibilidad media de esos puntos.
+ * Una articulación a la que le falta un punto queda `{ x: NaN, y: NaN, v: 0 }` (nunca lanza error).
  * @param {Array<{x:number,y:number,z?:number,visibility?:number,v?:number}>} points
- * @returns {Array<{x:number,y:number,z?:number,v:number}>} 17 points in H36M order
+ * @returns {Array<{x:number,y:number,z?:number,v:number}>} 17 puntos en orden H36M
  */
 function blazeposeToH36M(points) {
   const out = new Array(17);
@@ -190,12 +190,12 @@ function isPair(a) {
 }
 
 /**
- * VideoPose3D screen normalization (`common/camera.py`): `X / w * 2 − [1, h / w]`, i.e. x in
- * [0, w] → [−1, 1] and y scaled by the same factor (aspect ratio preserved, image centre → 0).
- * Accepts an array of `[x, y]` pixel pairs (returns a new array of pairs) or a single pair.
+ * Normalización de pantalla de VideoPose3D (`common/camera.py`): `X / w * 2 − [1, h / w]`, o sea x en
+ * [0, w] → [−1, 1] e y escalada por el mismo factor (se mantiene la proporción, centro de la imagen → 0).
+ * Acepta un arreglo de pares de píxeles `[x, y]` (devuelve un arreglo nuevo de pares) o un solo par.
  * @param {Array<number[]>|number[]} xyPixels
- * @param {number} w image width in pixels
- * @param {number} h image height in pixels
+ * @param {number} w ancho de la imagen en píxeles
+ * @param {number} h alto de la imagen en píxeles
  * @returns {Array<number[]>|number[]}
  */
 function normalizeScreenCoordinates(xyPixels, w, h) {
@@ -205,12 +205,12 @@ function normalizeScreenCoordinates(xyPixels, w, h) {
 }
 
 /**
- * Inverse of {@link normalizeScreenCoordinates} (VideoPose3D `image_coordinates`):
- * `(X + [1, h / w]) * w / 2`. Same input shapes (array of pairs or a single pair).
+ * Inversa de {@link normalizeScreenCoordinates} (`image_coordinates` de VideoPose3D):
+ * `(X + [1, h / w]) * w / 2`. Las mismas formas de entrada (arreglo de pares o un solo par).
  * @param {Array<number[]>|number[]} xyNorm
- * @param {number} w image width in pixels
- * @param {number} h image height in pixels
- * @returns {Array<number[]>|number[]} pixel coordinates
+ * @param {number} w ancho de la imagen en píxeles
+ * @param {number} h alto de la imagen en píxeles
+ * @returns {Array<number[]>|number[]} coordenadas en píxeles
  */
 function imageCoordinates(xyNorm, w, h) {
   if (!(w > 0) || !(h > 0)) throw new RangeError('imageCoordinates: w and h must be > 0');
@@ -218,29 +218,29 @@ function imageCoordinates(xyNorm, w, h) {
   return isPair(xyNorm) ? f(xyNorm) : Array.from(xyNorm, f);
 }
 
-// ───────────────────────────── Smoothing (1€ filter) ─────────────────────────────
+// ───────────────────────────── Suavizado (filtro 1€) ─────────────────────────────
 
 const TWO_PI = 2 * Math.PI;
-const DEFAULT_DT = 1 / 30; // assumed sampling period when no usable timestamp is given
+const DEFAULT_DT = 1 / 30; // período de muestreo supuesto cuando no llega una marca de tiempo usable
 
-/** Exponential smoothing factor for a first-order low-pass at `cutoff` Hz and step `dt` s. */
+/** Factor de suavizado exponencial de un pasa-bajos de primer orden en `cutoff` Hz con paso `dt` s. */
 function smoothingAlpha(cutoff, dt) {
   const tau = 1 / (TWO_PI * cutoff);
   return 1 / (1 + tau / dt);
 }
 
 /**
- * Scalar 1€ filter (Casiez, Roussel & Vogel, CHI 2012): an adaptive low-pass whose cutoff
- * grows with the (low-passed) speed — `cutoff = minCutoff + beta · |dx/dt|` — so it removes
- * jitter at rest (low `minCutoff`) and keeps lag small on fast motion (higher `beta`).
- * Units: `minCutoff` and `dCutoff` in Hz, `beta` in 1/(value unit), timestamps in seconds.
- * Non-finite values pass through without touching the state; a repeated or older timestamp
- * returns the last output; a missing timestamp assumes 30 Hz.
+ * Filtro 1€ escalar (Casiez, Roussel y Vogel, CHI 2012): un pasa-bajos adaptativo cuyo corte
+ * crece con la velocidad (filtrada) — `cutoff = minCutoff + beta · |dx/dt|` — así quita el
+ * temblor en reposo (`minCutoff` bajo) y mantiene poco retraso en movimientos rápidos (`beta` más alto).
+ * Unidades: `minCutoff` y `dCutoff` en Hz, `beta` en 1/(unidad del valor), marcas de tiempo en segundos.
+ * Los valores no finitos pasan sin tocar el estado; una marca repetida o más vieja devuelve la
+ * última salida; sin marca de tiempo supone 30 Hz.
  */
 class OneEuroFilter {
   /**
    * @param {{minCutoff?:number, beta?:number, dCutoff?:number}} [opts]
-   *   minCutoff (Hz, default 1), beta (default 0 = plain low-pass), dCutoff (Hz, default 1).
+   *   minCutoff (Hz, por defecto 1), beta (por defecto 0 = pasa-bajos simple), dCutoff (Hz, por defecto 1).
    */
   constructor({ minCutoff = 1, beta = 0, dCutoff = 1 } = {}) {
     if (!(minCutoff > 0) || !(dCutoff > 0) || !(beta >= 0)) {
@@ -252,24 +252,24 @@ class OneEuroFilter {
     this.reset();
   }
 
-  /** Forgets the history; the next sample is returned unchanged. */
+  /** Olvida la historia; la próxima muestra se devuelve sin cambios. */
   reset() {
-    this._x = NaN;   // last filtered value
-    this._dx = 0;    // last filtered derivative (units/s)
-    this._t = NaN;   // last timestamp (s)
+    this._x = NaN;   // último valor filtrado
+    this._dx = 0;    // última derivada filtrada (unidades/s)
+    this._t = NaN;   // última marca de tiempo (s)
     this._has = false;
   }
 
-  /** Last filtered value (NaN before the first sample). @type {number} */
+  /** Último valor filtrado (NaN antes de la primera muestra). @type {number} */
   get value() {
     return this._x;
   }
 
   /**
-   * Filters one sample.
-   * @param {number} value raw sample
-   * @param {number} [tSeconds] timestamp in seconds (monotonic)
-   * @returns {number} filtered value
+   * Filtra una muestra.
+   * @param {number} value muestra cruda
+   * @param {number} [tSeconds] marca de tiempo en segundos (siempre creciente)
+   * @returns {number} valor filtrado
    */
   filter(value, tSeconds) {
     if (!Number.isFinite(value)) return value;
@@ -279,7 +279,7 @@ class OneEuroFilter {
       return value;
     }
     const dt = t - this._t;
-    if (!(dt > 0)) return this._x; // duplicate / out-of-order timestamp
+    if (!(dt > 0)) return this._x; // marca de tiempo repetida o desordenada
     const dx = (value - this._x) / dt;
     this._dx += smoothingAlpha(this.dCutoff, dt) * (dx - this._dx);
     const cutoff = this.minCutoff + this.beta * Math.abs(this._dx);
@@ -290,16 +290,16 @@ class OneEuroFilter {
 }
 
 /**
- * Smooths a PoseFrame per landmark and axis with 1€ filters: `lm` x,y,z (normalized image
- * units) and `world` x,y,z (meters) use separate settings. Defaults
- * (`SKELETON_CONFIG.smoother`) are tuned for ~30 fps MediaPipe output. Medido en
+ * Suaviza un PoseFrame por punto y por eje con filtros 1€: `lm` x,y,z (unidades de imagen
+ * normalizadas) y `world` x,y,z (metros) usan ajustes distintos. Los valores por defecto
+ * (`SKELETON_CONFIG.smoother`) están ajustados para MediaPipe a ~30 fps. Medido en
  * `test/esqueleto.test.mjs`: en reposo divide el ruido por 2,7, y en una bajada de flexión
  * (0,6 unidades/s) se arrastra 0,35 cuadros. Tras un hueco largo —la cámara se queda
  * pegada— el paso de tiempo grande hace que el filtro siga el dato nuevo casi sin promediar
  * con el viejo, que es lo que corresponde cuando ya hay poca información.
- * `smooth()` never mutates its input; `visibility` and any other fields pass through.
- * A missing `world` (null) is passed through and its filters are left untouched. If time goes
- * backwards (new clip, demo loop) the smoother resets itself.
+ * `smooth()` nunca cambia su entrada; `visibility` y los demás campos pasan tal cual.
+ * Un `world` ausente (null) pasa tal cual y sus filtros no se tocan. Si el tiempo retrocede
+ * (clip nuevo, vuelta del demo) el suavizador se reinicia solo.
  */
 class PoseSmoother {
   /**
@@ -308,14 +308,14 @@ class PoseSmoother {
   constructor(opts = {}) {
     const d = SKELETON_CONFIG.smoother;
     const pick = (o, def) => ({ minCutoff: o?.minCutoff ?? def.minCutoff, beta: o?.beta ?? def.beta });
-    /** Effective settings. */
+    /** Ajustes vigentes. */
     this.opts = { lm: pick(opts.lm, d.lm), world: pick(opts.world, d.world), dCutoff: opts.dCutoff ?? d.dCutoff };
-    this._lm = [];    // per landmark index: [fx, fy, fz]
+    this._lm = [];    // por índice de punto: [fx, fy, fz]
     this._world = [];
     this._lastT = NaN; // ms
   }
 
-  /** Clears all filter state (call when a new session/clip starts). */
+  /** Borra todo el estado de los filtros (llamar al empezar una sesión o clip nuevo). */
   reset() {
     this._lm.length = 0;
     this._world.length = 0;
@@ -323,7 +323,7 @@ class PoseSmoother {
   }
 
   /**
-   * Returns a smoothed copy of `frame` (`{ ...frame, lm: [...], world: [...] | null }`).
+   * Devuelve una copia suavizada de `frame` (`{ ...frame, lm: [...], world: [...] | null }`).
    * @param {{t:number, lm:Array<object>, world?:Array<object>|null, aspect:number}} frame
    * @returns {object} new PoseFrame
    */
@@ -361,14 +361,14 @@ class PoseSmoother {
   }
 }
 
-// ───────────────────────────── 2D overlay ─────────────────────────────
+// ───────────────────────────── Dibujo 2D sobre el video ─────────────────────────────
 
 /**
- * Builds the `project(nx, ny) → [px, py]` function drawSkeleton2D needs for a video shown with
- * CSS `object-fit: cover` (default) or `'contain'` and `object-position: 50% 50%` inside a box of
- * `width × height` CSS px. `mirror` = the video element is flipped with `transform: scaleX(-1)`
- * (selfie preview). `scale` multiplies the output (pass devicePixelRatio when the overlay canvas
- * context is NOT already scaled by it, together with `opts.scale` of drawSkeleton2D).
+ * Arma la función `project(nx, ny) → [px, py]` que necesita drawSkeleton2D para un video mostrado con
+ * CSS `object-fit: cover` (por defecto) o `'contain'` y `object-position: 50% 50%` dentro de una caja de
+ * `width × height` px de CSS. `mirror` = el elemento de video está volteado con `transform: scaleX(-1)`
+ * (vista de selfie). `scale` multiplica la salida (pasar devicePixelRatio cuando el contexto del canvas
+ * NO está ya escalado por él, junto con `opts.scale` de drawSkeleton2D).
  * @param {{videoWidth:number, videoHeight:number, width:number, height:number, mirror?:boolean, fit?:'cover'|'contain', scale?:number}} p
  * @returns {(nx:number, ny:number) => number[]}
  */
@@ -379,33 +379,33 @@ function makeCoverProjection({ videoWidth, videoHeight, width, height, mirror = 
   return (nx, ny) => [(ox + (mirror ? 1 - nx : nx) * dw) * scale, (oy + ny * dh) * scale];
 }
 
-/** Merges user colors with the defaults; accepts `axial` or its alias `axis`. */
+/** Junta los colores dados con los por defecto; acepta `axial` o su alias `axis`. */
 function resolveColors(c) {
   const d = SKELETON_CONFIG.colors;
   return { left: c?.left || d.left, right: c?.right || d.right, axial: c?.axial || c?.axis || d.axial };
 }
 
-// Drawing slots: 0..16 = H36M joints, then 17 l_heel, 18 r_heel, 19 l_foot, 20 r_foot.
+// Casillas de dibujo: 0..16 = articulaciones H36M, luego 17 l_heel, 18 r_heel, 19 l_foot, 20 r_foot.
 const SK_NSLOT = 21;
 const SK_FOOT_BP = Object.freeze([29, 30, 31, 32]);
 const SK_SLOT = Object.freeze({ ...HI, nose: 9, l_heel: 17, r_heel: 18, l_foot: 19, r_foot: 20 });
-// Side of each slot: 0 axial, 1 left, 2 right.
+// Lado de cada casilla: 0 eje, 1 izquierda, 2 derecha.
 const SK_SLOT_SIDE = Uint8Array.from({ length: SK_NSLOT }, (_, i) =>
   (i >= 17 ? (i % 2 ? 1 : 2) : H_SIDE[i] === 'left' ? 1 : H_SIDE[i] === 'right' ? 2 : 0));
-// Segments = 16 H36M bones + feet triangles (ankle → heel → foot index → ankle).
+// Segmentos = 16 huesos H36M + triángulos de los pies (tobillo → talón → punta → tobillo).
 const SK_SEGS = Object.freeze([...H36M.bones, [6, 17], [17, 19], [19, 6], [3, 18], [18, 20], [20, 3]]);
 const SK_NSEG = SK_SEGS.length;
-// Anatomical angle definitions (prefixed with l_/r_): [end A, vertex, end B].
+// Definición de ángulos anatómicos (con prefijo l_/r_): [extremo A, vértice, extremo B].
 const SK_ANGLE_DEF = Object.freeze({
   elbow: ['shoulder', 'elbow', 'wrist'], knee: ['hip', 'knee', 'ankle'], hip: ['shoulder', 'hip', 'knee'],
   shoulder: ['hip', 'shoulder', 'elbow'], ankle: ['knee', 'ankle', 'foot'],
 });
-// Scratch buffers (no allocation per frame for the geometry).
+// Arreglos de trabajo (la geometría no pide memoria en cada cuadro).
 const SK_PX = new Float64Array(SK_NSLOT), SK_PY = new Float64Array(SK_NSLOT);
 const SK_PZ = new Float64Array(SK_NSLOT), SK_PV = new Float64Array(SK_NSLOT);
 const SK_ORDER2 = new Int16Array(SK_NSEG + SK_NSLOT), SK_DEPTH2 = new Float64Array(SK_NSEG + SK_NSLOT);
 
-/** Sorts item indices 0..n-1 by depth, largest (farthest) first; stable insertion sort. */
+/** Ordena los índices 0..n-1 por profundidad, primero el mayor (más lejano); ordenamiento por inserción estable. */
 function skSortFarFirst(order, depth, n) {
   for (let i = 0; i < n; i++) order[i] = i;
   for (let i = 1; i < n; i++) {
@@ -420,7 +420,7 @@ function skFinite2(i) {
   return Number.isFinite(SK_PX[i]) && Number.isFinite(SK_PY[i]);
 }
 
-/** Resolves an angle spec to [a, vertex, b] slots, or null. Unprefixed joint → more visible side. */
+/** Resuelve un ángulo a casillas [a, vértice, b], o null. Articulación sin prefijo → el lado más visible. */
 function skAngleSlots(spec) {
   const name = String(spec && spec.joint || '');
   let side = name.startsWith('l_') ? 'l_' : name.startsWith('r_') ? 'r_' : '';
@@ -436,26 +436,26 @@ function skAngleSlots(spec) {
 }
 
 /**
- * Draws the Human3.6M skeleton (from `frame.lm` via blazeposeToH36M) plus both feet over a video.
- * Bones are round-capped lines with a thin dark outline (readable over any video), joints are
- * filled dots with a light ring, colored left/right/axial; items are drawn far→near using `lm.z`.
- * Joints/bones with visibility < `minVisibility` are faded and dashed. Never throws on partial data
- * (missing/NaN landmarks are skipped). Does not clear the canvas unless `opts.clear`.
- * @param {CanvasRenderingContext2D} ctx overlay context (CSS px units unless you use opts.scale)
+ * Dibuja el esqueleto Human3.6M (desde `frame.lm` con blazeposeToH36M) y ambos pies sobre un video.
+ * Los huesos son líneas de punta redonda con un borde oscuro fino (se leen sobre cualquier video), las
+ * articulaciones son puntos rellenos con un anillo claro, en colores izquierda/derecha/eje; se dibuja de
+ * lejos a cerca según `lm.z`. Las de visibilidad < `minVisibility` van tenues y punteadas. Nunca lanza
+ * error con datos parciales (se saltan los puntos que faltan o NaN). No borra el canvas salvo con `opts.clear`.
+ * @param {CanvasRenderingContext2D} ctx contexto del dibujo (px de CSS salvo que uses opts.scale)
  * @param {{lm:Array<{x:number,y:number,z?:number,visibility?:number}>}} frame PoseFrame
  * @param {object} [opts]
- * @param {number} [opts.width] canvas width used by the default projection (default ctx.canvas.width)
- * @param {number} [opts.height] canvas height used by the default projection
- * @param {boolean} [opts.mirror] default projection flips x (selfie preview)
- * @param {(nx:number, ny:number) => number[]} [opts.project] normalized image → canvas px (see makeCoverProjection)
- * @param {string[]} [opts.highlight] joint names to emphasize: H36M names, 'nose', 'l_heel', 'r_foot'…; unprefixed 'knee' = both sides
- * @param {Array<{joint:string, value?:number|null, between?:string[]}>} [opts.angles] arcs + labels, e.g.
- *   `{ joint: 'l_elbow', value: 92 }`. joint ∈ {l_,r_,}{elbow,knee,hip,shoulder,ankle} (hip = shoulder–hip–knee;
- *   unprefixed = the more visible side); `value` null → the 2D angle measured on screen; `between` overrides the ends.
+ * @param {number} [opts.width] ancho del canvas para la proyección por defecto (por defecto ctx.canvas.width)
+ * @param {number} [opts.height] alto del canvas para la proyección por defecto
+ * @param {boolean} [opts.mirror] la proyección por defecto voltea x (vista de selfie)
+ * @param {(nx:number, ny:number) => number[]} [opts.project] imagen normalizada → px del canvas (ver makeCoverProjection)
+ * @param {string[]} [opts.highlight] articulaciones a destacar: nombres H36M, 'nose', 'l_heel', 'r_foot'…; 'knee' sin prefijo = ambos lados
+ * @param {Array<{joint:string, value?:number|null, between?:string[]}>} [opts.angles] arcos + etiquetas, p. ej.
+ *   `{ joint: 'l_elbow', value: 92 }`. joint ∈ {l_,r_,}{elbow,knee,hip,shoulder,ankle} (hip = hombro–cadera–rodilla;
+ *   sin prefijo = el lado más visible); `value` null → el ángulo 2D medido en pantalla; `between` cambia los extremos.
  * @param {number} [opts.minVisibility=0.5]
  * @param {{left?:string, right?:string, axial?:string}} [opts.colors]
- * @param {number} [opts.scale=1] multiplies line widths, radii and font size (e.g. devicePixelRatio)
- * @param {boolean} [opts.clear=false] clearRect(0, 0, width, height) first
+ * @param {number} [opts.scale=1] multiplica grosores, radios y tamaño de letra (p. ej. devicePixelRatio)
+ * @param {boolean} [opts.clear=false] primero clearRect(0, 0, width, height)
  */
 function drawSkeleton2D(ctx, frame, opts = {}) {
   if (!ctx || !frame || !Array.isArray(frame.lm) || frame.lm.length === 0) return;
@@ -482,13 +482,13 @@ function drawSkeleton2D(ctx, frame, opts = {}) {
     SK_PZ[i] = p && Number.isFinite(p.z) ? p.z : 0;
     SK_PV[i] = Number.isFinite(v) ? v : 0;
   }
-  // Highlighted slots.
+  // Casillas destacadas.
   const hi = new Set();
   for (const n of opts.highlight || []) {
     if (SK_SLOT[n] !== undefined) hi.add(SK_SLOT[n]);
     else if (SK_SLOT['l_' + n] !== undefined) { hi.add(SK_SLOT['l_' + n]); hi.add(SK_SLOT['r_' + n]); }
   }
-  // Depth order: segments (mean z) and joints (z, slightly nearer so they cover their bones).
+  // Orden de profundidad: segmentos (z media) y articulaciones (z, un poco más cerca para tapar sus huesos).
   for (let k = 0; k < SK_NSEG; k++) SK_DEPTH2[k] = (SK_PZ[SK_SEGS[k][0]] + SK_PZ[SK_SEGS[k][1]]) / 2;
   for (let i = 0; i < SK_NSLOT; i++) SK_DEPTH2[SK_NSEG + i] = SK_PZ[i] - 1e-3;
   skSortFarFirst(SK_ORDER2, SK_DEPTH2, SK_NSEG + SK_NSLOT);
@@ -552,7 +552,7 @@ function drawSkeleton2D(ctx, frame, opts = {}) {
   ctx.restore();
 }
 
-/** Draws one angle arc + "92°" label (see drawSkeleton2D opts.angles). */
+/** Dibuja un arco de ángulo + la etiqueta "92°" (ver opts.angles de drawSkeleton2D). */
 function skDrawAngle(ctx, spec, cfg, s, width, height) {
   const slots = skAngleSlots(spec);
   if (!slots) return;
@@ -572,7 +572,7 @@ function skDrawAngle(ctx, spec, cfg, s, width, height) {
   ctx.beginPath(); ctx.arc(vx, vy, r, ta, ta + d, d < 0);
   ctx.strokeStyle = cfg.outlineColor; ctx.lineWidth = 4 * s; ctx.stroke();
   ctx.strokeStyle = cfg.labelColor; ctx.lineWidth = 2 * s; ctx.stroke();
-  // Label direction: exterior bisector (away from both bones); near-straight → away from the trunk.
+  // Dirección de la etiqueta: bisectriz exterior (lejos de ambos huesos); casi recto → lejos del tronco.
   let ux = -(ax / la + bx / lb), uy = -(ay / la + by / lb), ul = Math.hypot(ux, uy);
   if (ul < 0.25) {
     ux = -ay / la; uy = ax / la; ul = 1;
@@ -595,9 +595,9 @@ function skDrawAngle(ctx, spec, cfg, s, width, height) {
   ctx.fillStyle = cfg.labelColor; ctx.fillText(text, lx, ly);
 }
 
-// ───────────────────────────── 3D viewer ─────────────────────────────
+// ───────────────────────────── Visor 3D ─────────────────────────────
 
-const V3_SHADES = 8; // cached depth-shade levels per side color
+const V3_SHADES = 8; // niveles de sombra por profundidad guardados por color de lado
 const V3_SIDE = Uint8Array.from(H_SIDE, (s) => (s === 'left' ? 1 : s === 'right' ? 2 : 0));
 const V3_VIEWS = Object.freeze({
   front: Object.freeze({ yaw: 0, pitch: 0.08 }),
@@ -605,7 +605,7 @@ const V3_VIEWS = Object.freeze({
   top: Object.freeze({ yaw: 0, pitch: 1.5 }),
 });
 
-/** Parses '#rgb', '#rrggbb(aa)' or 'rgb()/rgba()' into [r, g, b] (0..255), else null. */
+/** Lee '#rgb', '#rrggbb(aa)' o 'rgb()/rgba()' como [r, g, b] (0..255), si no null. */
 function parseRGB(c) {
   const s = typeof c === 'string' ? c.trim() : '';
   let m = /^#([0-9a-f]{3})$/i.exec(s);
@@ -616,13 +616,13 @@ function parseRGB(c) {
   return m ? [+m[1], +m[2], +m[3]] : null;
 }
 
-/** Monotonic clock in ms. */
+/** Reloj siempre creciente en ms. */
 function nowMs() {
   const p = globalThis.performance;
   return p && typeof p.now === 'function' ? p.now() : Date.now();
 }
 
-/** Wraps an angle into [−π, π). */
+/** Lleva un ángulo a [−π, π). */
 function wrapPi(a) {
   const r = (a + Math.PI) % TWO_PI;
   return (r < 0 ? r + TWO_PI : r) - Math.PI;
@@ -633,33 +633,33 @@ function clamp(x, lo, hi) {
 }
 
 /**
- * 3D viewer of the 17 Human3.6M joints drawn with the plain 2D canvas API (no WebGL, no libraries).
- * Input points are meters in MediaPipe convention (x right, y DOWN, z depth, smaller z = closer to
- * the camera); internally they become a y-up display frame (X = x, Y = −y, Z = −z).
- * - Floor: horizontal plane under the lowest support point — min(lowest ankle − 8 cm, lowest joint
- *   − 3 cm) — assuming image-down = gravity (phone upright and level). The pose is shown
- *   floor-anchored, so a squat moves the body down instead of moving the floor up.
- * - Perspective camera orbiting the pelvis axis (eased; height = middle of the body's bounding
- *   box); its distance auto-fits the whole body to the canvas. Presets via setView().
- * - Draws a subtle floor grid fading with distance, a soft vertical shadow, and bones/joints
- *   depth-sorted far→near, thicker and brighter when nearer; joints with v < minVisibility faded.
- * - Interaction: pointer drag (mouse/touch, pointer capture) orbits; double-tap/double-click →
- *   'front'. The constructor sets `touch-action: none` on the canvas (no page scroll while dragging).
- * - While the camera eases, is dragged or auto-rotates, the viewer re-renders itself with
- *   requestAnimationFrame, so the app only needs to call render() after setPose().
- * Size the canvas with CSS; resize() (auto-called through a ResizeObserver when available) reads
- * its CSS box and devicePixelRatio. render() costs well under 1 ms of JS for 17 joints.
+ * Visor 3D de las 17 articulaciones Human3.6M dibujado con la API 2D simple del canvas (sin WebGL, sin librerías).
+ * Los puntos de entrada son metros en la convención de MediaPipe (x a la derecha, y HACIA ABAJO, z profundidad,
+ * z menor = más cerca); por dentro pasan a un sistema con y hacia arriba (X = x, Y = −y, Z = −z).
+ * - Suelo: plano horizontal bajo el punto de apoyo más bajo — mín(tobillo más bajo − 8 cm, articulación más
+ *   baja − 3 cm) — suponiendo imagen-abajo = gravedad (teléfono derecho). La pose se muestra anclada al
+ *   suelo, así en una sentadilla baja el cuerpo en vez de subir el suelo.
+ * - Cámara en perspectiva que orbita el eje de la pelvis (con transición; altura = mitad de la caja del
+ *   cuerpo); su distancia se ajusta sola para que el cuerpo entero quepa. Vistas fijas con setView().
+ * - Dibuja una grilla de suelo suave que se desvanece con la distancia, una sombra vertical suave, y huesos y
+ *   articulaciones ordenados de lejos a cerca, más gruesos y claros cuanto más cerca; los de v < minVisibility tenues.
+ * - Interacción: arrastrar (mouse/dedo, con captura del puntero) orbita; doble toque/doble clic →
+ *   'front'. El constructor pone `touch-action: none` en el canvas (la página no se desplaza al arrastrar).
+ * - Mientras la cámara transita, se arrastra o gira sola, el visor se vuelve a dibujar con
+ *   requestAnimationFrame, así la app solo tiene que llamar render() después de setPose().
+ * El tamaño del canvas se da con CSS; resize() (llamado solo por un ResizeObserver si existe) lee su
+ * caja de CSS y devicePixelRatio. render() cuesta bastante menos de 1 ms de JS para 17 articulaciones.
  */
 class View3D {
   /**
    * @param {HTMLCanvasElement} canvas
    * @param {object} [opts]
-   * @param {{left?:string, right?:string, axial?:string, axis?:string}} [opts.colors] limb colors (`axis` = alias of `axial`)
-   * @param {string} [opts.background='#0E1318'] CSS color; 'transparent' or 'rgba(0,0,0,0)' shows what is behind
-   * @param {boolean} [opts.grid=true] floor grid, light spot and shadow
-   * @param {boolean} [opts.autoRotate=false] slow turntable rotation when not dragging
-   * @param {number} [opts.minVisibility=0.5] joints/bones below are drawn faded
-   * @param {'front'|'side'|'top'} [opts.view='front'] initial view
+   * @param {{left?:string, right?:string, axial?:string, axis?:string}} [opts.colors] colores de los miembros (`axis` = alias de `axial`)
+   * @param {string} [opts.background='#0E1318'] color CSS; 'transparent' o 'rgba(0,0,0,0)' deja ver lo de atrás
+   * @param {boolean} [opts.grid=true] grilla del suelo, foco de luz y sombra
+   * @param {boolean} [opts.autoRotate=false] giro lento tipo tornamesa cuando no se arrastra
+   * @param {number} [opts.minVisibility=0.5] articulaciones y huesos bajo esto se dibujan tenues
+   * @param {'front'|'side'|'top'} [opts.view='front'] vista inicial
    */
   constructor(canvas, opts = {}) {
     const ctx = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
@@ -667,7 +667,7 @@ class View3D {
     const cfg = SKELETON_CONFIG.view3D;
     /** @type {HTMLCanvasElement} */ this.canvas = canvas;
     /** @type {CanvasRenderingContext2D} */ this.ctx = ctx;
-    /** Options in effect. */
+    /** Opciones vigentes. */
     this.opts = {
       grid: opts.grid !== false, autoRotate: !!opts.autoRotate, background: opts.background ?? cfg.background,
       minVisibility: opts.minVisibility ?? SKELETON_CONFIG.minVisibility,
@@ -675,20 +675,20 @@ class View3D {
     this.setColors(opts.colors);
     this._gridStyles = cfg.gridAlphas.map((a) => `rgba(${cfg.gridRGB},${a})`);
     this._spotGrad = null;
-    // Pose in the display frame (X right, Y up, Z toward the front camera) + visibility.
+    // Pose en el sistema de dibujo (X a la derecha, Y arriba, Z hacia la cámara de frente) + visibilidad.
     this._P = new Float64Array(51).fill(NaN);
     this._V = new Float64Array(17);
     this._hasPose = false;
-    this._fresh = true; // next pose snaps camera target/fit instead of easing
-    // Scratch buffers: screen coords/depth of joints and their floor shadows, grid lattice, sort.
+    this._fresh = true; // la próxima pose fija el objetivo y el ajuste de la cámara sin transición
+    // Arreglos de trabajo: coordenadas de pantalla y profundidad de articulaciones y sus sombras, grilla, orden.
     this._sx = new Float64Array(17); this._sy = new Float64Array(17); this._sd = new Float64Array(17);
     this._hx = new Float64Array(17); this._hy = new Float64Array(17);
     const M = 2 * Math.round(cfg.gridHalf / cfg.gridStep) + 1;
     this._gx = new Float64Array(M * M); this._gy = new Float64Array(M * M);
     this._order = new Int16Array(33); this._depth = new Float64Array(33);
-    this._ps = new Float64Array(2);  // last projection result (sx, sy)
-    this._cam = new Float64Array(12); // camera position, right, up, back (unit vectors)
-    // Camera state (current + target), all eased in render().
+    this._ps = new Float64Array(2);  // último resultado de la proyección (sx, sy)
+    this._cam = new Float64Array(12); // posición de la cámara, derecha, arriba, atrás (vectores unitarios)
+    // Estado de la cámara (actual + objetivo), todo con transición en render().
     const v0 = V3_VIEWS[opts.view] || V3_VIEWS.front;
     this._yaw = this._tyaw = v0.yaw;
     this._pitch = this._tpitch = v0.pitch;
@@ -720,8 +720,8 @@ class View3D {
   }
 
   /**
-   * Sets limb colors (`axis` accepted as alias of `axial`). Colors that are not hex/rgb() are used
-   * as-is, without depth shading.
+   * Cambia los colores de los miembros (`axis` se acepta como alias de `axial`). Los colores que no son
+   * hex/rgb() se usan tal cual, sin sombra por profundidad.
    * @param {{left?:string, right?:string, axial?:string, axis?:string}} [colors]
    */
   setColors(colors) {
@@ -737,10 +737,11 @@ class View3D {
   }
 
   /**
-   * Sets the pose to show (values are copied). Call render() afterwards.
+   * Fija la pose que se muestra (los valores se copian). Después hay que llamar render().
    * @param {Array<{x:number, y:number, z?:number, v?:number, visibility?:number}|number[]>|null} points17
-   *   17 H36M joints in meters, MediaPipe convention (x right, y DOWN, z depth; smaller z = closer),
-   *   root-relative or not; `[x, y, z]` arrays also accepted. Missing/NaN joints are skipped; null clears.
+   *   17 articulaciones H36M en metros, convención de MediaPipe (x a la derecha, y HACIA ABAJO, z profundidad;
+   *   z menor = más cerca), relativas a la raíz o no; también acepta arreglos `[x, y, z]`. Las que faltan o NaN
+   *   se saltan; null borra.
    */
   setPose(points17) {
     let n = 0;
@@ -760,11 +761,11 @@ class View3D {
   }
 
   /**
-   * Eases the camera to a preset: 'front' = the phone camera's point of view (unmirrored, slightly
-   * raised to show the floor), 'side' = orbited 90° to the camera's right, 'top' = from above with
-   * the phone at the bottom of the screen. Unknown names are ignored.
+   * Lleva la cámara a una vista fija con transición: 'front' = el punto de vista de la cámara del teléfono
+   * (sin espejo, un poco elevado para ver el suelo), 'side' = 90° a la derecha de la cámara, 'top' = desde
+   * arriba con el teléfono abajo de la pantalla. Los nombres desconocidos se ignoran.
    * @param {'front'|'side'|'top'} name
-   * @param {{instant?: boolean}} [o] instant = jump without easing
+   * @param {{instant?: boolean}} [o] instant = saltar sin transición
    */
   setView(name, o = {}) {
     const v = V3_VIEWS[name];
@@ -776,8 +777,8 @@ class View3D {
   }
 
   /**
-   * Camera snapshot: current yaw/pitch (radians), the angles it eases toward (goalYaw/goalPitch),
-   * distance (m) and orbit target (display frame: y up, floor at 0).
+   * Foto de la cámara: yaw/pitch actuales (radianes), los ángulos hacia los que transita (goalYaw/goalPitch),
+   * distancia (m) y objetivo de la órbita (sistema de dibujo: y arriba, suelo en 0).
    * @returns {{yaw:number, pitch:number, goalYaw:number, goalPitch:number, distance:number, target:number[]}}
    */
   get camera() {
@@ -788,9 +789,9 @@ class View3D {
   }
 
   /**
-   * Re-reads the canvas CSS size and devicePixelRatio (capped at 3) and resizes the backing store.
-   * Without DOM sizing (e.g. tests) it uses canvas.width/height at ratio 1.
-   * @returns {boolean} true if the CSS size or pixel ratio changed
+   * Vuelve a leer el tamaño CSS del canvas y devicePixelRatio (tope 3) y ajusta el búfer interno.
+   * Sin tamaño del DOM (p. ej. en las pruebas) usa canvas.width/height con razón 1.
+   * @returns {boolean} true si cambió el tamaño CSS o la razón de píxeles
    */
   resize() {
     const c = this.canvas;
@@ -803,13 +804,13 @@ class View3D {
       const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
       if (c.width !== bw) c.width = bw;
       if (c.height !== bh) c.height = bh;
-      // A canvas without CSS size follows its attributes: pin it to avoid a resize feedback loop.
+      // Un canvas sin tamaño CSS sigue sus atributos: se fija para no caer en un ciclo de redimensionar.
       if (c.style && (c.clientWidth !== w || c.clientHeight !== h)) { c.style.width = `${w}px`; c.style.height = `${h}px`; }
     }
     return changed;
   }
 
-  /** Removes listeners and observers and cancels pending frames (the canvas is left as is). */
+  /** Quita oyentes y observadores y cancela los cuadros pendientes (el canvas queda como está). */
   destroy() {
     this._destroyed = true;
     const c = this.canvas;
@@ -846,7 +847,7 @@ class View3D {
     this._kick();
   }
 
-  /** @private pointerup / pointercancel; two quick taps → setView('front'). */
+  /** @private pointerup / pointercancel; dos toques rápidos → setView('front'). */
   _pointerUp(e) {
     const d = this._drag;
     if (!d || e.pointerId !== d.id) return;
@@ -864,9 +865,9 @@ class View3D {
   }
 
   /**
-   * Draws one frame: background, floor (light spot + fading grid + shadow) and the skeleton.
-   * Eases the camera by the time since the previous render (capped at 0.1 s) and keeps rendering
-   * itself on animation frames while the camera moves. Never throws on partial poses.
+   * Dibuja un cuadro: fondo, suelo (foco de luz + grilla que se desvanece + sombra) y el esqueleto.
+   * Mueve la cámara según el tiempo desde el dibujo anterior (tope 0,1 s) y se sigue dibujando en
+   * cuadros de animación mientras la cámara se mueve. Nunca lanza error con poses parciales.
    */
   render() {
     if (this._destroyed) return;
@@ -892,7 +893,7 @@ class View3D {
     if (this._animating()) this._kick();
   }
 
-  /** @private Eases angles, target and fit distance; computes the floor and the camera basis. */
+  /** @private Hace transitar ángulos, objetivo y distancia de ajuste; calcula el suelo y la base de la cámara. */
   _update(dt) {
     const cfg = SKELETON_CONFIG.view3D, P = this._P, C = this._cam;
     const ease = (tau) => (dt > 0 ? 1 - Math.exp(-dt / tau) : 0);
@@ -904,9 +905,9 @@ class View3D {
       if (Math.abs(this._tpitch - this._pitch) < 1e-4) this._pitch = this._tpitch;
     }
     const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw), cp = Math.cos(this._pitch), sp = Math.sin(this._pitch);
-    C[3] = cy; C[4] = 0; C[5] = -sy;             // right (horizontal)
-    C[9] = sy * cp; C[10] = sp; C[11] = cy * cp; // back: target → camera
-    C[6] = C[10] * C[5] - C[11] * C[4];          // up = back × right
+    C[3] = cy; C[4] = 0; C[5] = -sy;             // derecha (horizontal)
+    C[9] = sy * cp; C[10] = sp; C[11] = cy * cp; // atrás: objetivo → cámara
+    C[6] = C[10] * C[5] - C[11] * C[4];          // arriba = atrás × derecha
     C[7] = C[11] * C[3] - C[9] * C[5];
     C[8] = C[9] * C[4] - C[10] * C[3];
     this._f = 0.5 * Math.min(this._w, this._h) / Math.tan(cfg.fovDeg * Math.PI / 360);
@@ -918,7 +919,7 @@ class View3D {
         if ((i === 3 || i === 6) && y < lowAnkle) lowAnkle = y;
       }
       const fl = this._floor = Math.min(lowAnkle - cfg.ankleHeight, lowAll - cfg.floorClearance);
-      // Target: pelvis X/Z (centroid if missing); height = middle of the floor-anchored bounding box.
+      // Objetivo: X/Z de la pelvis (centroide si falta); altura = mitad de la caja anclada al suelo.
       let tx = P[0], tz = P[2], top = 0, n = 0, mx = 0, mz = 0;
       for (let i = 0; i < 17; i++) {
         if (!Number.isFinite(P[3 * i])) continue;
@@ -928,7 +929,7 @@ class View3D {
       if (!Number.isFinite(tx)) { tx = mx / n; tz = mz / n; }
       const k = this._fresh ? 1 : ease(cfg.followSeconds);
       this._cx += (tx - this._cx) * k; this._cy += (top / 2 - this._cy) * k; this._cz += (tz - this._cz) * k;
-      // Fit: smallest distance keeping every joint inside framing × half-viewport (and minDepth ahead).
+      // Ajuste: la menor distancia que deja cada articulación dentro de framing × media vista (y minDepth adelante).
       const ex = (this._w / 2) / this._f * cfg.framing, ey = (this._h / 2) / this._f * cfg.framing;
       let need = cfg.minDistance, rad = 0;
       for (let i = 0; i < 17; i++) {
@@ -950,8 +951,8 @@ class View3D {
   }
 
   /**
-   * @private Projects a display point (Y measured from the floor) into this._ps (CSS px).
-   * @returns {number} depth in meters, NaN when behind the near plane (this._ps then NaN)
+   * @private Proyecta un punto de dibujo (Y medida desde el suelo) en this._ps (px de CSS).
+   * @returns {number} profundidad en metros, NaN si queda detrás del plano cercano (this._ps queda NaN)
    */
   _proj(X, Y, Z) {
     const C = this._cam, ps = this._ps;
@@ -964,7 +965,7 @@ class View3D {
     return depth;
   }
 
-  /** @private Light spot and circular grid (fading with distance) on the floor plane Y = 0. */
+  /** @private Foco de luz y grilla circular (que se desvanece con la distancia) en el plano del suelo Y = 0. */
   _drawFloor(ctx) {
     const cfg = SKELETON_CONFIG.view3D, C = this._cam, ps = this._ps, R = cfg.gridHalf;
     const cx = this._cx, cz = this._cz;
@@ -975,7 +976,7 @@ class View3D {
         g.addColorStop(1, `rgba(${cfg.gridRGB},0)`);
         this._spotGrad = g;
       }
-      // No camera roll → the projected disc is close to an axis-aligned ellipse.
+      // Sin roll de cámara → el disco proyectado es casi una elipse alineada con los ejes.
       const r = 0.8 * R, hl = Math.hypot(C[9], C[11]) || 1, bx = r * C[9] / hl, bz = r * C[11] / hl;
       this._proj(cx - r * C[3], 0, cz - r * C[5]); const xL = ps[0];
       this._proj(cx + r * C[3], 0, cz + r * C[5]); const xR = ps[0];
@@ -1001,13 +1002,13 @@ class View3D {
     }
     const nb = this._gridStyles.length, half = step / 2;
     ctx.lineWidth = 1;
-    for (let b = 0; b < nb; b++) { // one path per fade ring
+    for (let b = 0; b < nb; b++) { // un trazo por anillo de desvanecido
       ctx.beginPath();
       let any = false;
       for (let i = 0; i < M; i++) {
         for (let j = 0; j < M; j++) {
           const k = i * M + j;
-          if (gx[k] !== gx[k]) continue; // NaN: behind the camera
+          if (gx[k] !== gx[k]) continue; // NaN: detrás de la cámara
           const x0 = ox + (i - N) * step - cx, z0 = oz + (j - N) * step - cz;
           if (i + 1 < M && gx[k + M] === gx[k + M] && Math.floor(Math.hypot(x0 + half, z0) / R * nb) === b) {
             ctx.moveTo(gx[k], gy[k]); ctx.lineTo(gx[k + M], gy[k + M]); any = true;
@@ -1021,7 +1022,7 @@ class View3D {
     }
   }
 
-  /** @private Soft shadow, then bones, joints and head depth-sorted far → near. */
+  /** @private Sombra suave, luego huesos, articulaciones y cabeza ordenados de lejos a cerca. */
   _drawPose(ctx) {
     const cfg = SKELETON_CONFIG.view3D, P = this._P, V = this._V, fl = this._floor, f = this._f, ps = this._ps;
     const sx = this._sx, sy = this._sy, sd = this._sd, hx = this._hx, hy = this._hy;
@@ -1038,7 +1039,7 @@ class View3D {
     if (!(dmax >= dmin)) return;
     const span = dmax - dmin > 1e-6 ? dmax - dmin : 1;
     const boneW = (d) => clamp(2 * cfg.boneRadius * f / d, cfg.minPx, cfg.maxPx);
-    if (this.opts.grid) { // shadow: bones dropped vertically onto the floor, two soft passes
+    if (this.opts.grid) { // sombra: huesos bajados en vertical al suelo, dos pasadas suaves
       ctx.beginPath();
       let any = false;
       for (let i = 1; i < 17; i++) {
@@ -1053,7 +1054,7 @@ class View3D {
         ctx.globalAlpha = 1;
       }
     }
-    // Head: sphere around mid(neck_nose, head top); replaces the 9→10 bone and the joint-9 dot.
+    // Cabeza: esfera en torno al punto medio(neck_nose, coronilla); reemplaza el hueso 9→10 y el punto 9.
     let hd = NaN, hsx = NaN, hsy = NaN, hr = 0, hm = cfg.headRadius;
     const ok9 = Number.isFinite(P[27]), ok10 = Number.isFinite(P[30]);
     if (ok9 || ok10) {
@@ -1064,7 +1065,7 @@ class View3D {
       hm = clamp(Number.isFinite(len) ? 0.6 * len : cfg.headRadius, 0.07, 0.13);
       hr = clamp(hm * f / hd, 2.5, 60);
     }
-    // Items: 0..15 bones (child joint = item + 1), 16..32 joints; invisible → −∞ (sorted last).
+    // Elementos: 0..15 huesos (articulación hija = elemento + 1), 16..32 articulaciones; invisible → −∞ (al final).
     for (let i = 1; i < 17; i++) {
       const d = i === 10 ? NaN : (sd[H36M_PARENTS[i]] + sd[i]) / 2;
       depth[i - 1] = d === d ? d : -Infinity;
@@ -1084,7 +1085,7 @@ class View3D {
         ctx.beginPath(); ctx.moveTo(sx[a], sy[a]); ctx.lineTo(sx[b], sy[b]);
         ctx.strokeStyle = cfg.outline; ctx.lineWidth = w + 2; ctx.stroke();
         ctx.strokeStyle = this._shade[V3_SIDE[b]][lvl]; ctx.lineWidth = w; ctx.stroke();
-        if (w >= 4) { // glossy stripe: reads as a tube
+        if (w >= 4) { // franja brillante: se lee como un tubo
           const o = 0.18 * w;
           ctx.beginPath(); ctx.moveTo(sx[a] - o, sy[a] - o); ctx.lineTo(sx[b] - o, sy[b] - o);
           ctx.strokeStyle = cfg.gloss; ctx.lineWidth = 0.3 * w; ctx.stroke();
@@ -1100,13 +1101,13 @@ class View3D {
     }
   }
 
-  /** @private True while the camera still moves by itself (easing, auto-rotation, fit). */
+  /** @private Verdadero mientras la cámara se sigue moviendo sola (transición, giro automático, ajuste). */
   _animating() {
     return this.opts.autoRotate || this._yaw !== this._tyaw || this._pitch !== this._tpitch
       || Math.abs(this._need - this._dist) > 0.005 * this._dist;
   }
 
-  /** @private Schedules a self-driven render on the next animation frame (browsers only). */
+  /** @private Agenda un dibujo propio en el próximo cuadro de animación (solo navegadores). */
   _kick() {
     if (this._raf || this._destroyed || typeof globalThis.requestAnimationFrame !== 'function') return;
     this._raf = globalThis.requestAnimationFrame(() => {
@@ -1117,19 +1118,19 @@ class View3D {
   }
 }
 
-// ───────────────────────────── 2D → 3D lifters ─────────────────────────────
+// ───────────────────────────── Elevadores 2D → 3D ─────────────────────────────
 
 /**
- * Creates a 2D→3D lifter. Both kinds share one interface:
+ * Crea un elevador 2D→3D. Los dos tipos comparten una interfaz:
  * `{ kind, ready, push(frame), lift(frame) → points | null, liftAsync(frame?) → Promise<points | null>, reset() }`
- * where points = 17 Human3.6M joints `{x, y, z, v}` in meters, MediaPipe axes (x right, y DOWN,
- * z depth), origin at the pelvis (= mid-hips), ready for View3D#setPose.
- * - 'mediapipe' (v0): `lift(frame)` = blazeposeToH36M(frame.world); null when frame.world is
- *   missing. Stateless, always ready.
- * - 'videopose3d' (phase 2): a {@link VideoPose3DLifter} (opts as its constructor); returns null
- *   until an ONNX session is set with setSession(). Weights are CC BY-NC 4.0 (non-commercial).
+ * donde points = 17 articulaciones Human3.6M `{x, y, z, v}` en metros, ejes de MediaPipe (x a la derecha,
+ * y HACIA ABAJO, z profundidad), origen en la pelvis (= centro de caderas), listas para View3D#setPose.
+ * - 'mediapipe' (v0): `lift(frame)` = blazeposeToH36M(frame.world); null si falta frame.world.
+ *   Sin estado, siempre listo.
+ * - 'videopose3d' (fase 2): un {@link VideoPose3DLifter} (opts como su constructor); devuelve null
+ *   hasta que se fija una sesión ONNX con setSession(). Los pesos son CC BY-NC 4.0 (no comercial).
  * @param {'mediapipe'|'videopose3d'} [kind='mediapipe']
- * @param {object} [opts] VideoPose3DLifter options
+ * @param {object} [opts] opciones de VideoPose3DLifter
  * @returns {{kind:string, ready:boolean, push:Function, lift:Function, liftAsync:Function, reset:Function}}
  */
 function createLifter(kind = 'mediapipe', opts = {}) {
@@ -1148,25 +1149,25 @@ function createLifter(kind = 'mediapipe', opts = {}) {
 }
 
 /**
- * Phase-2 lifter: VideoPose3D (Pavllo et al., CVPR 2019 — temporal dilated convolutions over 2D
- * keypoints) exported to ONNX with `tools/export_videopose3d_onnx.py` and run with onnxruntime-web.
- * Input: COCO-17 keypoints (taken from BlazePose `lm`) of the last `receptiveField` frames,
- * normalized like VideoPose3D (normalizeScreenCoordinates on a nominal refHeight·aspect × refHeight
- * image; the result does not depend on refHeight). Model I/O: `[1, RF, 17, 2]` → `[1, 1, 17, 3]`.
- * Output: 17 H36M joints in VideoPose3D camera space (meters, root-relative, x right, y down,
- * z forward — the same axes and handedness as MediaPipe world), returned root-centred.
+ * Elevador de la fase 2: VideoPose3D (Pavllo et al., CVPR 2019 — convoluciones temporales dilatadas sobre
+ * puntos 2D) exportado a ONNX con `tools/export_videopose3d_onnx.py` y corrido con onnxruntime-web.
+ * Entrada: puntos COCO-17 (tomados de `lm` de BlazePose) de los últimos `receptiveField` cuadros,
+ * normalizados como en VideoPose3D (normalizeScreenCoordinates sobre una imagen nominal de refHeight·aspect ×
+ * refHeight; el resultado no depende de refHeight). Entrada/salida del modelo: `[1, RF, 17, 2]` → `[1, 1, 17, 3]`.
+ * Salida: 17 articulaciones H36M en el espacio de cámara de VideoPose3D (metros, relativas a la raíz, x a la
+ * derecha, y hacia abajo, z adelante — los mismos ejes y orientación que world de MediaPipe), centradas en la raíz.
  *
- * LICENSE AND VALIDITY: the pretrained weights (`pretrained_h36m_detectron_coco.bin`) are
- * CC BY-NC 4.0 — non-commercial use only. They were trained on Human3.6M (upright everyday actions,
- * 4 fixed cameras, 50 fps) and have never seen push-ups, planks or other floor exercises: phase 2
- * must fine-tune and/or validate the model on FitGram footage before any result relies on it.
+ * LICENCIA Y VALIDEZ: los pesos preentrenados (`pretrained_h36m_detectron_coco.bin`) son
+ * CC BY-NC 4.0 — solo uso no comercial. Se entrenaron con Human3.6M (acciones cotidianas de pie,
+ * 4 cámaras fijas, 50 fps) y nunca han visto flexiones, planchas ni otros ejercicios en el suelo: la fase 2
+ * tiene que ajustar y/o validar el modelo con videos de FitGram antes de que algún resultado dependa de él.
  *
- * Timing: the reference (symmetric) checkpoint predicts the CENTRE frame of its window. With
- * `window: 'causal'` (default; exact for a model trained with causal=True) the window is the last RF
- * frames, so a symmetric model lags (RF−1)/2 frames (4 s at 30 fps for RF 243). `window: 'edge'`
- * centres the newest frame and repeats it over the future half (VideoPose3D's edge padding at the
- * end of a sequence): no lag, somewhat less accurate. Not done here: VideoPose3D's flip test-time
- * augmentation, and resampling 30 fps input to the 50 fps training rate.
+ * Tiempos: el modelo de referencia (simétrico) predice el cuadro del CENTRO de su ventana. Con
+ * `window: 'causal'` (por defecto; exacto para un modelo entrenado con causal=True) la ventana son los
+ * últimos RF cuadros, así un modelo simétrico se atrasa (RF−1)/2 cuadros (4 s a 30 fps con RF 243).
+ * `window: 'edge'` centra el cuadro más nuevo y lo repite en la mitad futura (el relleno de borde de
+ * VideoPose3D al final de una secuencia): sin atraso, algo menos preciso. No se hace aquí: el aumento por
+ * volteo de VideoPose3D al predecir, ni llevar la entrada de 30 fps a los 50 fps del entrenamiento.
  */
 class VideoPose3DLifter {
   /**
@@ -1177,40 +1178,40 @@ class VideoPose3DLifter {
     const rf = opts.receptiveField ?? d.receptiveField;
     if (![27, 81, 243].includes(rf)) throw new RangeError('VideoPose3DLifter: receptiveField must be 27, 81 or 243');
     /** @type {'videopose3d'} */ this.kind = 'videopose3d';
-    /** Frames of 2D context per prediction (3^blocks). @type {number} */ this.receptiveField = rf;
-    /** Nominal frame height (px) for the pixel → normalized conversion. @type {number} */
+    /** Cuadros de contexto 2D por predicción (3^bloques). @type {number} */ this.receptiveField = rf;
+    /** Alto nominal del cuadro (px) para pasar de píxeles a normalizado. @type {number} */
     this.refHeight = opts.refHeight ?? d.refHeight;
-    /** Window alignment, see the class description. @type {'causal'|'edge'} */
+    /** Alineación de la ventana, ver la descripción de la clase. @type {'causal'|'edge'} */
     this.window = opts.window === 'edge' ? 'edge' : 'causal';
-    /** True once setSession() was called. @type {boolean} */ this.ready = false;
-    /** onnxruntime-web InferenceSession (null until set). */ this.session = null;
-    /** onnxruntime-web namespace (null until set). */ this.ort = null;
-    /** Last inference error from lift() (null if none). */ this.error = null;
-    this._buf = new Float32Array(rf * 34); // ring buffer: normalized COCO-17 (x, y) per frame
-    this._head = 0;  // next slot to write
-    this._count = 0; // frames stored (≤ rf)
-    this._vis = null; // H36M visibilities of the newest frame
+    /** Verdadero una vez que se llamó setSession(). @type {boolean} */ this.ready = false;
+    /** InferenceSession de onnxruntime-web (null hasta fijarla). */ this.session = null;
+    /** Espacio de nombres de onnxruntime-web (null hasta fijarlo). */ this.ort = null;
+    /** Último error de inferencia de lift() (null si no hay). */ this.error = null;
+    this._buf = new Float32Array(rf * 34); // búfer en anillo: COCO-17 normalizado (x, y) por cuadro
+    this._head = 0;  // próxima casilla a escribir
+    this._count = 0; // cuadros guardados (≤ rf)
+    this._vis = null; // visibilidades H36M del cuadro más nuevo
     this._last = null;
     this._lastPushT = NaN;
     this._busy = false;
   }
 
-  /** Frames currently buffered (≤ receptiveField). @type {number} */
+  /** Cuadros guardados ahora (≤ receptiveField). @type {number} */
   get length() {
     return this._count;
   }
 
-  /** Clears the buffered frames and the last result (new clip or session). */
+  /** Borra los cuadros guardados y el último resultado (clip o sesión nueva). */
   reset() {
     this._head = 0; this._count = 0; this._vis = null; this._last = null; this._lastPushT = NaN;
   }
 
   /**
-   * Appends one frame to the ring buffer. Ignored: frames without 33 landmarks and a frame with the
-   * same `t` as the previous push (so calling lift() twice for one frame is harmless). A non-finite
-   * coordinate repeats the previous frame's value (0 for the first frame).
+   * Agrega un cuadro al búfer en anillo. Se ignoran: cuadros sin 33 puntos y un cuadro con el mismo `t`
+   * que el anterior (así llamar lift() dos veces para un cuadro no hace daño). Una coordenada no finita
+   * repite el valor del cuadro anterior (0 en el primero).
    * @param {{t?: number, lm: Array<{x:number, y:number, visibility?:number}>, aspect: number}} frame PoseFrame
-   * @returns {boolean} true if the frame was added
+   * @returns {boolean} true si el cuadro se agregó
    */
   push(frame) {
     const lm = frame && frame.lm;
@@ -1233,19 +1234,19 @@ class VideoPose3DLifter {
   }
 
   /**
-   * The model input for the buffered frames, oldest → newest: Float32Array(RF × 17 × 2).
-   * 'causal': the last RF frames, left-padded by repeating the oldest while fewer are buffered.
-   * 'edge': the last (RF+1)/2 frames (left-padded the same way), then (RF−1)/2 copies of the newest.
-   * @returns {Float32Array|null} null when no frame was pushed
+   * La entrada del modelo para los cuadros guardados, del más viejo al más nuevo: Float32Array(RF × 17 × 2).
+   * 'causal': los últimos RF cuadros, rellenados a la izquierda repitiendo el más viejo mientras haya menos.
+   * 'edge': los últimos (RF+1)/2 cuadros (rellenados igual), luego (RF−1)/2 copias del más nuevo.
+   * @returns {Float32Array|null} null si no se ha agregado ningún cuadro
    */
   inputData() {
     const rf = this.receptiveField, n = this._count;
     if (!n) return null;
     const out = new Float32Array(rf * 34);
-    const past = this.window === 'edge' ? (rf + 1) / 2 : rf; // window slots up to the newest frame
+    const past = this.window === 'edge' ? (rf + 1) / 2 : rf; // casillas de la ventana hasta el cuadro más nuevo
     const oldest = (this._head - n + rf) % rf;
     for (let k = 0; k < rf; k++) {
-      const idx = clamp(k + n - past, 0, n - 1); // stored frame for slot k (edge-padded both sides)
+      const idx = clamp(k + n - past, 0, n - 1); // cuadro guardado para la casilla k (con relleno de borde a ambos lados)
       const slot = ((oldest + idx) % rf) * 34;
       out.set(this._buf.subarray(slot, slot + 34), k * 34);
     }
@@ -1253,9 +1254,9 @@ class VideoPose3DLifter {
   }
 
   /**
-   * Sets the ONNX session, e.g. `lifter.setSession(await ort.InferenceSession.create(url), ort)`.
+   * Fija la sesión ONNX, p. ej. `lifter.setSession(await ort.InferenceSession.create(url), ort)`.
    * @param {{inputNames: string[], outputNames?: string[], run: Function}} session onnxruntime-web InferenceSession
-   * @param {{Tensor: Function}} ort the onnxruntime-web namespace (used as `new ort.Tensor('float32', data, dims)`)
+   * @param {{Tensor: Function}} ort el espacio de nombres de onnxruntime-web (se usa como `new ort.Tensor('float32', data, dims)`)
    */
   setSession(session, ort) {
     if (!session || typeof session.run !== 'function' || !ort || typeof ort.Tensor !== 'function') {
@@ -1267,10 +1268,10 @@ class VideoPose3DLifter {
   }
 
   /**
-   * Runs the model on the buffered window (pushing `frame` first when given).
-   * @param {object} [frame] PoseFrame to push before running
-   * @returns {Promise<Array<{x:number, y:number, z:number, v:number}>|null>} 17 H36M joints, meters,
-   *   MediaPipe axes, pelvis at the origin, v = visibility of the newest 2D frame; null when not ready or empty
+   * Corre el modelo sobre la ventana guardada (agregando antes `frame` si viene).
+   * @param {object} [frame] PoseFrame para agregar antes de correr
+   * @returns {Promise<Array<{x:number, y:number, z:number, v:number}>|null>} 17 articulaciones H36M, metros,
+   *   ejes de MediaPipe, pelvis en el origen, v = visibilidad del cuadro 2D más nuevo; null si no está listo o vacío
    */
   async liftAsync(frame) {
     if (frame) this.push(frame);
@@ -1282,7 +1283,7 @@ class VideoPose3DLifter {
     const tensor = (name && results[name]) || Object.values(results)[0];
     const data = tensor && tensor.data;
     if (!data || data.length < 51) return null;
-    const o = data.length - 51; // newest frame if the model returned several
+    const o = data.length - 51; // el cuadro más nuevo si el modelo devolvió varios
     const pts = new Array(17);
     for (let j = 0; j < 17; j++) {
       pts[j] = {
@@ -1295,8 +1296,8 @@ class VideoPose3DLifter {
   }
 
   /**
-   * Synchronous facade with the same signature as the 'mediapipe' lifter: pushes `frame`, starts an
-   * inference if none is running and returns the latest finished result (null until the first).
+   * Fachada sincrónica con la misma firma que el elevador 'mediapipe': agrega `frame`, parte una
+   * inferencia si no hay otra corriendo y devuelve el último resultado terminado (null hasta el primero).
    * @param {object} frame PoseFrame
    * @returns {Array<{x:number, y:number, z:number, v:number}>|null}
    */

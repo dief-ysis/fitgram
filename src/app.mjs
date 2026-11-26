@@ -1,5 +1,5 @@
-// FitGram v0 — app shell: screens, camera, MediaPipe Pose Landmarker, test runner, results.
-// Modules are inlined by build.mjs; imports below are rewritten at build time.
+// FitGram v0 — la app: pantallas, cámara, MediaPipe Pose Landmarker, corredor de pruebas, resultados.
+// build.mjs junta los módulos en un solo archivo; estos import se reescriben al construir.
 import { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } from './norms.mjs';
 import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG, vistaDeFrente } from './exercises.mjs';
 import { synthSession } from './synth.mjs';
@@ -23,7 +23,7 @@ import { esErrorDeCamara, cameraErrorMessage } from './camara-errores.mjs';
  */
 const REGLAS = huellaDe({ ex: EX_CONFIG, sk: SKELETON_CONFIG, cod: codigoDeConteo() });
 import { AGE_RANGE, coversAge } from './norms.mjs';
-/* ------------------------------------------------------------------ config */
+/* ------------------------------------------------------------------ configuración */
 
 const CFG = (typeof window !== 'undefined' && window.FITGRAM_CONFIG) || {};
 const MP_VERSION = '1.1.0';
@@ -84,7 +84,7 @@ const END_TEXT = {
   video_end: 'terminó el video',
 };
 
-/* ------------------------------------------------------------------ utils */
+/* ------------------------------------------------------------------ utilidades */
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -151,7 +151,7 @@ async function fetchBytes(url, onProgress) {
   return out;
 }
 
-/** Model bytes from a .task file, or from {format:'base64', data} JSON (used where .task files cannot be served). */
+/** Bytes del modelo desde un archivo .task, o desde un JSON {format:'base64', data} (donde no se pueden servir .task). */
 async function fetchModel(url, onProgress) {
   const raw = await fetchBytes(url, onProgress);
   if (!/\.json(\?|$)/.test(url)) return raw;
@@ -163,7 +163,7 @@ async function fetchModel(url, onProgress) {
   return out;
 }
 
-/* ------------------------------------------------------------------ voice + sound */
+/* ------------------------------------------------------------------ voz y sonido */
 
 const Voice = {
   voice: null,
@@ -177,7 +177,7 @@ const Voice = {
     pick();
     try { window.speechSynthesis.addEventListener('voiceschanged', pick); } catch { /* old Safari */ }
   },
-  unlock() { // must run inside a user gesture on iOS
+  unlock() { // en iOS tiene que correr dentro de un toque de la persona
     if (!('speechSynthesis' in window) || this.ready) return;
     try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u); this.ready = true; } catch { /* ignore */ }
   },
@@ -217,7 +217,7 @@ const WakeLock = {
   off() { try { this.lock?.release(); } catch { /* ignore */ } this.lock = null; },
 };
 
-/* ------------------------------------------------------------------ pose engine (MediaPipe Tasks Vision) */
+/* ------------------------------------------------------------------ motor de pose (MediaPipe Tasks Vision) */
 
 const Engine = {
   landmarker: null, variant: null, delegate: null, loading: null, lastTs: 0, vision: null, error: null,
@@ -252,7 +252,7 @@ const Engine = {
     finally { this.loading = null; }
   },
 
-  /** Rebuilds the landmarker from the cached model after its graph failed (a failed MediaPipe graph never recovers). */
+  /** Rearma el detector con el modelo guardado cuando su grafo falló (un grafo de MediaPipe caído no se recupera). */
   async rebuild() {
     if (this.rebuilding || !this.create) return;
     this.rebuilding = true;
@@ -265,7 +265,7 @@ const Engine = {
     finally { this.rebuilding = false; }
   },
 
-  /** Runs detection; returns a PoseFrame or null. `tMs` must grow; we enforce it. */
+  /** Corre la detección; devuelve un PoseFrame o null. `tMs` tiene que crecer; aquí se asegura. */
   detect(source, tMs, aspect) {
     if (!this.landmarker || this.rebuilding || !source || !Number.isFinite(tMs)) return null;
     if (!Number.isFinite(this.lastTs)) this.lastTs = 0;
@@ -292,7 +292,7 @@ const Engine = {
   },
 };
 
-/* ------------------------------------------------------------------ state */
+/* ------------------------------------------------------------------ estado */
 
 const stored = loadStore();
 const restored = Hist.migrateStore(stored, ORDER);
@@ -307,10 +307,10 @@ const S = {
   screen: null,
   stand: false, // modo stand: efímero, no toca el almacenamiento
   test: null,
-  last: null, // last finished run, for the result screen
+  last: null, // última prueba terminada, para la pantalla de resultado
 };
 
-/* ------------------------------------------------------------------ classification */
+/* ------------------------------------------------------------------ clasificación */
 
 function classify(test, value, profile = S.profile) {
   const { age, sex } = profile;
@@ -326,7 +326,7 @@ function normsFor(test) {
   return { notes: Array.isArray(notes) ? notes : [String(notes)], caveat: Array.isArray(caveat) ? caveat.join(' ') : caveat };
 }
 
-/* ------------------------------------------------------------------ navigation */
+/* ------------------------------------------------------------------ navegación */
 
 const SCREENS = ['onb', 'hub', 'intro', 'run', 'result', 'profile', 'valid', 'game'];
 
@@ -357,7 +357,7 @@ function profileTag() {
   return p.age && p.sex ? `${p.age} años · ${sexLabel(p.sex)}` : '';
 }
 
-/* ------------------------------------------------------------------ onboarding */
+/* ------------------------------------------------------------------ bienvenida */
 
 function renderOnb() {
   const ages = $('age-pills');
@@ -433,7 +433,7 @@ function renderHub() {
   btn.onclick = () => (next ? openIntro(next) : show('profile'));
 }
 
-/* ------------------------------------------------------------------ intro */
+/* ------------------------------------------------------------------ introducción */
 
 function placementSVG(test) {
   // Flexiones y plancha: vista desde arriba. De costado, el teléfono quedaba
@@ -494,7 +494,7 @@ function sourceOf(test) {
   try { return classify(test, 0).source; } catch { return { short: '', apa: '', url: '' }; }
 }
 
-/* ------------------------------------------------------------------ runner */
+/* ------------------------------------------------------------------ corredor de pruebas */
 
 const Runner = {
   mode: null, test: null, stream: null, videoUrl: null, raf: 0, vfc: 0, running: false,
@@ -504,7 +504,7 @@ const Runner = {
 
   async open(test, mode, file) {
     this.teardown();
-    const sid = this.sid; // teardown() bumps the session id; anything awaited below checks it is still current
+    const sid = this.sid; // teardown() cambia el id de sesión; todo lo que se espera más abajo revisa que siga vigente
     this.test = test; this.mode = mode;
     S.test = test;
     show('run');
@@ -595,11 +595,11 @@ const Runner = {
     this.setPos(false, 'Revisa el mensaje sobre la imagen.');
   },
 
-  /** The first detection compiles GPU shaders and can block for seconds on slow phones: do it before playback starts. */
+  /** La primera detección compila los shaders de la GPU y puede trabar varios segundos en teléfonos lentos: se hace antes de reproducir. */
   async warmUp(v, t) {
     if (Engine.warm || !Engine.landmarker || !v.videoWidth) return;
     this.veil('Preparando el detector', 'Solo la primera vez: puede tardar unos segundos.', null);
-    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));   // let the message paint first
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));   // que el mensaje alcance a dibujarse primero
     Engine.detect(v, t, v.videoWidth / v.videoHeight);
     Engine.warm = true;
     this.veil(null);
@@ -620,7 +620,7 @@ const Runner = {
     this.veil('Pidiendo acceso a la cámara', 'Acepta el permiso para ver tu esqueleto en vivo.');
     this.stopStream();
     const stream = await openCameraStream(S.settings.facing);
-    if (sid !== this.sid) { for (const tr of stream.getTracks()) tr.stop(); return; } // the user left while the prompt was open
+    if (sid !== this.sid) { for (const tr of stream.getTracks()) tr.stop(); return; } // la persona se fue mientras el permiso estaba abierto
     this.stream = stream;
     for (const tr of stream.getVideoTracks()) tr.addEventListener('ended', () => { if (this.stream === stream) this.cameraLost(); });
     const v = $('video');
@@ -706,7 +706,7 @@ const Runner = {
     if (this.frame) this.draw(this.frame);
   },
 
-  /** Content rect of the displayed video/synthetic frame (object-fit: contain). */
+  /** Rectángulo del contenido del video o cuadro sintético que se muestra (object-fit: contain). */
   contentRect(aspect) {
     const v = $('video');
     let vw, vh;
@@ -965,7 +965,7 @@ const Runner = {
     if (immediate) this.cue(null);
   },
 
-  /** Stops the video-analysis loop (pending frame callbacks included) and pauses the video. */
+  /** Detiene el ciclo de análisis de video (incluidos los callbacks pendientes) y pausa el video. */
   haltVideo() {
     this.runId = (this.runId || 0) + 1;
     this.running = false;
@@ -988,7 +988,7 @@ const Runner = {
       return;
     }
     if (this.phase === 'active' && this.test === 'plank' && this.st?.phase === 'waiting') {
-      // The plank clock never started: this is a cancel, not a result.
+      // El reloj de la plancha nunca partió: esto es cancelar, no un resultado.
       return this.notStarted('Prueba detenida', 'El reloj no alcanzó a partir.');
     }
     if (this.phase === 'active') {
@@ -999,7 +999,7 @@ const Runner = {
     if (this.phase === 'arming') { this.phase = 'preview'; $('btn-start').hidden = false; $('btn-stop').hidden = true; $('btn-flip').hidden = this.mode !== 'live'; this.cue(null); }
   },
 
-  /* ---------------- frame sources ---------------- */
+  /* ---------------- fuentes de cuadros ---------------- */
 
   loop() {
     this.running = true;
@@ -1059,7 +1059,7 @@ const Runner = {
     this.process(frame);
   },
 
-  /** A video frame in which MediaPipe found nobody: clears the overlay and lets the analyzer count unseen time. */
+  /** Un cuadro en que MediaPipe no encontró a nadie: limpia el dibujo y deja que el analizador cuente el tiempo sin ver. */
   processEmpty(t) {
     this.anotarCuadro();
     // Sin persona a la vista igual se informa la inclinación (los sensores la saben).
@@ -1088,7 +1088,7 @@ const Runner = {
     while (i < d.frames.length - 1 && d.frames[i + 1].t - t0 <= el) i++;
     d.cursor = i;
     if (i >= d.frames.length - 1 && this.phase === 'active') {
-      // End of the synthetic recording: stop like a video that ended.
+      // Fin de la grabación sintética: se detiene como un video que terminó.
       const st = this.analyzer.stop(d.frames[i].t, 'manual');
       this.finish(st, 'video_end');
       return null;
@@ -1108,7 +1108,7 @@ const Runner = {
     v.playbackRate = 1;
     try { v.currentTime = 0; } catch { /* ignore */ }
     this.cue({ level: 'warn', msg: 'Buscando la posición inicial' });
-    this.haltVideo();                      // cancel any loop left from a previous analysis
+    this.haltVideo();                      // cancela cualquier ciclo que haya quedado de un análisis anterior
     const runId = this.runId;
     await this.warmUp(v, this.videoOffset - 500);
     if (runId !== this.runId) return;
@@ -1179,7 +1179,7 @@ const Runner = {
       : 'estabilidad —';
   },
 
-  /* ---------------- per-frame pipeline ---------------- */
+  /* ---------------- proceso de cada cuadro ---------------- */
 
   process(raw) {
     if (!raw) { this.draw(null); return; }
@@ -1209,7 +1209,7 @@ const Runner = {
       // umbrales todavía son provisorios y avisar de más desgasta el aviso.
       if (c.ok && this.jitter?.nivel() === 'malo') this.cue({ level: "warn", msg: Cal.MENSAJE.malo });
     } else if (this.phase === 'arming' && this.test === 'plank') {
-      this.beginActive(frame.t); // the plank analyzer itself waits for the 1 s hold before starting the clock
+      this.beginActive(frame.t); // el analizador de la plancha espera solo el segundo sostenido antes de partir el reloj
     } else if (this.phase === 'arming') {
       const c = this.analyzer.check(joints);
       this.setPos(c.ok, c.ok ? 'Posición correcta: comienza' : c.msg);
@@ -1258,7 +1258,7 @@ const Runner = {
     const mirror = this.mode === 'live' && S.settings.facing === 'user';
     let project;
     if (this.mode === 'demo' && this.demo?.box) {
-      // Synthetic person: frame the whole movement to fill the stage, whatever the screen orientation.
+      // Persona sintética: encuadra todo el movimiento para llenar el escenario, sea cual sea la orientación.
       const b = this.demo.box, a = frame.aspect;
       const k = Math.min(this.cw * 0.84 / (b.x1 - b.x0), this.ch * 0.6 / (b.y1 - b.y0));
       const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
@@ -1353,7 +1353,7 @@ const Runner = {
     const chip = $('pos-chip');
     chip.dataset.ok = ok == null ? '' : String(!!ok);
     $('pos-msg').textContent = msg;
-    // Before the test runs, short position messages also go to the big bar inside the image (readable from 2.5 m).
+    // Antes de la prueba, los mensajes cortos de posición van también a la barra grande sobre la imagen (se lee a 2,5 m).
     if (ok != null && msg && msg.length <= 44 && this.phase !== 'active' && this.phase !== 'ended') {
       this.cue({ level: ok ? 'good' : 'warn', msg });
       this.decirPosicion(ok, msg);
@@ -1390,9 +1390,9 @@ const Runner = {
     $('veil-msg').textContent = msg; $('veil-sub').textContent = ''; $('veil-progress').hidden = true;
   },
 
-  /* ---------------- finish ---------------- */
+  /* ---------------- término ---------------- */
 
-  /** The test never really started (plank clock never ran, or no start position in a video): back to preview. */
+  /** La prueba nunca partió de verdad (el reloj de la plancha no corrió, o un video sin posición inicial): vuelve a la vista previa. */
   notStarted(title = 'No encontré la posición', detail = null) {
     this.dejarDeVigilar();
     if (this.mode === 'video') this.haltVideo();
@@ -1410,7 +1410,7 @@ const Runner = {
     Voice.say(title, true);
   },
 
-  /** The camera stream ended (another app took the camera, the OS interrupted it…). */
+  /** Se cortó la cámara (otra app la tomó, el sistema la interrumpió…). */
   cameraLost() {
     if (this.mode !== 'live' || this.phase === 'ended' || this.phase === 'idle') return;
     if (this.phase === 'active') {
@@ -1427,7 +1427,7 @@ const Runner = {
   finish(st, reason) {
     if (this.phase === 'ended') return;
     if (this.test === 'plank' && !(st?.value > 0)) { this.notStarted(); return; }
-    // Push-ups/squats: a run in which no repetition was judged (aborted, or nobody moved) is not a result.
+    // Flexiones/sentadillas: una prueba sin ninguna repetición juzgada (cancelada, o nadie se movió) no es un resultado.
     if (this.test !== 'plank' && !(st?.log?.length > 0)) { this.notStarted('No registré repeticiones'); return; }
     this.phase = 'ended';
     this.running = false;
@@ -1460,7 +1460,7 @@ const Runner = {
 };
 
 const BLANK_LM = Object.freeze(Array.from({ length: 33 }, () => Object.freeze({ x: 0.5, y: 0.5, z: 0, visibility: 0 })));
-/** Joints for a frame in which nobody was detected (all joints invisible). */
+/** Articulaciones de un cuadro en que no se detectó a nadie (todas invisibles). */
 function blankJoints(t) { return toJoints({ t, lm: BLANK_LM, world: null, aspect: 1 }); }
 
 function pickSide(frame) {
@@ -1477,13 +1477,13 @@ function waitFor(pred, ms) {
   });
 }
 
-/** Demo sessions: synthetic people doing each test (tests the whole pipeline without a camera). */
+/** Sesiones de demostración: personas sintéticas haciendo cada prueba (prueba todo el flujo sin cámara). */
 function buildDemo(test, sex) {
   const opts = test === 'pushup' ? { reps: 15, invalidAt: [13, 14], kind: 'sag', sex, seed: 7, fps: 30, noise: 0.003, fatigueEnd: true }
     : test === 'squat' ? { reps: 16, invalidAt: [14, 15], kind: 'shallow', sex, seed: 11, fps: 30, noise: 0.003 }
       : { seconds: 48, sagAt: [{ t: 20, dur: 2.5, depth: 0.12, recover: true }], collapseAt: 46, sex, seed: 5, fps: 30, noise: 0.002 };
   const s = synthSession(test, opts);
-  // Bounding box of the whole movement (aspect-corrected image units) for display framing.
+  // Caja que encierra todo el movimiento (unidades de imagen corregidas por aspecto) para encuadrar en pantalla.
   const box = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
   for (const f of s.frames) {
     for (let i = 0; i < f.lm.length; i++) {
@@ -1496,7 +1496,7 @@ function buildDemo(test, sex) {
   return { frames: s.frames, meta: s.meta, cursor: 0, box };
 }
 
-/* ------------------------------------------------------------------ result */
+/* ------------------------------------------------------------------ resultado */
 
 let Review = null;
 
@@ -1883,7 +1883,7 @@ function renderProgress() {
   box.innerHTML = `<div class="lbl">Tu avance</div>${warn}${dueHtml}${idxHtml}${tests}`;
 }
 
-/* ------------------------------------------------------------------ profile */
+/* ------------------------------------------------------------------ perfil */
 
 function renderProfile() {
   const parts = {};
@@ -2857,7 +2857,7 @@ function exitStand() {
   location.replace(location.pathname);
 }
 
-/* ------------------------------------------------------------------ settings */
+/* ------------------------------------------------------------------ ajustes */
 
 function renderSettings() {
   $('set-voice').checked = !!S.settings.voice;
@@ -2881,7 +2881,7 @@ function renderSettings() {
   $('engine-info').textContent = Engine.info();
 }
 
-/* ------------------------------------------------------------------ boot */
+/* ------------------------------------------------------------------ arranque */
 
 function bind() {
   $('brand').addEventListener('click', () => (S.profile.age && S.profile.sex ? show('hub') : show('onb')));
@@ -3091,7 +3091,7 @@ function bind() {
     renderOnb(); show('onb');
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('sheet').hidden) $('sheet').hidden = true; });
-  // Coming back to the app during a live test: resume the camera preview and the screen wake lock.
+  // Al volver a la app durante una prueba en vivo: retoma la vista de la cámara y el bloqueo de pantalla encendida.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible' || S.screen !== 'run' || Runner.mode !== 'live') return;
     $('video').play().catch(() => {});
@@ -3143,7 +3143,7 @@ function boot() {
     $('error-bar-msg').textContent = 'Este navegador no puede correr el detector de pose. Usa Chrome (Android o computador) o Safari 16.4 o superior (iPhone).';
   }
   renderOnb();
-  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory, openValid, renderResult, show }; // handy for debugging and automated tests
+  window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory, openValid, renderResult, show }; // útil para depurar y para las pruebas automáticas
   // ?demo=historial abre el perfil; ?demo=pushup|squat|plank abre esa pantalla de resultado.
   let seed = null;
   try { seed = new URLSearchParams(location.search).get('demo'); } catch { /* ignore */ }
