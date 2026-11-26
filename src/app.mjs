@@ -2,6 +2,7 @@
 // build.mjs junta los módulos en un solo archivo; estos import se reescriben al construir.
 import { NORMS, classifyPushups, classifySquats, classifyPlank, fitnessProfile } from './norms.mjs';
 import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG, vistaDeFrente, queFalta } from './exercises.mjs';
+import { siluetaPara, opacidadSilueta } from './silueta.mjs';
 import { synthSession } from './synth.mjs';
 import { SKELETON_CONFIG, H36M, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } from './skeleton.mjs';
 import * as Hist from './history.mjs';
@@ -36,7 +37,7 @@ const URLS = {
 };
 const STORE_KEY = 'fitgram.v0';
 const ARM_HOLD_MS = 300; // cuánto hay que estar en la posición de partida para que empiece la prueba
-const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false, mostrarJuego: true });
+const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false, mostrarJuego: true, silueta: true });
 const ORDER = ['pushup', 'squat', 'plank'];
 const COLORS = { left: '#2f9bd3', right: '#e8613c', axial: '#8a96a3', axis: '#8a96a3' };
 
@@ -541,7 +542,7 @@ const Runner = {
     if (mode === 'live' && Sensors.permission !== 'denied') {
       try { this.tiltEst = createTiltEstimator({ facing: S.settings.facing }); Sensors.start(this.tiltEst, { facing: S.settings.facing }); } catch { this.tiltEst = null; }
     }
-    this.rec = []; this.lastRecT = -1e9; this.st = null; this.frame = null; this.lastRaw = null; this.phase = 'preview';
+    this.rec = []; this.lastRecT = -1e9; this.st = null; this.frame = null; this.lastRaw = null; this.phase = 'preview'; this.posOkDesde = null; this.girada = false;
     this.huboCuadro = false; this.fallosSeguidos = 0; this.fallosTotal = 0;
     this.lastCount = 0;
     this.setup3D();
@@ -1063,6 +1064,7 @@ const Runner = {
   processEmpty(t) {
     this.anotarCuadro();
     this.ultimas = null;   // sin nadie a la vista no hay partes que nombrar
+    this.marcarPosicion(false);
     // Sin persona a la vista igual se informa la inclinación (los sensores la saben).
     if (!this.tiltLocked && this.tiltEst) this.tilt = fuseTilt(this.sensorState()?.lastStill ?? null, this.level.state().tilt);
     this.renderLevel();
@@ -1200,10 +1202,12 @@ const Runner = {
     const fc = correctFrame(frame, this.tilt, { quarterOnly: !S.settings.tiltCorrection });
     const joints = toJoints(fc);
     this.ultimas = joints;
+    this.girada = !!fc.quarter;   // con la imagen girada la silueta derecha no calzaría: no se dibuja
 
     if (this.phase === 'preview' || this.phase === 'countdown') {
       const c = this.analyzer.check(joints);
       this.setPos(c.ok, c.ok ? 'Posición correcta' : this.detalle(c.msg));
+      this.marcarPosicion(c.ok);
       // Si además la detección está inestable, conviene arreglarlo ahora y no
       // descubrirlo cuando el número ya salió corto. Va aparte del estado de
       // posición: la posición puede estar bien y la detección igual temblar, y
@@ -1215,6 +1219,7 @@ const Runner = {
     } else if (this.phase === 'arming') {
       const c = this.analyzer.check(joints);
       this.setPos(c.ok, c.ok ? 'Posición correcta: comienza' : this.detalle(c.msg));
+      this.marcarPosicion(c.ok);
       if (c.ok) {
         if (this.armOkSince == null) this.armOkSince = frame.t;
         // Basta con estar en la posición de partida un momento (no 1 s quieto): quien hace las repeticiones sin pausa
@@ -1256,7 +1261,7 @@ const Runner = {
     const c = $('overlay'), ctx = c.getContext('2d');
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.cw, this.ch);
-    if (!frame) return;
+    if (!frame) { this.dibujarSilueta(ctx, null); return; }
     const mirror = this.mode === 'live' && S.settings.facing === 'user';
     let project;
     if (this.mode === 'demo' && this.demo?.box) {
@@ -1269,6 +1274,7 @@ const Runner = {
       const rect = this.contentRect(frame.aspect);
       project = (nx, ny) => [rect.x + (mirror ? 1 - nx : nx) * rect.w, rect.y + ny * rect.h];
     }
+    this.dibujarSilueta(ctx, frame, project);
     const side = pickSide(frame);
     const m = this.st?.metrics || {};
     const angles = [];
@@ -1284,6 +1290,56 @@ const Runner = {
       const pts = this.lifter.lift(frame);
       if (pts) { try { this.view.setPose(pts); this.view.render(); } catch (e) { console.warn('View3D', e); } }
     }
+  },
+
+  /** Desde cuándo la persona está en la posición inicial (para desvanecer la silueta guía). */
+  marcarPosicion(ok) {
+    if (!ok) this.posOkDesde = null;
+    else if (this.posOkDesde == null) this.posOkDesde = performance.now();
+  },
+
+  /**
+   * Silueta guía con la posición inicial ideal, al estilo de Victor, debajo del esqueleto. Va sobre la persona (a su
+   * tamaño y mirando hacia su lado) o, si no hay nadie, al centro. Se desvanece cuando la posición es correcta y no
+   * se muestra durante la prueba, en los videos subidos ni en la demostración.
+   */
+  dibujarSilueta(ctx, frame, project) {
+    if (this.mode !== 'live' || S.settings.silueta === false || this.girada) return;
+    const alfa = opacidadSilueta(this.phase, this.posOkDesde, performance.now());
+    if (alfa <= 0) return;
+    const v = $('video'), aspect = frame?.aspect || (v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 9 / 16);
+    if (!project) {
+      const rect = this.contentRect(aspect), mirror = S.settings.facing === 'user';
+      project = (nx, ny) => [rect.x + (mirror ? 1 - nx : nx) * rect.w, rect.y + ny * rect.h];
+    }
+    const variant = this.test === 'pushup' && S.profile.sex === 'F' ? 'knees' : 'toes';
+    const { puntos, tramos } = siluetaPara(this.test, frame?.lm || null, aspect, { variant });
+    const px = {};
+    for (const [n, p] of Object.entries(puntos)) px[n] = project(p.x, p.y);
+    const tronco = Math.hypot(px.cuello[0] - px.pelvis[0], px.cuello[1] - px.pelvis[1]);
+    if (!(tronco > 4)) return;
+    const COLOR = { eje: '#222427', i: '#3d9edb', d: '#e8633f' };
+    const grueso = Math.max(4, tronco * 0.11);
+    ctx.save();
+    ctx.globalAlpha = 0.72 * alfa;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // halo blanco para que se vea sobre fondos oscuros, y encima el color de Victor
+    for (const [halo, ancho] of [[true, grueso + 6], [false, grueso]]) {
+      for (const [a, b, parte] of tramos) {
+        ctx.strokeStyle = halo ? 'rgba(255,255,255,0.85)' : COLOR[parte];
+        ctx.lineWidth = ancho;
+        ctx.beginPath(); ctx.moveTo(...px[a]); ctx.lineTo(...px[b]); ctx.stroke();
+      }
+    }
+    const rc = tronco * 0.3;
+    ctx.fillStyle = COLOR.eje; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(...px.cabeza, rc, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.lineWidth = Math.max(2, grueso * 0.35);
+    for (const [, b, parte] of tramos) {
+      ctx.strokeStyle = COLOR[parte];
+      ctx.beginPath(); ctx.arc(...px[b], grueso * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
   },
 
   /* ---------------- HUD ---------------- */
@@ -2873,6 +2929,7 @@ function renderSettings() {
   $('set-calidad').checked = !!S.settings.calidad;
   $('set-grabar').checked = !!S.settings.grabarVideo;
   $('set-juego').checked = S.settings.mostrarJuego !== false;
+  $('set-silueta').checked = S.settings.silueta !== false;
   $('set-tilt').checked = !!S.settings.tiltCorrection;
   $('set-stand').checked = !!S.stand;
   $('set-valid').checked = !!S.settings.valid;
@@ -2922,6 +2979,7 @@ function bind() {
   $('set-calidad').addEventListener('change', (e) => { S.settings.calidad = e.target.checked; saveStore(); });
   $('set-grabar').addEventListener('change', (e) => { S.settings.grabarVideo = e.target.checked; saveStore(); });
   $('btn-ensayo').addEventListener('click', () => Ensayo.run());
+  $('set-silueta').addEventListener('change', (e) => { S.settings.silueta = e.target.checked; saveStore(); });
   $('set-juego').addEventListener('change', (e) => { S.settings.mostrarJuego = e.target.checked; saveStore(); if (S.screen === 'hub') renderHub(); });
   const guardarMsg = (t) => { $('res-guardar-msg').textContent = t; };
   $('btn-save-video').addEventListener('click', async () => {
