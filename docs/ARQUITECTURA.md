@@ -14,7 +14,7 @@ Módulos ES en `src/`, uno por responsabilidad. `build.mjs` los pega dentro de `
 
 | Módulo | Responsabilidad | DOM | Pruebas |
 |---|---|---|---|
-| `norms.mjs` | Baremos (CSEP/ACSM, ACE, Strand 2014), clasificación, percentil de plancha, perfil general. `AGE_RANGE` (18–21) y `coversAge`. | No | Sí |
+| `norms.mjs` | Baremos (CSEP/ACSM, ACE, Strand 2014), clasificación, percentil de plancha, perfil general. `AGE_RANGE` (18–30) y `coversAge`. | No | Sí |
 | `skeleton.mjs` | Mapas de articulaciones (BlazePose 33 → Human3.6M 17), `toJoints`, filtro 1€, dibujo 2D, visor 3D, elevador 3D. | Canvas | Sí |
 | `synth.mjs` | Persona sintética determinista (demo y pruebas), con cámara inclinable. | No | Sí |
 | `exercises.mjs` | Analizadores: máquina de estados por prueba, repeticiones válidas, avisos de técnica, criterios de término. Huella de las reglas de conteo. | No | Sí |

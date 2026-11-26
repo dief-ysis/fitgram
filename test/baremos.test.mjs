@@ -257,7 +257,7 @@ test('los cortes de cada tabla van siempre hacia arriba', () => {
   for (const [banda, porSexo] of Object.entries(N.NORMS.pushup.bands)) {
     for (const [sex, t] of Object.entries(porSexo)) subiendo(t.mins, `flexiones ${banda} ${sex}`);
   }
-  for (const [sex, t] of Object.entries(N.NORMS.squat.tables)) subiendo(t.mins, `sentadillas ${sex}`);
+  for (const [banda, porSexo] of Object.entries(N.NORMS.squat.bands)) for (const [sex, t] of Object.entries(porSexo)) subiendo(t.mins, `sentadillas ${banda} ${sex}`);
   for (const [sex, d] of Object.entries(N.NORMS.plank.deciles)) subiendo(d, `plancha ${sex}`);
   for (const [k, d] of Object.entries(N.NORMS.plank.byAthleticStatus)) subiendo(d, `plancha ${k}`);
 });

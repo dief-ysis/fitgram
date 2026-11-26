@@ -79,7 +79,7 @@ sw.js  manifest.webmanifest
 
 | Módulo | Qué hace |
 |---|---|
-| `norms` | Baremos y clasificación (CSEP/ACSM, ACE, Strand et al. 2014). Solo 18–21 años. |
+| `norms` | Baremos y clasificación (CSEP/ACSM, ACE, Strand et al. 2014). Solo 18–30 años. |
 | `skeleton` | Landmarks de MediaPipe a articulaciones, suavizado, dibujo 2D y 3D. |
 | `synth` | Personas sintéticas para probar el pipeline sin cámara. |
 | `exercises` | Máquinas de estado que validan y cuentan cada repetición. |
@@ -749,7 +749,7 @@ Para una feria, donde el teléfono pasa de mano en mano. Se activa en Ajustes �
 «Modo stand», o en `index.html?modo=stand`. Resuelve tres cosas que hacían
 inusable la app en ese contexto:
 
-1. **Las tablas son de 18 a 21 años**, y la pantalla de inicio solo ofrecía esas
+1. **Las tablas son de 18 a 30 años** (antes 18 a 21), y la pantalla de inicio solo ofrecía esas
    cuatro edades. Alguien de 40 no podía ni pasar de ahí. En modo stand se puede
    escribir cualquier edad; fuera del rango la app **cuenta las repeticiones y
    corrige la técnica igual, pero no muestra categoría**, y dice por qué. Nunca
@@ -766,7 +766,7 @@ hubiera guardados en ese teléfono vuelven intactos.
 
 ## Qué falta
 
-- **Los baremos cubren solo 18 a 21 años** (`AGE_RANGE` en el módulo `norms`, la
+- **Los baremos cubren solo 18 a 30 años** (`AGE_RANGE` en el módulo `norms`, la
   única fuente de verdad del rango). El pitch menciona escolares y mayores de
   60; para eso hacen falta otras tablas. Dato para el equipo: la tabla CSEP de
   flexiones **ya trae una banda 20–29**, y la de sentadillas de ACE dice

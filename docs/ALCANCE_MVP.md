@@ -16,7 +16,7 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 
 | Área | Qué hace |
 |---|---|
-| Usuarios | Personas de **18 a 21 años** que ya entrenan: es el rango vigente de la app. 🔎 La v1 decía 18 a 30; si se amplía está abierto (pregunta B2). El rango vive en un solo lugar del código (`AGE_RANGE`, `src/norms.mjs`). |
+| Usuarios | Personas de **18 a 30 años** que ya entrenan: es el rango vigente de la app, ampliado el 26-nov con las tablas de la v1 de José (antes 18 a 21). El rango vive en un solo lugar del código (`AGE_RANGE`, `src/norms.mjs`). |
 | Pruebas | Flexiones (CSEP/ACSM; hombres desde los pies, mujeres con rodillas), sentadillas (ACE), plancha en antebrazos (Strand 2014). 🔎 Sin dominadas ni fondos (están en la v1; pregunta F2). |
 | Protocolo | Todas «hasta el fallo» (sin pruebas de 1 minuto). Se cuentan solo las repeticiones válidas. |
 | Cámara y video | Cámara en vivo, video grabado o subido, y demostración con persona sintética. Esqueleto 2D sobre la imagen, vista 3D en vivo y reproducción 3D después de la prueba. Dibujo de dónde poner el teléfono para cada prueba. |
@@ -37,7 +37,7 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 - **No** tiene funciones para entrenadores, gimnasios, colegios, universidades o municipios. Son el modelo de negocio futuro.
 - **No** promete el modo juego. 🔎 Ya hay un prototipo (press militar, idea de Elías) dentro de la app, pero no se valida ni es parte del MVP.
 - **No** evalúa ejercicios con pesas, mancuernas ni máquinas de polea.
-- **No** clasifica fuera del rango vigente (hoy 18–21 años): muestra el conteo y dice que no hay tabla.
+- **No** clasifica fuera del rango vigente (hoy 18–30 años): muestra el conteo y dice que no hay tabla.
 - **No** usa pruebas de 1 o 2 minutos.
 - **No** incluye VideoPose3D (pesos de uso no comercial, CC BY-NC 4.0).
 - **No** diagnostica ni reemplaza a un profesional de la salud. El perfil general es un índice exploratorio.
@@ -46,7 +46,7 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 ## 4. Supuestos
 
 1. Quien se evalúa puede dejar el teléfono apoyado, quieto, a 2,5–3 m y filmarse **de lado** (horizontal para flexiones y plancha; vertical para sentadillas).
-2. Los baremos publicados siguen valiendo para jóvenes chilenos del rango vigente (hoy 18 a 21 años). Muchos vienen de otros países y poblaciones. Es un supuesto, no un hecho comprobado.
+2. Los baremos publicados siguen valiendo para jóvenes chilenos del rango vigente (hoy 18 a 30 años). Muchos vienen de otros países y poblaciones. Es un supuesto, no un hecho comprobado.
 3. MediaPipe Pose Landmarker en el navegador es suficientemente preciso para contar repeticiones con una sola cámara.
 4. Los equipos objetivo son de gama media (iOS Safari 16.4 o superior, Chrome en Android). Para el pitch: Lenovo Tab P12 (Android).
 5. Cada baremo vale solo con su protocolo.
@@ -78,7 +78,7 @@ FitGram es **diagnóstico, no adherencia**: «Te mide el salto, pero no te dice 
 
 **Pregunta:** ¿cuenta FitGram las repeticiones (y mide los segundos) igual que dos evaluadores humanos?
 
-**Muestra.** 10 a 15 jóvenes del rango vigente (hoy 18 a 21 años) que ya entrenan, con consentimiento informado, haciendo las 3 pruebas (30 a 45 series). Muestra pequeña: se reportan intervalos de confianza. 🔎 Los subgrupos (series inclinadas, con o sin sensor, video subido, por prueba) quedan muy chicos, y las series de una misma persona no son independientes: si ese análisis es exploratorio se decide junto con A1.
+**Muestra.** 10 a 15 jóvenes del rango vigente (hoy 18 a 30 años) que ya entrenan, con consentimiento informado, haciendo las 3 pruebas (30 a 45 series). Muestra pequeña: se reportan intervalos de confianza. 🔎 Los subgrupos (series inclinadas, con o sin sensor, video subido, por prueba) quedan muy chicos, y las series de una misma persona no son independientes: si ese análisis es exploratorio se decide junto con A1.
 
 **Procedimiento (de José, sin cambios de fondo).**
 1. Dos evaluadores cuentan en vivo, cada uno por su cuenta y sin ver la pantalla, las repeticiones válidas según el protocolo. En la plancha cronometran.
@@ -138,7 +138,7 @@ Una historia está Hecha cuando se cumple todo lo siguiente. «Hecho en código�
 | **Inclinación (roll / pitch)** | Cuánto está torcida la cámara respecto de la gravedad. Roll: giro en el plano de la imagen. Pitch: cabeceo, solo con sensores. |
 | **Landmarks (puntos)** | Los 33 puntos del cuerpo (nariz, hombros, codos, caderas…) que detecta MediaPipe. |
 | **MediaPipe Pose Landmarker** | Modelo de Google que detecta los puntos en el navegador, sin enviar nada. |
-| **Banda de edad** | Tramo de edades con que un baremo agrupa a las personas (por ejemplo, 20–29 en flexiones). La app solo cubre 18–21 años, pero cada baremo usa sus propias bandas. |
+| **Banda de edad** | Tramo de edades con que un baremo agrupa a las personas (por ejemplo, 20–29 en flexiones). La app cubre 18–30 años, pero cada baremo usa sus propias bandas. |
 | **Concordancia** | Fórmula de la v1 de José: `1 − Σ|app − R| / Σ R`, donde R es el conteo de referencia de los evaluadores (ver §6). |
 | **Acuerdo exacto / ±1** | Porcentaje de series en que la app contó lo mismo que los evaluadores / con una diferencia de hasta 1 repetición. |
 | **CCI** | Coeficiente de correlación intraclase: confiabilidad entre la app y los evaluadores; necesita varias personas distintas. |

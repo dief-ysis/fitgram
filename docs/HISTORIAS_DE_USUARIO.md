@@ -28,7 +28,7 @@ Historias escritas por José para FitGram v1 (13-nov-2026), la versión paralela
 | A6 | ¿Hace falta comité de ética? |
 | A7 | ¿Quién guarda los datos del estudio y cómo? |
 | A8 | ¿El análisis por subgrupos es exploratorio? |
-| B2 | ¿Se amplía el rango de edad 18–21? |
+| B2 | ¿Se amplía el rango de edad 18–21? (Resuelta el 26-nov: 18–30, con las tablas de José.) |
 | B5 | ¿Se sigue usando la tabla de sentadillas de ACE? |
 | F1 | ¿Se calibra la profundidad de la sentadilla? |
 | F2 | ¿Entran dominadas, fondos y la pregunta de si entrenas o compites? |
@@ -49,7 +49,7 @@ Historias escritas por José para FitGram v1 (13-nov-2026), la versión paralela
 **Lo que hay que decidir en equipo:**
 1. **Meta de la validación** (HU-50; A1, A2, A4).
 2. **Dominadas, fondos y la pregunta de si entrenas o compites** (HU-02, 26, 27, 33; F2).
-3. **Rango de edad** (B2): hoy la app usa 18–21. Los criterios dicen «el rango vigente (hoy 18–21)» hasta que se decida.
+3. **Rango de edad** (B2, resuelta el 26-nov): la app usa 18–30, con las tablas que José agregó en la v1 (flexiones 30–39, sentadillas 26–35).
 4. **Sentadilla**: calibración o más rango (F1) y la fuente ACE (B5) cambian los criterios de HU-24.
 5. **Menores en el modo stand** (HU-63; F3).
 6. **Video, ética y datos del estudio** (HU-50, 51; A5 a A8).
@@ -65,7 +65,7 @@ Historias escritas por José para FitGram v1 (13-nov-2026), la versión paralela
 
 | Rol | Quién es | Qué necesita |
 |---|---|---|
-| **Persona que entrena** | Joven del rango vigente, hoy 18 a 21 años (la v1 decía 18 a 30; pregunta B2), que ya entrena en gimnasio, en casa, en una plaza o parque. Es quien usa la app gratis. | Saber en qué nivel está y cómo avanza, sin ser experta en ciencias del deporte. |
+| **Persona que entrena** | Joven del rango vigente, hoy 18 a 30 años (la v1 decía 18 a 30; pregunta B2), que ya entrena en gimnasio, en casa, en una plaza o parque. Es quien usa la app gratis. | Saber en qué nivel está y cómo avanza, sin ser experta en ciencias del deporte. |
 | **Entrenador/a** | Profesional que evalúa a varias personas (por ejemplo, evaluar a un equipo de básquetbol de adultos mayores a ojo y escribir el informe a mano). Cliente de pago, futuro. | Dejar de contar a ojo y de armar informes a mano. |
 | **Gimnasio o institución** | Gimnasio, colegio o universidad. Cliente de pago, futuro. | Saber cómo están sus usuarios y ofrecerles evaluación objetiva. |
 | **Municipio** | Equipo de deporte o salud de una comuna. Cliente de pago, futuro. | Datos anónimos por comuna para sus metas de actividad física (por ejemplo, Elige Vivir Sano). |
@@ -98,7 +98,7 @@ Total: 66 historias (60 de la v1 de José y 6 agregadas al adaptar, épica M).
 ### HU-01 · Indicar edad y sexo
 **Como** persona que entrena **quiero** ingresar mi edad y mi sexo (y poder corregirlos después) **para** que FitGram me compare con las personas de mi grupo.
 - **Dado** que abro la app por primera vez, **cuando** quiero empezar una prueba, **entonces** me pide edad (número entero) y sexo (M/F) antes de iniciarla.
-- **Dado** que ingreso una edad dentro del rango vigente (hoy 18–21, pregunta B2), **cuando** guardo, **entonces** el perfil queda guardado en el teléfono y no se vuelve a pedir.
+- **Dado** que ingreso una edad dentro del rango vigente (hoy 18–30, B2 resuelta el 26-nov), **cuando** guardo, **entonces** el perfil queda guardado en el teléfono y no se vuelve a pedir.
 - **Dado** que corrijo mi edad o mi sexo, **cuando** hago una prueba nueva, **entonces** se clasifica con el perfil actualizado.
 - Prioridad: **Must** · Sprint: S1 · Estado: **Otra forma**
 - 🔎 **Nota (22-nov):** La edad se elige con botones (18, 19, 20 o 21), no como número libre como dice el primer criterio; en modo stand se acepta cualquier edad. Se corrige desde Perfil.
@@ -112,20 +112,20 @@ Total: 66 historias (60 de la v1 de José y 6 agregadas al adaptar, épica M).
 - 🔎 **Nota (22-nov):** No existe en esta app: la plancha usa solo el percentil de universitarios por sexo (Strand 2014). Además el README de la v1 de José la llama «¿Compites en algún deporte?» y esta historia «si entreno regularmente»: no es la misma pregunta. Si entra es decisión de José y Elías (pregunta F2).
 
 ### HU-03 · Cambiar el rango de edad en un solo lugar
-**Como** equipo FitGram **quiero** que el público objetivo (hoy 18 a 21 años) se defina en un único valor de configuración **para** ampliarlo o acotarlo tocando pocas líneas de código.
+**Como** equipo FitGram **quiero** que el público objetivo (hoy 18 a 30 años) se defina en un único valor de configuración **para** ampliarlo o acotarlo tocando pocas líneas de código.
 - **Dado** `AUDIENCE` en `src/config.js`, **cuando** cambio `minAge` o `maxAge`, **entonces** la pantalla de perfil y los mensajes de rango usan los nuevos valores sin editar otros archivos.
 - **Dado** que `AUDIENCE` queda fuera de `NORMS_AGE` (18–30), **cuando** corro `node --test test/*.test.mjs`, **entonces** una prueba falla y avisa que no hay baremo para esas edades.
 - **Dado** que se quiere ampliar el rango vigente (por ejemplo, hasta 30 años), **cuando** se revisa el cambio, **entonces** queda claro que además hay que cargar los baremos de esas edades en `src/norms.js` (la configuración sola no basta).
 - Prioridad: **Must** · Sprint: S1 · Estado: **Otra forma**
-- 🔎 **Nota (22-nov):** el rango (hoy 18–21, pendiente de la pregunta B2) está en un solo lugar, `AGE_RANGE` en `src/norms.mjs`, junto a los baremos. No existen `src/config.js`, `AUDIENCE` ni `NORMS_AGE`, así que los criterios 1 y 2 no aplican tal como están escritos.
+- 🔎 **Nota (22-nov):** el rango (hoy 18–30, B2 resuelta el 26-nov) está en un solo lugar, `AGE_RANGE` en `src/norms.mjs`, junto a los baremos. No existen `src/config.js`, `AUDIENCE` ni `NORMS_AGE`, así que los criterios 1 y 2 no aplican tal como están escritos.
 
 ### HU-04 · Aviso si estoy fuera del rango de edad
 **Como** persona fuera del rango (por ejemplo, 17 o 35 años) **quiero** que la app me diga con claridad que todavía no tiene baremo para mi edad **para** no recibir una clasificación que no corresponde.
 - **Dado** una edad fuera del rango vigente (hoy menor de 18 o mayor de 21), **cuando** se pide clasificar, **entonces** `classify` lanza un `RangeError` con un mensaje en español y no se entrega categoría.
-- **Dado** ese error, **cuando** lo muestra la pantalla, **entonces** el mensaje indica el rango válido (hoy 18 a 21 años) tomado del código, no escrito a mano.
+- **Dado** ese error, **cuando** lo muestra la pantalla, **entonces** el mensaje indica el rango válido (hoy 18 a 30 años) tomado del código, no escrito a mano.
 - **Dado** que el sexo no es M/F, **cuando** se pide clasificar, **entonces** ocurre lo mismo: error en español y sin categoría.
 - Prioridad: **Must** · Sprint: S1 · Estado: **Otra forma**
-- 🔎 **Nota (22-nov):** Fuera del rango vigente (hoy 18–21) la app **no se niega**: cuenta igual, muestra el resultado sin categoría y explica que no hay tabla para esa edad (en la pantalla de datos y en el resultado). El primer criterio habla de un error interno del código (`RangeError`); para la persona, lo que importa es que no ve una categoría inventada.
+- 🔎 **Nota (22-nov):** Fuera del rango vigente (hoy 18–30) la app **no se niega**: cuenta igual, muestra el resultado sin categoría y explica que no hay tabla para esa edad (en la pantalla de datos y en el resultado). El primer criterio habla de un error interno del código (`RangeError`); para la persona, lo que importa es que no ve una categoría inventada.
 
 ### HU-05 · Bienvenida y aviso de alcance
 **Como** persona que entrena **quiero** entender en una pantalla qué hace la app, qué no hace y que no es una evaluación médica **para** usarla con expectativas correctas.
@@ -520,7 +520,7 @@ Todas las pruebas son «hasta el fallo» (máximo continuo, sin tests de 1 o 2 m
 
 ### HU-50 · Validar el conteo contra dos evaluadores humanos
 **Como** equipo FitGram **quiero** comparar el conteo de la app con el de dos evaluadores en 10 a 15 jóvenes **para** saber si el conteo es confiable (meta: la que se fije en las preguntas A1, A2 y A4; ver `ALCANCE_MVP.md` §6).
-- **Dado** 10 a 15 personas del rango vigente (hoy 18–21, pregunta B2), **cuando** hacen las 3 pruebas de la evaluación base (las de barra solo si se aprueban en F2), **entonces** cada serie la cuentan por separado dos evaluadores y la app.
+- **Dado** 10 a 15 personas del rango vigente (hoy 18–30, B2 resuelta el 26-nov), **cuando** hacen las 3 pruebas de la evaluación base (las de barra solo si se aprueban en F2), **entonces** cada serie la cuentan por separado dos evaluadores y la app.
 - **Dado** los conteos, **cuando** se calcula el indicador que se fije (concordancia, acuerdo o CCI; método en `ALCANCE_MVP.md` §6), **entonces** el informe muestra el resultado global y por prueba, con los casos en que falló y por qué.
 - **Dado** que el resultado queda bajo la meta que se fije, **cuando** se cierra el informe, **entonces** se abre un plan de mejora y se repite la validación antes de afirmar la cifra en público.
 - Prioridad: **Must** · Sprint: S5–S6 · Estado: **Parcial**
@@ -558,7 +558,7 @@ Nada de esta épica entra al MVP. Está aquí para que el diseño del MVP no cie
 **Como** entrenador/a **quiero** enviar pruebas para que mis atletas las hagan en casa y ver los resultados de todo el equipo en un informe **para** dejar de contar a ojo y de escribir el informe a mano (por ejemplo, con un equipo de básquetbol de adultos mayores).
 - **Dado** que envío una batería de pruebas, **cuando** una persona la completa, **entonces** yo veo su resultado y su categoría.
 - **Dado** un equipo, **cuando** pido el informe, **entonces** se genera un resumen con todos los resultados en un solo documento (PDF o CSV).
-- **Dado** que la persona está fuera del rango vigente, **cuando** se evalúa, **entonces** depende de que existan baremos para su edad (hoy la app cubre 18–21).
+- **Dado** que la persona está fuera del rango vigente, **cuando** se evalúa, **entonces** depende de que existan baremos para su edad (hoy la app cubre 18–30).
 - Prioridad: **Won't (ahora)** · Sprint: Post · Estado: **Futuro**
 
 ### HU-55 · Licencia de uso para gimnasios, colegios y universidades

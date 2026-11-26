@@ -2180,7 +2180,7 @@ return { removeResult, toCSV, noComparable, MAX_PER_TEST, CYCLE_DAYS, emptyHisto
 })();
 // ---- norms.mjs ----
 __mods["norms"] = (() => {
-// FitGram v0 — baremos y clasificación para edades de 18 a 21 años.
+// FitGram v0 — baremos y clasificación para edades de 18 a 30 años (ampliado desde 18–21 con fitgram-v1 de José).
 // Push-ups: CSEP/ACSM · Squats: ACE (Mackenzie 2005) · Plank: Strand et al. (2014).
 // Cada tabla vale solo con su propio protocolo (ver NORMS[test].protocol).
 
@@ -2214,6 +2214,11 @@ const NORMS = deepFreeze({
         M: { mins: [17, 22, 29, 36], unverified: [] },
         F: { mins: [10, 15, 21, 30], unverified: [] },
       },
+      // Banda 30–39, para quien tiene 30 (traída de fitgram-v1 de José, 26-nov-2026).
+      '30–39': {
+        M: { mins: [12, 17, 22, 30], unverified: [] },
+        F: { mins: [8, 13, 20, 27], unverified: [] },
+      },
     },
     protocol: [
       'Repeticiones seguidas, sin límite de tiempo y sin descansar.',
@@ -2232,10 +2237,17 @@ const NORMS = deepFreeze({
   squat: {
     name: 'Sentadillas con peso corporal',
     categories: SQUAT_CATS,
-    band: '18–25',
-    tables: {
-      M: { mins: [25, 31, 35, 39, 44, 50] },
-      F: { mins: [18, 25, 29, 33, 37, 44] },
+    // Bandas ACE por edad (la de 26–35 viene de fitgram-v1 de José, 26-nov-2026).
+    ageBands: [[18, 25, '18–25'], [26, 30, '26–35']],
+    bands: {
+      '18–25': {
+        M: { mins: [25, 31, 35, 39, 44, 50] },
+        F: { mins: [18, 25, 29, 33, 37, 44] },
+      },
+      '26–35': {
+        M: { mins: [22, 29, 31, 35, 40, 46] },
+        F: { mins: [13, 21, 25, 29, 33, 40] },
+      },
     },
     protocol: [
       'Puedes extender los brazos al frente o a los lados para mantener el equilibrio.',
@@ -2293,7 +2305,8 @@ const NORMS = deepFreeze({
  * pero la de plancha es de universitarios, así que el conjunto se declara en 18–21.
  * Subirlo es una decisión del equipo de ciencias del deporte, no del código.
  */
-const AGE_RANGE = Object.freeze({ min: 18, max: 21 });
+// 18 a 30, como lo amplió José en fitgram-v1 (26-nov-2026). Antes era 18 a 21.
+const AGE_RANGE = Object.freeze({ min: 18, max: 30 });
 
 /** True si los baremos cubren esa edad. Única fuente de verdad del rango. */
 function coversAge(age) {
@@ -2301,7 +2314,7 @@ function coversAge(age) {
 }
 
 function checkAgeSex(age, sex) {
-  if (!coversAge(age)) throw new RangeError(`FitGram v0 solo tiene baremos para personas de ${AGE_RANGE.min} a ${AGE_RANGE.max} años.`);
+  if (!coversAge(age)) throw new RangeError(`FitGram solo tiene baremos para personas de ${AGE_RANGE.min} a ${AGE_RANGE.max} años.`);
   if (sex !== 'M' && sex !== 'F') throw new RangeError('El sexo debe ser "M" (hombre) o "F" (mujer).');
 }
 
@@ -2338,13 +2351,19 @@ function result(test, value, unit, band, cats, index, position, percentile, tabl
 /* ---------------------------------------------------------------- flexiones */
 
 /**
- * Banda CSEP/ACSM que corresponde a una edad: 18–19 → '15–19', 20–21 → '20–29'.
+ * Banda CSEP/ACSM que corresponde a una edad: 18–19 → '15–19', 20–29 → '20–29', 30 → '30–39'.
  * @param {number} age
- * @returns {'15–19'|'20–29'|null} null fuera de 18–21
+ * @returns {'15–19'|'20–29'|'30–39'|null} null fuera del rango de los baremos
  */
 function ageBandPushups(age) {
   if (!coversAge(age)) return null;
-  return age <= 19 ? '15–19' : '20–29';
+  return age <= 19 ? '15–19' : age <= 29 ? '20–29' : '30–39';
+}
+
+/** Banda ACE de sentadillas para una edad: 18–25 → '18–25', 26–30 → '26–35'. */
+function ageBandSquats(age) {
+  if (!coversAge(age)) return null;
+  return NORMS.squat.ageBands.find(([desde, hasta]) => age >= desde && age <= hasta)[2];
 }
 
 /**
@@ -2367,7 +2386,7 @@ function classifyPushups({ age, sex, reps }) {
 /* ---------------------------------------------------------------- sentadillas */
 
 /**
- * Clasifica un puntaje de sentadillas sin carga (ACE, hasta la fatiga, muslos paralelos), banda 18–25.
+ * Clasifica un puntaje de sentadillas sin carga (ACE, hasta la fatiga, muslos paralelos), banda 18–25 o 26–35.
  * Todo resultado lleva la marca 'questionable_source'.
  * @param {{age:number, sex:'M'|'F', reps:number}} p
  */
@@ -2375,11 +2394,12 @@ function classifySquats({ age, sex, reps }) {
   checkAgeSex(age, sex);
   checkValue(reps, 'El número de sentadillas');
   const value = Math.floor(reps);
-  const t = NORMS.squat.tables[sex];
+  const band = ageBandSquats(age);
+  const t = NORMS.squat.bands[band][sex];
   const idx = categoryIndex(value, t.mins);
   const table = repTable(SQUAT_CATS, t.mins, 'lt');
   const next = idx < SQUAT_CATS.length - 1 ? { label: SQUAT_CATS[idx + 1][1], needed: t.mins[idx] - value } : null;
-  return result('squat', value, 'rep', NORMS.squat.band, SQUAT_CATS, idx, Math.round(idx / 6 * 100), null, table, next, ['questionable_source']);
+  return result('squat', value, 'rep', band, SQUAT_CATS, idx, Math.round(idx / 6 * 100), null, table, next, ['questionable_source']);
 }
 
 /* ---------------------------------------------------------------- plancha */
@@ -2441,7 +2461,7 @@ function fitnessProfile({ pushup = null, squat = null, plank = null } = {}) {
   return { position, label, parts, note };
 }
 
-return { NORMS, AGE_RANGE, coversAge, ageBandPushups, classifyPushups, classifySquats, plankPercentile, classifyPlank, fitnessProfile };
+return { NORMS, AGE_RANGE, coversAge, ageBandPushups, ageBandSquats, classifyPushups, classifySquats, plankPercentile, classifyPlank, fitnessProfile };
 })();
 // ---- orientation.mjs ----
 __mods["orientation"] = (() => {
@@ -8821,7 +8841,7 @@ function mediana(xs) {
 
 /* Para una feria: cualquiera toma el teléfono, prueba y se lo pasa al siguiente.
    Tres problemas que resuelve:
-     1. Las tablas son de 18 a 21, y casi nadie en un jurado tiene esa edad. Sin
+     1. Las tablas son de 18 a 30 (antes 18 a 21), y mucha gente de un jurado queda fuera. Sin
         esto no se puede ni pasar de la primera pantalla.
      2. Los resultados de una persona quedaban guardados y la siguiente veía un
         "avance" que no era suyo.

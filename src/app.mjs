@@ -2882,7 +2882,7 @@ function mediana(xs) {
 
 /* Para una feria: cualquiera toma el teléfono, prueba y se lo pasa al siguiente.
    Tres problemas que resuelve:
-     1. Las tablas son de 18 a 21, y casi nadie en un jurado tiene esa edad. Sin
+     1. Las tablas son de 18 a 30 (antes 18 a 21), y mucha gente de un jurado queda fuera. Sin
         esto no se puede ni pasar de la primera pantalla.
      2. Los resultados de una persona quedaban guardados y la siguiente veía un
         "avance" que no era suyo.
