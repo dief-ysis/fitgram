@@ -8,6 +8,7 @@ import { deviceToImage } from '../src/orientation.mjs';
 import { resolveScreenAngle } from '../src/orientation.mjs';
 import { wrapDeg } from '../src/orientation.mjs';
 import { isCorrectable } from '../src/orientation.mjs';
+import { quarterTurn } from '../src/orientation.mjs';
 import { createTiltEstimator } from '../src/orientation.mjs';
 import { createPoseLevelEstimator } from '../src/orientation.mjs';
 import { fuseTilt } from '../src/orientation.mjs';
@@ -684,7 +685,9 @@ test('describeTilt: Spanish UI messages and levels', () => {
   assert.deepEqual(describeTilt(sensorTilt(-6.2)), { level: 'ok', msg: 'Inclinado 6°: lo corregimos' });
   assert.deepEqual(describeTilt(sensorTilt(21)), { level: 'warn', msg: 'Inclinado 21°: lo corregimos, pero enderézalo' });
   assert.deepEqual(describeTilt(sensorTilt(32)), { level: 'bad', msg: 'Endereza el teléfono (inclinado 32°)' });
-  assert.deepEqual(describeTilt(sensorTilt(-88)), { level: 'bad', msg: 'Gira la pantalla: la imagen está de lado' });
+  assert.deepEqual(describeTilt(sensorTilt(-88)), { level: 'ok', msg: 'Teléfono de costado: lo giramos' });
+  assert.deepEqual(describeTilt({ ...sensorTilt(-88), source: 'image' }), { level: 'bad', msg: 'Gira la pantalla: la imagen está de lado' });
+  assert.deepEqual(describeTilt(sensorTilt(-50)), { level: 'bad', msg: 'Gira la pantalla: la imagen está de lado' });
   assert.deepEqual(describeTilt(sensorTilt(3, 0, false)), { level: 'warn', msg: 'No muevas el teléfono' });
   assert.deepEqual(describeTilt(sensorTilt(1, 30)), { level: 'warn', msg: 'La cámara apunta 30° hacia arriba: ponla más derecha' });
   assert.deepEqual(describeTilt(sensorTilt(1, -30)), { level: 'warn', msg: 'La cámara apunta 30° hacia abajo: ponla más derecha' });
@@ -696,6 +699,6 @@ test('describeTilt: Spanish UI messages and levels', () => {
   // the message and correctFrame agree on what gets corrected
   for (const roll of [0, 5, 14, 29, 31, 50, 120]) {
     const t = sensorTilt(roll);
-    assert.equal(describeTilt(t).level === 'bad', !isCorrectable(t), `roll ${roll}`);
+    assert.equal(describeTilt(t).level === 'bad', !isCorrectable(t) && !quarterTurn(t), `roll ${roll}`);
   }
 });

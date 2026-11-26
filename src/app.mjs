@@ -8,7 +8,7 @@ import * as Hist from './history.mjs';
 import * as Val from './validation.mjs';
 import * as Gm from './game.mjs';
 import * as Cal from './calidad.mjs';
-import { ORIENT_CONFIG, createPoseLevelEstimator, createTiltEstimator, fuseTilt, correctFrame, describeTilt, isCorrectable } from './orientation.mjs';
+import { ORIENT_CONFIG, createPoseLevelEstimator, createTiltEstimator, fuseTilt, correctFrame, describeTilt, isCorrectable, quarterTurn } from './orientation.mjs';
 import { Sensors } from './sensors.mjs';
 import { esqueletoParaCompartir, elegirFormatoVideo, nombreArchivo } from './compartir.mjs';
 import { esErrorDeCamara, cameraErrorMessage } from './camara-errores.mjs';
@@ -885,7 +885,7 @@ const Runner = {
     const t = this.tilt, r1 = (v) => (Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
     return {
       fuente: t?.source || 'none', roll: r1(t?.roll), pitch: r1(t?.pitch),
-      corregida: !!(S.settings.tiltCorrection && isCorrectable(t)), movido: !!this.movido,
+      corregida: !!(S.settings.tiltCorrection && isCorrectable(t)) || !!quarterTurn(t), movido: !!this.movido,
     };
   },
 
@@ -1195,7 +1195,8 @@ const Runner = {
       this.tilt = fuseTilt(this.sensorState()?.lastStill ?? null, this.level.state().tilt);
     } else this.revisarMovido();
     this.renderLevel();
-    const fc = correctFrame(frame, S.settings.tiltCorrection ? this.tilt : null);
+    // De costado con la rotación bloqueada, el cuarto de vuelta se aplica siempre: sin él no hay prueba posible.
+    const fc = correctFrame(frame, this.tilt, { quarterOnly: !S.settings.tiltCorrection });
     const joints = toJoints(fc);
 
     if (this.phase === 'preview' || this.phase === 'countdown') {

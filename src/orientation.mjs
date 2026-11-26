@@ -127,6 +127,7 @@ const ORIENT_CONFIG = Object.freeze({
     correctedWarn: 'Inclinado {n}°: lo corregimos, pero enderézalo',
     straighten: 'Endereza el teléfono (inclinado {n}°)',
     sideways: 'Gira la pantalla: la imagen está de lado',
+    quarter: 'Teléfono de costado: lo giramos',
     moving: 'No muevas el teléfono',
     flat: 'Levanta el teléfono: está acostado',
     pitchUp: 'La cámara apunta {n}° hacia arriba: ponla más derecha',
@@ -661,14 +662,56 @@ function fuseTilt(sensorTilt, imageTilt) {
  * @param {{pitch2D?: boolean, longFovDeg?: number}} [opts] overrides of the ORIENT_CONFIG defaults
  * @returns {object} new PoseFrame
  */
+/**
+ * Quarter turn (±90°) of a phone on its side with the screen rotation locked: the picture arrives turned and the
+ * analyzers would see a lying body standing up. Returns ±90 when |roll| is within maxAutoDeg of a quarter turn and
+ * the camera is not flat; otherwise 0. 180° stays refused (a wrong screen angle looks just like it).
+ */
+function quarterTurn(tilt) {
+  // Only the sensors may say the phone is on its side (a sideways picture can just be the wrong posture); after
+  // fusion the picture may still fix the sign, as long as a sensor took part (reason other than 'image_only').
+  const sensorSaw = tilt?.source === 'sensor' || (typeof tilt?.reason === 'string' && tilt.reason !== 'image_only');
+  if (!tilt || !sensorSaw || !fin(tilt.roll)) return 0;
+  if (fin(tilt.pitch) && Math.abs(tilt.pitch) > OC.flatPitchDeg) return 0;
+  for (const q of [90, -90]) if (Math.abs(wrapDeg(tilt.roll - q)) <= OC.maxAutoDeg) return q;
+  return 0;
+}
+
+/**
+ * How upright a picture looks: elbows and ankles below nose and shoulders (y grows downward), true in the start
+ * position of every test (squat, push-up, plank). Larger is more upright.
+ */
+function uprightScore(lm) {
+  const y = (ids) => { const v = ids.map((i) => lm?.[i]?.y).filter(fin); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN; };
+  const d = y([13, 14, 27, 28]) - y([0, 11, 12]);
+  return fin(d) ? d : 0;
+}
+
 function correctFrame(frame, tilt, opts = {}) {
   const copy = (arr) => (Array.isArray(arr) ? arr.map((p) => (p ? { ...p } : p)) : arr ?? null);
   if (!frame) return frame;
-  if (!isCorrectable(tilt)) return { ...frame, lm: copy(frame.lm), world: copy(frame.world), tilt: tilt ?? null, corrected: false };
+  const q = opts.quarterOnly ? quarterTurn(tilt) : (isCorrectable(tilt) ? 0 : quarterTurn(tilt));
+  if (q) {
+    // Phone on its side: turn the picture by the whole roll (or only the quarter when the tilt correction is off).
+    // The sign of the sensor roll is not trusted (Safari swaps 90/270): the posture decides (see uprightScore).
+    const roll = opts.quarterOnly ? q : tilt.roll;
+    const a = rotateFrame(frame, roll, null, opts), b = rotateFrame(frame, -roll, null, opts);   // swapped convention mirrors the roll
+    const out = uprightScore(b.lm) > uprightScore(a.lm) ? b : a;
+    return { ...out, tilt, corrected: true, quarter: true };
+  }
+  if (opts.quarterOnly || !isCorrectable(tilt)) return { ...frame, lm: copy(frame.lm), world: copy(frame.world), tilt: tilt ?? null, corrected: false };
+  return { ...rotateFrame(frame, tilt.roll, tilt.pitch, opts), tilt, corrected: true };
+}
+
+/** Rotates a frame by -roll (and pitch, when finite). A quarter turn swaps the picture sides, so `aspect` follows. */
+function rotateFrame(frame, rollDeg, pitchDeg, opts = {}) {
   const aspect = fin(frame.aspect) && frame.aspect > 0 ? frame.aspect : 1;
+  const tilt = { roll: rollDeg, pitch: pitchDeg };
   const r = tilt.roll * RAD, c = Math.cos(r), s = Math.sin(r);
   const hasPitch = fin(tilt.pitch), p = hasPitch ? tilt.pitch * RAD : 0, cp = Math.cos(p), sp = Math.sin(p);
   const warp = (opts.pitch2D ?? OC.pitch2D) && hasPitch;
+  // Sides of the turned picture, in image heights: past 45° the long side changes axis.
+  const side = Math.abs(Math.sin(r)) > Math.SQRT1_2, outW = side ? 1 : aspect, outH = side ? aspect : 1;
   const f = (Math.max(aspect, 1) / 2) / Math.tan(((opts.longFovDeg ?? OC.longFovDeg) * RAD) / 2);   // focal length in image heights
   const lm = Array.isArray(frame.lm) ? frame.lm.map((q) => {
     if (!q) return q;
@@ -678,14 +721,14 @@ function correctFrame(frame, tilt, opts = {}) {
       const y2 = y1 * cp - f * sp, z2 = y1 * sp + f * cp;
       if (z2 > 0.05 * f) { x1 = f * x1 / z2; y1 = f * y2 / z2; }
     }
-    return { ...q, x: x1 / aspect + 0.5, y: y1 + 0.5 };
+    return { ...q, x: x1 / outW + 0.5, y: y1 / outH + 0.5 };
   }) : frame.lm;
   const world = Array.isArray(frame.world) ? frame.world.map((q) => {
     if (!q) return q;
     const x1 = q.x * c - q.y * s, y1 = q.x * s + q.y * c;
     return { ...q, x: x1, y: y1 * cp - q.z * sp, z: y1 * sp + q.z * cp };
   }) : frame.world ?? null;
-  return { ...frame, lm, world, tilt, corrected: true };
+  return { ...frame, lm, world, aspect: outW / outH };
 }
 
 // ---- UI text --------------------------------------------------------------------------------------------------
@@ -703,7 +746,7 @@ function describeTilt(tilt) {
   if (!tilt || tilt.source === 'none' || !fin(tilt.roll)) return { level: 'warn', msg: M.none };
   const roll = Math.abs(tilt.roll), pitch = fin(tilt.pitch) ? tilt.pitch : 0;
   if (Math.abs(pitch) > OC.flatPitchDeg) return { level: 'bad', msg: M.flat };
-  if (roll > OC.sidewaysDeg) return { level: 'bad', msg: M.sideways };
+  if (roll > OC.sidewaysDeg) return quarterTurn(tilt) ? { level: 'ok', msg: M.quarter } : { level: 'bad', msg: M.sideways };
   if (tilt.still === false) return { level: 'warn', msg: M.moving };
   if (roll > OC.maxAutoDeg) return { level: 'bad', msg: fill(M.straighten, roll) };
   if (Math.abs(pitch) > OC.pitchBadDeg) return { level: 'bad', msg: fill(M.pitchBad, pitch) };
@@ -714,4 +757,4 @@ function describeTilt(tilt) {
   return { level: 'ok', msg: M.level };
 }
 
-export { ORIENT_CONFIG, wrapDeg, resolveScreenAngle, upFromEuler, isCorrectable, deviceToImage, createTiltEstimator, createPoseLevelEstimator, fuseTilt, correctFrame, describeTilt };
+export { ORIENT_CONFIG, wrapDeg, resolveScreenAngle, upFromEuler, isCorrectable, quarterTurn, deviceToImage, createTiltEstimator, createPoseLevelEstimator, fuseTilt, correctFrame, describeTilt };

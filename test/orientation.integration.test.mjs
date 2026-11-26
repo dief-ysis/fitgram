@@ -188,3 +188,23 @@ test('a level camera is left alone: correcting with the estimated tilt does not 
   }
 });
 
+
+test('teléfono de costado con la rotación bloqueada: el cuarto de vuelta deja contar flexiones, plancha y sentadillas', () => {
+  for (const [testId, opts] of [['pushup', { reps: 6 }], ['plank', {}], ['squat', { reps: 6 }]]) {
+    const sess = synthSession(testId, opts), level = analyze(testId, sess.frames);
+    for (const roll of [90, -90, 80, -100]) {
+      const rolled = sess.frames.map((f) => rollFrame(f, roll));
+      assert.equal(analyze(testId, rolled).startOk && testId !== 'plank' ? 'raw-ok' : 'x', 'x');
+      for (const sensorRoll of [roll, -roll]) {   // el signo del sensor puede venir cambiado (Safari)
+        const s = fuseTilt(sensorTiltOf(sensorRoll).lastStill, imageTiltOf(testId, rolled));
+        const fixed = rolled.map((f) => correctFrame(f, s));
+        assert.equal(fixed[0].quarter, true, `${testId} ${roll}/${sensorRoll} reason ${s.reason} roll ${s.roll}`);
+        const got = analyze(testId, fixed);
+        assert.equal(got.startOk, true, `${testId} ${roll}/${sensorRoll}`);
+        assert.equal(got.value, level.value, `${testId} ${roll}/${sensorRoll}`);
+        const q = rolled.map((f) => correctFrame(f, s, { quarterOnly: true }));
+        assert.equal(analyze(testId, q).startOk, true, `solo cuarto ${testId} ${roll}/${sensorRoll}`);
+      }
+    }
+  }
+});
