@@ -2187,6 +2187,29 @@ __mods["norms"] = (() => {
 const PUSHUP_CATS = [['needs_improvement', 'Necesita mejorar'], ['fair', 'Regular'], ['good', 'Bueno'], ['very_good', 'Muy bueno'], ['excellent', 'Excelente']];
 const SQUAT_CATS = [['very_poor', 'Muy pobre'], ['poor', 'Pobre'], ['below_average', 'Bajo el promedio'], ['average', 'Promedio'], ['above_average', 'Sobre el promedio'], ['good', 'Bueno'], ['excellent', 'Excelente']];
 const PLANK_CATS = [['very_low', 'Muy bajo'], ['low', 'Bajo'], ['average', 'Promedio'], ['high', 'Alto'], ['very_high', 'Muy alto']];
+// Pruebas con barra (traídas de fitgram-v1 de José, 26-nov-2026).
+const CHINA_CATS = [['fail', 'Reprobado'], ['pass', 'Aprobado'], ['good', 'Bueno'], ['excellent', 'Excelente']];
+const USMC_CATS = [['below_min', 'Bajo el mínimo'], ['passing', 'Aprobado'], ['max', 'Máximo']];
+const DIP_CATS = PLANK_CATS; // las mismas cinco etiquetas: Muy bajo … Muy alto
+
+/** Fuentes de las pruebas con barra. */
+const SRC_BARRA = {
+  china: {
+    short: 'China (2014)',
+    apa: 'Ministerio de Educación de la República Popular China. (2014). Estándar nacional de salud física estudiantil (revisión 2014).',
+    url: 'https://www2.scut.edu.cn/_upload/article/files/ec/fe/446734564a3fb1ea3bc6edb4aae5/d39f68c5-788b-4fc9-b504-8c57412abb99.pdf',
+  },
+  usmc: {
+    short: 'USMC (MCO 6100.13A)',
+    apa: 'U.S. Marine Corps. (s.f.). Table 2-2: Hybrid pull-up/push-up test scoring tables (MCO 6100.13A).',
+    url: 'https://www.fitness.marines.mil/Portals/211/Docs/PFT_CFT/PFT_CFT%20Standards/Table%202-2%20Hybrid%20Pull-up%20Push-up%20Test%20Scoring%20Tables.pdf',
+  },
+  thomas: {
+    short: 'Thomas et al. (2020)',
+    apa: 'Thomas, E., Gennaro, V., Battaglia, G., Bellafiore, M., Iovane, A., Palma, A., & Bianco, A. (2020). Upper body strength endurance evaluation: A comparison between the handgrip strength and three body weight tests. Isokinetics and Exercise Science.',
+    url: 'https://content.iospress.com/articles/isokinetics-and-exercise-science/ies202206',
+  },
+};
 
 function deepFreeze(o) {
   if (o && typeof o === 'object' && !Object.isFrozen(o)) {
@@ -2199,7 +2222,7 @@ function deepFreeze(o) {
 /**
  * Datos de baremos congelados, notas de protocolo, advertencias y fuentes.
  * `mins` = puntaje mínimo de cada categoría desde la segunda en adelante (la categoría 0 parte en 0).
- * @type {Readonly<Record<'pushup'|'squat'|'plank', object>>}
+ * @type {Readonly<Record<'pushup'|'squat'|'plank'|'pullup'|'dip', object>>}
  */
 const NORMS = deepFreeze({
   pushup: {
@@ -2295,17 +2318,65 @@ const NORMS = deepFreeze({
       url: 'https://doi.org/10.2478/hukin-2014-0011',
     },
   },
+  pullup: {
+    name: 'Dominadas',
+    categories: CHINA_CATS,
+    // Solo hombres. Estándar nacional de estudiantes de China (2014), por año de estudio.
+    china: {
+      M: [
+        { from: 18, to: 19, band: 'China 2014 · 1.º–2.º año', mins: [10, 15, 17] },
+        { from: 20, to: 25, band: 'China 2014 · 3.º–4.º año', mins: [11, 16, 18], outsideFrom: 23 },
+      ],
+    },
+    // Mínimo y máximo de dominadas de la Infantería de Marina de EE. UU. por edad; puntaje aproximado:
+    // mínimo = minPoints, máximo = 100, lineal entre medio.
+    usmc: {
+      categories: USMC_CATS,
+      ageBands: [[18, 20, '17–20'], [21, 25, '21–25'], [26, 30, '26–30']],
+      bands: {
+        '17–20': { M: { min: 4, max: 20 }, F: { min: 1, max: 7 } },
+        '21–25': { M: { min: 5, max: 23 }, F: { min: 3, max: 11 } },
+        '26–30': { M: { min: 5, max: 23 }, F: { min: 4, max: 12 } },
+      },
+      minPoints: { M: 40, F: 60 },
+      maxPoints: 100,
+    },
+    // Hombres que entrenan (n = 38, 23,9 ± 6,7 años, ≥ 3 meses de entrenamiento): 14,5 ± 5,3 dominadas.
+    thomas: { M: { mean: 14.5, sd: 5.3, n: 38, meanAge: 23.9 } },
+    protocol: [
+      'Agarre prono (palmas hacia adelante), un poco más ancho que los hombros.',
+      'Parte colgado y quieto, con los brazos completamente extendidos.',
+      'Vale cuando el mentón sobrepasa la barra y vuelves a extender los brazos por completo.',
+      'Sin balanceo ni impulso de piernas, y sin límite de tiempo: termina cuando no puedes seguir o sueltas la barra.',
+    ],
+    caveat: 'No existe un baremo poblacional de dominadas hasta el fallo. El estándar de China (2014) es un estándar de logro para estudiantes hombres, no percentiles. Los valores del USMC son un mínimo y un máximo militares, no percentiles; el puntaje se aproxima en forma lineal. La referencia de Thomas et al. (2020) viene de solo 38 hombres que entrenan.',
+    source: SRC_BARRA.china,
+  },
+  dip: {
+    name: 'Fondos en paralelas',
+    categories: DIP_CATS,
+    band: 'hombres que entrenan (Thomas 2020)',
+    noNormBand: 'sin baremo',
+    // Hombres: media ± DE de hombres que entrenan; mins = P10/P25/P75/P90 del documento de estándares.
+    thomas: { M: { mean: 27.1, sd: 11.2, n: 38, meanAge: 23.9, mins: [13, 20, 35, 41] } },
+    protocol: [
+      'Barras paralelas; parte con los brazos completamente extendidos.',
+      'Baja hasta que cada codo llegue al menos a 90° y vuelve a extender los brazos.',
+      'Sin ayuda de las piernas.',
+      'Sin límite de tiempo ni de ritmo: termina cuando no puedes seguir o apoyas los pies.',
+    ],
+    caveat: 'No existe un baremo poblacional ni un estándar oficial de fondos en paralelas hasta el fallo. Los valores salen de 38 hombres que entrenan (Thomas et al., 2020). No hay datos publicados para mujeres.',
+    source: SRC_BARRA.thomas,
+  },
 });
 
 /* ---------------------------------------------------------------- utilidades */
 
 /**
- * Edades que cubren los baremos de esta versión.
- * La tabla CSEP de flexiones llega hasta 29 y la de sentadillas de ACE dice 18–25,
- * pero la de plancha es de universitarios, así que el conjunto se declara en 18–21.
- * Subirlo es una decisión del equipo de ciencias del deporte, no del código.
+ * Edades que cubren los baremos de esta versión: 18 a 30, como lo amplió José en fitgram-v1 (26-nov-2026; antes
+ * 18 a 21). Flexiones usa las bandas CSEP 15–19, 20–29 y 30–39; sentadillas, las ACE 18–25 y 26–35; la plancha sigue
+ * con la tabla de universitarios. Cambiarlo es una decisión del equipo de ciencias del deporte, no del código.
  */
-// 18 a 30, como lo amplió José en fitgram-v1 (26-nov-2026). Antes era 18 a 21.
 const AGE_RANGE = Object.freeze({ min: 18, max: 30 });
 
 /** True si los baremos cubren esa edad. Única fuente de verdad del rango. */
@@ -2329,7 +2400,7 @@ function categoryIndex(value, mins) {
   return i;
 }
 
-/** Table rows (lowest → highest) for integer-score tables. `style`: 'le' (≤x/≥y) or 'lt' (<x/>y). */
+/** Filas de la tabla (de menor a mayor) para puntajes enteros. `style`: 'le' (≤x/≥y), 'lt' (<x/>y) o 'ge' (<x/≥y). */
 function repTable(cats, mins, style) {
   const last = cats.length - 1;
   return cats.map(([key, label], i) => {
@@ -2337,7 +2408,7 @@ function repTable(cats, mins, style) {
     const max = i === last ? null : mins[i] - 1;
     let text;
     if (i === 0) text = style === 'le' ? `≤${max}` : `<${mins[0]}`;
-    else if (i === last) text = style === 'le' ? `≥${min}` : `>${min - 1}`;
+    else if (i === last) text = style === 'lt' ? `>${min - 1}` : `≥${min}`;
     else text = `${min}–${max}`;
     return { key, label, min, max, text };
   });
@@ -2445,6 +2516,118 @@ function classifyPlank({ age, sex, seconds }) {
   return result('plank', seconds, 's', NORMS.plank.band, PLANK_CATS, idx, position, p, table, next, extrapolated ? ['extrapolated'] : []);
 }
 
+/* ---------------------------------------------------------------- pruebas con barra */
+
+/** Resultado de una prueba con barra: el mismo formato de siempre, más referencias y la lista de fuentes. */
+function resultadoBarra(test, value, band, cats, index, position, percentile, table, next, flags, references, sources) {
+  const [key, label] = cats[index];
+  return {
+    test, value, unit: 'rep', band, category: { key, label, index, of: cats.length }, position, percentile, table, next,
+    flags, references, source: { ...sources[0] }, sources: sources.map((x) => ({ ...x })),
+  };
+}
+
+function siguiente(cats, mins, idx, value) {
+  return idx < cats.length - 1 ? { label: cats[idx + 1][1], needed: mins[idx] - value } : null;
+}
+
+/** Función de error, Abramowitz y Stegun 7.1.26 (error máximo ≈ 1,5e-7). */
+function erf(x) {
+  const sg = x < 0 ? -1 : 1, a = Math.abs(x), t = 1 / (1 + 0.3275911 * a);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-a * a);
+  return sg * y;
+}
+
+/** Percentil (entero, 1..99) de `value` en una normal N(media, de). */
+function percentilNormal(value, mean, sd) {
+  return Math.min(99, Math.max(1, Math.round(50 * (1 + erf((value - mean) / (sd * Math.SQRT2))))));
+}
+
+/** La fila de China 2014 (hombres) para una edad, o null. */
+function filaChina(age) {
+  return NORMS.pullup.china.M.find((r) => age >= r.from && age <= r.to) || null;
+}
+
+/** Banda USMC de dominadas para una edad y sexo, con su mínimo y máximo. */
+function usmcPara(age, sex) {
+  const U = NORMS.pullup.usmc, fila = U.ageBands.find(([desde, hasta]) => age >= desde && age <= hasta);
+  return fila ? { label: fila[2], ...U.bands[fila[2]][sex] } : null;
+}
+
+/** Puntaje USMC aproximado: mínimo = 40 (hombres) / 60 (mujeres), máximo = 100, lineal entre medio; bajo el mínimo = 0. */
+function puntosUsmc(reps, sex, u) {
+  const U = NORMS.pullup.usmc;
+  if (reps < u.min) return 0;
+  if (reps >= u.max) return U.maxPoints;
+  const lo = U.minPoints[sex];
+  return Math.round(lo + (U.maxPoints - lo) * (reps - u.min) / (u.max - u.min));
+}
+
+function lineaUsmc(reps, sex, u, key) {
+  const head = `Mínimo ${u.min} · máximo ${u.max}.`;
+  const text = reps < u.min ? `${head} Aún no llegas al mínimo.` : `${head} Puntaje aproximado: ${puntosUsmc(reps, sex, u)}.`;
+  return { key, label: `Infantería de Marina de EE. UU. (USMC), ${u.label} años`, text };
+}
+
+/**
+ * Clasifica dominadas (máximo continuo, agarre prono, mentón sobre la barra, sin impulso, sin límite de tiempo).
+ * No existe baremo poblacional. Hombres 18–25: estándar de estudiantes de China 2014 (1.º–2.º o 3.º–4.º año), con una
+ * línea de referencia USMC; hombres 26–30 y todas las mujeres: mínimo y máximo USMC de su edad (puntaje aproximado).
+ * Todos los hombres reciben además el percentil frente a hombres que entrenan (Thomas et al., 2020).
+ * @param {{age:number, sex:'M'|'F', reps:number}} p
+ */
+function classifyPullups({ age, sex, reps }) {
+  checkAgeSex(age, sex);
+  checkValue(reps, 'El número de dominadas');
+  const value = Math.floor(reps), flags = [], references = [], th = NORMS.pullup.thomas.M;
+  const refThomas = () => references.push({ key: 'thomas', label: 'Hombres que entrenan (Thomas et al., 2020)',
+    text: `Percentil estimado ${percentilNormal(value, th.mean, th.sd)} (n = ${th.n}).` });
+  const fila = sex === 'M' ? filaChina(age) : null;
+  if (fila) {
+    const idx = categoryIndex(value, fila.mins);
+    if (fila.outsideFrom && age >= fila.outsideFrom) flags.push('age_outside_sample');
+    flags.push('estimated_norm', 'trained_sample');
+    references.push(lineaUsmc(value, 'M', usmcPara(age, 'M'), 'usmc'));
+    refThomas();
+    return resultadoBarra('pullup', value, fila.band, CHINA_CATS, idx, Math.round(idx / 3 * 100), null,
+      repTable(CHINA_CATS, fila.mins, 'le'), siguiente(CHINA_CATS, fila.mins, idx, value), flags, references,
+      [SRC_BARRA.china, SRC_BARRA.usmc, SRC_BARRA.thomas]);
+  }
+  const u = usmcPara(age, sex);
+  const idx = value < u.min ? 0 : value < u.max ? 1 : 2;
+  const position = idx === 0 ? Math.round(25 * value / u.min) : idx === 1 ? Math.round(25 + 70 * (value - u.min) / (u.max - u.min)) : 100;
+  const mins = [u.min, u.max];
+  flags.push('military_standard', 'estimated_norm');
+  references.push({ key: 'usmc_points', label: `Puntaje USMC aproximado, ${u.label} años`, text: lineaUsmc(value, sex, u, 'x').text });
+  const sources = [SRC_BARRA.usmc];
+  if (sex === 'M') { flags.push('trained_sample'); refThomas(); sources.push(SRC_BARRA.thomas); }
+  return resultadoBarra('pullup', value, `USMC ${u.label}`, USMC_CATS, idx, position, null,
+    repTable(USMC_CATS, mins, 'ge'), siguiente(USMC_CATS, mins, idx, value), flags, references, sources);
+}
+
+/**
+ * Clasifica fondos en paralelas (máximo continuo, codos a 90° o menos, sin piernas, sin límite de tiempo).
+ * Hombres: hombres que entrenan de Thomas et al. (2020) (27,1 ± 11,2), percentil por la normal. Mujeres: no hay baremo
+ * publicado (categoría, posición y percentil en null, marca 'no_norm').
+ * @param {{age:number, sex:'M'|'F', reps:number}} p
+ */
+function classifyDips({ age, sex, reps }) {
+  checkAgeSex(age, sex);
+  checkValue(reps, 'El número de fondos');
+  const value = Math.floor(reps);
+  if (sex === 'F') {
+    return {
+      test: 'dip', value, unit: 'rep', band: NORMS.dip.noNormBand, category: null, position: null, percentile: null,
+      table: [], next: null, flags: ['no_norm'],
+      references: [{ key: 'no_norm', label: 'Sin baremo publicado', text: 'Aún no existe un baremo publicado de fondos para mujeres. FitGram guarda tu marca para comparar tu avance.' }],
+      source: { ...SRC_BARRA.thomas }, sources: [{ ...SRC_BARRA.thomas }],
+    };
+  }
+  const t = NORMS.dip.thomas.M, idx = categoryIndex(value, t.mins), pc = percentilNormal(value, t.mean, t.sd);
+  return resultadoBarra('dip', value, NORMS.dip.band, DIP_CATS, idx, Math.min(95, Math.max(5, pc)), pc,
+    repTable(DIP_CATS, t.mins, 'le'), siguiente(DIP_CATS, t.mins, idx, value), ['estimated_norm', 'trained_sample'], [], [SRC_BARRA.thomas]);
+}
+
 /* ---------------------------------------------------------------- perfil */
 
 /**
@@ -2461,7 +2644,7 @@ function fitnessProfile({ pushup = null, squat = null, plank = null } = {}) {
   return { position, label, parts, note };
 }
 
-return { NORMS, AGE_RANGE, coversAge, ageBandPushups, ageBandSquats, classifyPushups, classifySquats, plankPercentile, classifyPlank, fitnessProfile };
+return { NORMS, AGE_RANGE, coversAge, ageBandPushups, ageBandSquats, classifyPushups, classifyPullups, classifyDips, classifySquats, plankPercentile, classifyPlank, fitnessProfile };
 })();
 // ---- orientation.mjs ----
 __mods["orientation"] = (() => {
