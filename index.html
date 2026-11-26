@@ -3740,9 +3740,23 @@ function siluetaPara(test, lm, aspect, opts = {}) {
   let cx, cy, escala, mira = ideal.mira, sobrePersona = false;
   const o = Array.isArray(lm) && lm.length >= 33 ? aNombres(lm, a) : null;
   if (o && o.pelvis.ok && o.cuello.ok && dist(o.cuello, o.pelvis) > 0.03) {
-    cx = o.pelvis.x; cy = o.pelvis.y; escala = dist(o.cuello, o.pelvis);
+    escala = dist(o.cuello, o.pelvis);
     mira = mirada(o, test) || ideal.mira;
     sobrePersona = true;
+    const tob = ['tobillo_i', 'tobillo_d'].map((n) => o[n]).filter((p) => p.ok);
+    if (tob.length) {
+      // Anclada en los pies: a la altura horizontal de los tobillos y parada en el suelo de la persona (el punto
+      // visible más bajo de sus pies). Así una flexión o una plancha no se hunde bajo el suelo ni se sale de la imagen.
+      const flipI = mira === ideal.mira ? 1 : -1;
+      const pieI = medio(ideal.pts.tobillo_i, ideal.pts.tobillo_d);
+      const sueloI = Math.max(...Object.values(ideal.pts).map((p) => p.y));
+      const pies = ['tobillo_i', 'tobillo_d', 'talon_i', 'talon_d', 'punta_i', 'punta_d'].map((n) => o[n]).filter((p) => p.ok);
+      const tx = tob.reduce((s, p) => s + p.x, 0) / tob.length, suelo = Math.max(...pies.map((p) => p.y));
+      cx = tx - pieI.x * flipI * escala;
+      cy = suelo - sueloI * escala;
+    } else {
+      cx = o.pelvis.x; cy = o.pelvis.y;
+    }
   } else {
     // Al centro: que el cuerpo ideal ocupe ~60 % del alto o ~75 % del ancho, lo que llegue primero.
     const xs = Object.values(ideal.pts).map((p) => p.x), ys = Object.values(ideal.pts).map((p) => p.y);

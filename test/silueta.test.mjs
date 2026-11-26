@@ -34,12 +34,12 @@ test('la posición ideal pasa la revisión de inicio del analizador (es la misma
   }
 });
 
-test('sobre la persona: pegada a su pelvis, de su tamaño y mirando hacia su lado', () => {
+test('sobre la persona: parada en sus pies, de su tamaño y mirando hacia su lado', () => {
   const f = synthSession('squat', { noise: 0, seed: 3, reps: 1, facing: 'left' }).frames[0];
   const s = siluetaPara('squat', f.lm, f.aspect);
   assert.equal(s.sobrePersona, true);
   const pel = { x: (f.lm[23].x + f.lm[24].x) / 2, y: (f.lm[23].y + f.lm[24].y) / 2 };
-  assert.ok(Math.abs(s.puntos.pelvis.x - pel.x) < 1e-9 && Math.abs(s.puntos.pelvis.y - pel.y) < 1e-9);
+  assert.ok(Math.abs(s.puntos.pelvis.x - pel.x) < 0.02 && Math.abs(s.puntos.pelvis.y - pel.y) < 0.02, 'de pie, calza con la persona');
   const hombros = { x: (f.lm[11].x + f.lm[12].x) / 2, y: (f.lm[11].y + f.lm[12].y) / 2 };
   const troncoP = Math.hypot((hombros.x - pel.x) * f.aspect, hombros.y - pel.y);
   const troncoS = Math.hypot((s.puntos.cuello.x - s.puntos.pelvis.x) * f.aspect, s.puntos.cuello.y - s.puntos.pelvis.y);
@@ -67,4 +67,15 @@ test('se desvanece al estar en posición y no aparece durante la prueba', () => 
   assert.equal(opacidadSilueta('arming', 1000, 5000), 0);
   assert.equal(opacidadSilueta('active', null, 1000), 0);
   assert.equal(opacidadSilueta('ended', null, 1000), 0);
+});
+
+test('en el suelo (flexión sobre alguien en plancha) no se hunde bajo el suelo: queda parada en sus pies', () => {
+  const f = synthSession('plank', { noise: 0, seed: 2, seconds: 3 }).frames[5];
+  const s = siluetaPara('pushup', f.lm, f.aspect);
+  const suelo = Math.max(...[27, 28, 29, 30, 31, 32].map((i) => f.lm[i].y));
+  const masBajo = Math.max(...Object.values(s.puntos).map((p) => p.y));
+  assert.ok(Math.abs(masBajo - suelo) < 0.01, `el punto más bajo de la silueta (${masBajo.toFixed(3)}) en el suelo (${suelo.toFixed(3)})`);
+  const tob = (f.lm[27].x + f.lm[28].x) / 2, tobS = (s.puntos.tobillo_i.x + s.puntos.tobillo_d.x) / 2;
+  assert.ok(Math.abs(tob - tobS) < 0.01, 'los pies de la silueta sobre los de la persona');
+  for (const p of Object.values(s.puntos)) assert.ok(p.x > -0.05 && p.x < 1.05, 'no se sale de la imagen');
 });
