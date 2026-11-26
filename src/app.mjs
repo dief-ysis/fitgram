@@ -365,6 +365,7 @@ function show(name) {
   if (S.screen === 'run' && name !== 'run') Runner.teardown();
   S.screen = name;
   document.body.classList.toggle('run-mode', name === 'run');
+  if (name !== 'game') document.body.classList.remove('jugando');
   for (const s of SCREENS) $(`scr-${s}`).hidden = s !== name;
   const inApp = name !== 'onb' && name !== 'run';
   $('tabs').hidden = !inApp;
@@ -2706,6 +2707,7 @@ const Game = {
     $('game-setup').hidden = false;
     $('game-stage').hidden = true;
     $('game-result').hidden = true;
+    document.body.classList.remove('jugando');
     show('game');
   },
 
@@ -2754,6 +2756,7 @@ const Game = {
     $('game-setup').hidden = true;
     $('game-stage').hidden = false;
     $('game-result').hidden = true;
+    document.body.classList.add('jugando');
     this.cue(''); this.hud('', '');
     this.msg('Pidiendo la cámara…');
     try {
@@ -2818,7 +2821,8 @@ const Game = {
   /** Un paso de la máquina: calibrar abajo, calibrar arriba, jugar. */
   step(dt, wrist, shoulder) {
     if (wrist == null) {
-      this.cue('No te veo: ponte de frente, de la cadera para arriba');
+      // El juego solo mira hombros y muñecas: basta verte del pecho para arriba, con espacio para los brazos estirados.
+      this.cue('No veo tus hombros y muñecas: ponte de frente, del pecho para arriba');
       return;
     }
     const c = this.cal;
@@ -2884,6 +2888,7 @@ const Game = {
     this.stopStream();
     WakeLock.off();
     $('game-stage').hidden = true;
+    document.body.classList.remove('jugando');
     const box = $('game-result');
     box.hidden = false;
     box.innerHTML = `<div class="lbl">Fin de la partida · ${esc(Gm.FOCUS_LABEL[this.focus])}</div>
