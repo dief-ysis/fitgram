@@ -68,6 +68,8 @@ const EX_CONFIG = Object.freeze({
     lostLineSec: 0.3,        // engineering: debounce for the line rule
     lostTorso: 40,           // engineering: torso inclination above this ...
     lostTorsoSec: 1.0,       // CONTRACT: ... for > 1 s = no longer horizontal
+    lostArmTilt: 45,         // ingeniería (25-nov-2026, video de David): acostado en el suelo, la línea y el torso siguen rectos, pero
+    lostArmSec: 1.0,         // el brazo pasa de casi vertical (5-30°) a 60-85°: sobre 45° durante 1 s = perdió la posición
     startTimeoutSec: 30,     // engineering: position never held within this after start() -> end 'position_lost'
   }),
   msg: Object.freeze({
@@ -327,7 +329,7 @@ function repMachine(S, test) {
 function plankMachine(S) {
   const c = EX_CONFIG.plank;
   const m = { active: false, holdStart: null, holdStartT: 0, bad: false, badSince: null, okSince: null,
-    pend: null, fails: 0, lostLine: null, lostTorso: null, lostLineT: null, lostTorsoT: null };
+    pend: null, fails: 0, lostLine: null, lostTorso: null, lostLineT: null, lostTorsoT: null, lostArm: null, lostArmT: null };
   const settle = (ok, t) => {              // resolve the pending corrective cue
     const p = m.pend;
     m.pend = null; S.sticky = null;
@@ -359,9 +361,12 @@ function plankMachine(S) {
       m.lostTorso = finite(sm.torso) && sm.torso > c.lostTorso ? (m.lostTorso ?? eff) : null;
       m.lostLineT = m.lostLine == null ? null : (m.lostLineT ?? t);
       m.lostTorsoT = m.lostTorso == null ? null : (m.lostTorsoT ?? t);
-      if ((m.lostLine != null && eff - m.lostLine >= c.lostLineSec) || (m.lostTorso != null && eff - m.lostTorso >= c.lostTorsoSec)) {
+      m.lostArm = finite(sm.tilt) && sm.tilt > c.lostArmTilt ? (m.lostArm ?? eff) : null;
+      m.lostArmT = m.lostArm == null ? null : (m.lostArmT ?? t);
+      if ((m.lostLine != null && eff - m.lostLine >= c.lostLineSec) || (m.lostTorso != null && eff - m.lostTorso >= c.lostTorsoSec)
+        || (m.lostArm != null && eff - m.lostArm >= c.lostArmSec)) {
         // The hold ended when the position started to be lost, not when the loss was confirmed.
-        const lossT = Math.min(...[m.lostLineT, m.lostTorsoT].filter((x) => x != null));
+        const lossT = Math.min(...[m.lostLineT, m.lostTorsoT, m.lostArmT].filter((x) => x != null));
         S.value = r1(Math.max(0, (lossT - m.holdStartT) / 1000));
         S.end('position_lost', t);
         return;

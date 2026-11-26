@@ -663,13 +663,13 @@ function fuseTilt(sensorTilt, imageTilt) {
  * @returns {object} new PoseFrame
  */
 /**
- * Quarter turn (±90°) of a phone on its side with the screen rotation locked: the picture arrives turned and the
- * analyzers would see a lying body standing up. Returns ±90 when |roll| is within maxAutoDeg of a quarter turn and
- * the camera is not flat; otherwise 0. 180° stays refused (a wrong screen angle looks just like it).
+ * Cuarto de vuelta (±90°) de un teléfono de costado con la rotación bloqueada: la imagen llega girada y los
+ * analizadores verían de pie un cuerpo acostado. Devuelve ±90 si |roll| está a maxAutoDeg o menos de un cuarto de
+ * vuelta y la cámara no está acostada; si no, 0. 180° sigue rechazado (un ángulo de pantalla equivocado se ve igual).
  */
 function quarterTurn(tilt) {
-  // Only the sensors may say the phone is on its side (a sideways picture can just be the wrong posture); after
-  // fusion the picture may still fix the sign, as long as a sensor took part (reason other than 'image_only').
+  // Solo los sensores pueden decir que el teléfono está de costado (una imagen de lado puede ser solo una mala
+  // postura); tras la fusión la imagen puede corregir el signo, siempre que un sensor haya participado.
   const sensorSaw = tilt?.source === 'sensor' || (typeof tilt?.reason === 'string' && tilt.reason !== 'image_only');
   if (!tilt || !sensorSaw || !fin(tilt.roll)) return 0;
   if (fin(tilt.pitch) && Math.abs(tilt.pitch) > OC.flatPitchDeg) return 0;
@@ -678,8 +678,8 @@ function quarterTurn(tilt) {
 }
 
 /**
- * How upright a picture looks: elbows and ankles below nose and shoulders (y grows downward), true in the start
- * position of every test (squat, push-up, plank). Larger is more upright.
+ * Qué tan derecha se ve la imagen: codos y tobillos más abajo que nariz y hombros (y crece hacia abajo), cierto en la
+ * posición inicial de las tres pruebas (sentadilla, flexión, plancha). Más grande = más derecha.
  */
 function uprightScore(lm) {
   const y = (ids) => { const v = ids.map((i) => lm?.[i]?.y).filter(fin); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN; };
@@ -692,10 +692,10 @@ function correctFrame(frame, tilt, opts = {}) {
   if (!frame) return frame;
   const q = opts.quarterOnly ? quarterTurn(tilt) : (isCorrectable(tilt) ? 0 : quarterTurn(tilt));
   if (q) {
-    // Phone on its side: turn the picture by the whole roll (or only the quarter when the tilt correction is off).
-    // The sign of the sensor roll is not trusted (Safari swaps 90/270): the posture decides (see uprightScore).
+    // Teléfono de costado: se gira la imagen por todo el roll (o solo el cuarto si la corrección está apagada).
+    // No se confía en el signo del sensor (Safari cambia 90/270): decide la postura (ver uprightScore).
     const roll = opts.quarterOnly ? q : tilt.roll;
-    const a = rotateFrame(frame, roll, null, opts), b = rotateFrame(frame, -roll, null, opts);   // swapped convention mirrors the roll
+    const a = rotateFrame(frame, roll, null, opts), b = rotateFrame(frame, -roll, null, opts);   // la convención cambiada refleja el roll
     const out = uprightScore(b.lm) > uprightScore(a.lm) ? b : a;
     return { ...out, tilt, corrected: true, quarter: true };
   }
@@ -703,14 +703,14 @@ function correctFrame(frame, tilt, opts = {}) {
   return { ...rotateFrame(frame, tilt.roll, tilt.pitch, opts), tilt, corrected: true };
 }
 
-/** Rotates a frame by -roll (and pitch, when finite). A quarter turn swaps the picture sides, so `aspect` follows. */
+/** Gira un cuadro en -roll (y pitch, si se conoce). Un cuarto de vuelta cambia los lados de la imagen, y `aspect` también. */
 function rotateFrame(frame, rollDeg, pitchDeg, opts = {}) {
   const aspect = fin(frame.aspect) && frame.aspect > 0 ? frame.aspect : 1;
   const tilt = { roll: rollDeg, pitch: pitchDeg };
   const r = tilt.roll * RAD, c = Math.cos(r), s = Math.sin(r);
   const hasPitch = fin(tilt.pitch), p = hasPitch ? tilt.pitch * RAD : 0, cp = Math.cos(p), sp = Math.sin(p);
   const warp = (opts.pitch2D ?? OC.pitch2D) && hasPitch;
-  // Sides of the turned picture, in image heights: past 45° the long side changes axis.
+  // Lados de la imagen girada, en altos de imagen: pasado 45° el lado largo cambia de eje.
   const side = Math.abs(Math.sin(r)) > Math.SQRT1_2, outW = side ? 1 : aspect, outH = side ? aspect : 1;
   const f = (Math.max(aspect, 1) / 2) / Math.tan(((opts.longFovDeg ?? OC.longFovDeg) * RAD) / 2);   // focal length in image heights
   const lm = Array.isArray(frame.lm) ? frame.lm.map((q) => {
