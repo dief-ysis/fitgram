@@ -481,6 +481,7 @@ function renderHub() {
 function placementSVG(test) {
   // Flexiones y plancha: vista desde arriba. De costado, el teléfono quedaba
   // alineado con los pies y parecía que la cámara miraba a la persona desde atrás.
+  if (test === 'pullup' || test === 'dip') return placementBarraSVG(test);
   if (test !== 'squat') return placementTopSVG(test);
   // Sentadillas: vista de costado, teléfono en el suelo a la izquierda.
   const person = `<circle cx="262" cy="26" r="8"/><path d="M262 34 L262 68 M262 42 L284 42 M262 68 L264 86 L262 104 L274 104 M262 68 L258 86 L256 104 L268 104"/>`; // de pie, de perfil, brazos al frente
@@ -494,6 +495,29 @@ function placementSVG(test) {
     <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${person}</g>
     <path d="M34 116 L262 116 M34 112 L34 120 M262 112 L262 120" stroke="var(--muted)" stroke-width="1"/>
     <text x="148" y="112" text-anchor="middle" style="font:600 13px var(--font-cd);fill:currentColor">2,5–3 m</text>
+  </svg>`;
+}
+
+/**
+ * Pruebas con barra: vista de costado, teléfono en vertical a la altura de la cintura (sobre un apoyo), a 2,5–3 m.
+ * Dominadas: colgado de la barra fija. Fondos: en el apoyo de las paralelas.
+ */
+function placementBarraSVG(test) {
+  const persona = test === 'pullup'
+    // barra fija con sus postes y la persona colgada, brazos estirados arriba
+    ? `<path d="M226 8 L300 8 M232 8 L232 104 M294 8 L294 104" stroke-width="1.4"/>
+       <circle cx="263" cy="30" r="7"/><path d="M257 8 L259 26 M269 8 L267 26 M263 37 L263 70 M263 70 L265 88 L263 100"/>`
+    // paralelas con sus patas y la persona apoyada, brazos estirados abajo, rodillas dobladas
+    : `<path d="M222 58 L304 58 M230 58 L230 104 M296 58 L296 104" stroke-width="1.4"/>
+       <circle cx="263" cy="22" r="7"/><path d="M263 29 L263 62 M263 36 L259 58 M263 36 L267 58 M263 62 L256 80 L244 86"/>`;
+  return `<svg viewBox="0 0 326 124" role="img" aria-label="Teléfono en vertical a la altura de la cintura, a unos 2,5 a 3 metros, viéndote de lado ${test === 'pullup' ? 'colgado de la barra' : 'en las paralelas'}">
+    <line x1="0" y1="104" x2="326" y2="104" stroke="currentColor" stroke-width="1"/>
+    <path d="M24 104 L24 66 M14 104 L34 104" stroke="var(--muted)" stroke-width="1.5"/>
+    <rect x="18" y="48" width="12" height="20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <path d="M30 54 L222 0 M30 62 L222 108" fill="none" stroke="var(--accent)" stroke-width="1" stroke-dasharray="4 4"/>
+    <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${persona}</g>
+    <path d="M24 116 L263 116 M24 112 L24 120 M263 112 L263 120" stroke="var(--muted)" stroke-width="1"/>
+    <text x="144" y="112" text-anchor="middle" style="font:600 13px var(--font-cd);fill:currentColor">2,5–3 m</text>
   </svg>`;
 }
 
