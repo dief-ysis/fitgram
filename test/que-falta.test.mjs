@@ -33,3 +33,11 @@ test('entradas raras no rompen', () => {
   assert.equal(queFalta({ j2: {} }, 'squat').startsWith('No veo tus hombros'), true);
   assert.equal(queFalta(cuerpo(), 'otra'), null);
 });
+
+test('dominadas: la cara (nariz) se nombra bien, aunque no tenga lado', () => {
+  const c = cuerpo(['ankle']);
+  c.j2.nose = { x: 0.5, y: 0.2, v: 0.1 };
+  assert.equal(queFalta(c, 'pullup'), 'No veo tu cara: aléjate un poco o sube el teléfono');
+  c.j2.nose.v = 0.95;
+  assert.equal(queFalta(c, 'pullup'), null, 'las dominadas no usan los tobillos');
+});

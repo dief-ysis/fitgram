@@ -107,8 +107,11 @@ const H_SIDE = Object.freeze(H36M_NAMES.map((_, i) =>
   (H36M.left.includes(i) ? 'left' : H36M.right.includes(i) ? 'right' : 'axial')));
 
 // Nombres de articulaciones que entrega toJoints() (CONTRACT `Joints`).
+// Las orejas, las comisuras de la boca y los nudillos del índice y el meñique se agregaron para las pruebas con barra
+// (v1 de José, 26-nov-2026): la boca da el mentón de las dominadas y los nudillos, la línea de la barra.
 const JOINT_NAMES = Object.freeze([
-  'nose', 'l_shoulder', 'r_shoulder', 'l_elbow', 'r_elbow', 'l_wrist', 'r_wrist', 'l_hip', 'r_hip',
+  'nose', 'l_ear', 'r_ear', 'mouth_l', 'mouth_r', 'l_shoulder', 'r_shoulder', 'l_elbow', 'r_elbow', 'l_wrist', 'r_wrist',
+  'l_index', 'r_index', 'l_pinky', 'r_pinky', 'l_hip', 'r_hip',
   'l_knee', 'r_knee', 'l_ankle', 'r_ankle', 'l_heel', 'r_heel', 'l_foot', 'r_foot',
 ]);
 

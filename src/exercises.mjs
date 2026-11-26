@@ -72,6 +72,50 @@ const EX_CONFIG = Object.freeze({
     lostArmSec: 1.0,         // el brazo pasa de casi vertical (5-30°) a 60-85°: sobre 45° durante 1 s = perdió la posición
     startTimeoutSec: 30,     // ingeniería: si no sostiene la posición en este tiempo después de start() -> termina 'position_lost'
   }),
+  // Pruebas con barra, traídas de fitgram-v1 de José (26-nov-2026). Las unidades de largo son troncos (hombro-cadera).
+  pullup: Object.freeze({
+    topElbow: 155,           // protocolo (Thomas 2020 / USMC): brazos completamente extendidos colgado; mitad de la banda 150-160
+    descentElbow: 140,       // ingeniería: histéresis (como en flexiones), la repetición parte cuando el codo baja de esto
+    attemptElbow: 130,       // ingeniería: un tirón cuyo codo nunca baja de esto (~10 cm de subida) es un encogimiento, no se juzga
+    chinExtend: 1.0,         // ingeniería: mentón = boca + 1,0 x (boca - nariz) (el mentón queda bajo la boca más o menos lo que
+                             // la boca queda bajo la punta de la nariz; sigue a la cabeza cuando se inclina hacia atrás)
+    noseChin: 0.2,           // ingeniería: sin boca visible -> mentón = nariz + 0,2 troncos (~10 cm) más abajo
+    chinTol: 0.04,           // ingeniería: el mentón puede quedar 0,04 troncos (~2 cm) bajo la línea de la barra: error de la
+                             // estimación del mentón y de los nudillos como línea de la barra (protocolo: el mentón pasa la barra)
+    hangMin: 0.5,            // inicio: manos >= 0,5 troncos (~25 cm) sobre los hombros = colgado de la barra (colgado ~1,2)
+    stillSec: 1.0,           // protocolo "colgado quieto": check() mira el último segundo ...
+    stillSwing: 0.2,         // ... y pide menos de 0,2 troncos (~10 cm) de recorrido de la cadera respecto de las manos
+    kipHipRange: 35,         // protocolo (sin impulso): rango del ángulo de cadera en una repetición sobre esto = subir rodillas
+                             // (una repetición estricta flexiona la cadera 10-20° de contrapeso; un kip, 50+)
+    kipKneeRange: 45,        // protocolo: rango del ángulo de rodilla sobre esto = patada (piernas dobladas o rectas quedan quietas)
+    kipSwing: 0.4,           // protocolo (sin balanceo): recorrido horizontal de la cadera respecto de las manos sobre 0,4 troncos
+                             // (~20 cm); una repetición estricta mueve la cadera < 10 cm
+    offBar: 0.3,             // posición perdida (soltó): manos a más de 0,3 troncos (~15 cm) de la línea de la barra fijada en
+                             // reposo; los nudillos se mueven < 5 cm mientras agarran
+    handsLow: 0.3,           // posición perdida (no cuelga): manos más de 0,3 troncos bajo los hombros (arriba con el pecho a la
+                             // barra quedan a lo más ~0,2 bajo; de pie con los brazos abajo ~1,1)
+    lostSec: 0.5,            // ingeniería: filtro de rebote de las reglas de posición perdida (un error de un punto dura menos)
+    barFollowSec: 1.0,       // ingeniería: en reposo la línea de la barra sigue el desvío lento de las manos con esta constante
+    partialRise: 30, partialDrop: 12, partialHoldSec: 0.25,   // ingeniería: regla de repetición incompleta ("Extiende los brazos abajo")
+    pauseSec: 4, firstRepSec: 15, maxRepSec: 8, maxInvalidInRow: 2,   // reglas del CONTRACT de las pruebas de repeticiones; descansar
+                             // colgado más de 4 s rompe el protocolo de "máximo continuo"
+  }),
+  dip: Object.freeze({
+    topElbow: 155,           // protocolo (Thomas 2020): codos completamente extendidos arriba; mitad de la banda 150-160
+    descentElbow: 140,       // ingeniería: histéresis (como en flexiones)
+    attemptElbow: 120,       // ingeniería: un fondo que nunca baja de esto (cuarto de fondo, acomodarse en el apoyo) no se juzga;
+                             // 5° bajo flexiones de margen contra el ruido de los ángulos de mundo; los fondos fallidos se quedan
+                             // en ~105-110° y sí se juzgan, y los cuartos de fondo repetidos terminan por la regla de pausa de 4 s
+    bottomElbow: 95,         // protocolo: codo a 90° o menos; +5° de tolerancia por el error del ángulo (como en flexiones)
+    shoulderElbowTol: 0.05,  // protocolo alternativo: hombro hasta la altura del codo, dentro de 0,05 troncos (~2,5 cm, brazo a
+                             // ~5° de la horizontal)
+    startTorsoMin: 55,       // inicio: torso a 35° o menos de la vertical (derecho en el apoyo; abajo se inclina 20-30°)
+    supportMin: 0.8,         // inicio: manos >= 0,8 troncos (~40 cm) bajo los hombros = brazos estirados sobre las barras
+    kickKneeRange: 40,       // protocolo (sin ayuda de piernas): rango del ángulo de rodilla sobre esto = patada o impulso del suelo
+    offBar: 0.3, lostSec: 0.5, barFollowSec: 1.0,   // como en dominadas: manos fuera de la línea > 0,5 s = se bajó de las barras
+    partialRise: 30, partialDrop: 12, partialHoldSec: 0.25,   // ingeniería: regla de repetición incompleta ("Extiende los brazos arriba")
+    pauseSec: 4, firstRepSec: 15, maxRepSec: 8, maxInvalidInRow: 2,   // reglas del CONTRACT (descansar en el apoyo > 4 s = pausa)
+  }),
   msg: Object.freeze({
     good: '¡Bien!', lower: 'Baja más', extend: 'Extiende los brazos', hipLow: 'Cadera caída', hipHigh: 'Cadera alta',
     depth: 'Baja hasta muslos paralelos', standUp: 'Sube completo', raiseHip: 'Sube la cadera', lowerHip: 'Baja la cadera',
@@ -79,8 +123,16 @@ const EX_CONFIG = Object.freeze({
     pushupPos: 'Ponte en posición de flexiones', standTall: 'Ponte de pie, erguido', kneesStraight: 'Estira las rodillas',
     plankPos: 'Apóyate en antebrazos y puntas de los pies', plankArms: 'Apoya los antebrazos bajo los hombros',
     ready: '¡Bien! Mantén la posición', go: '¡Comienza!',
+    pullupPos: 'Cuélgate de la barra con los brazos extendidos', chinOver: 'Pasa el mentón sobre la barra',
+    extendDown: 'Extiende los brazos abajo', noSwing: 'Sin balanceo',
+    dipPos: 'Apóyate en las paralelas con los brazos extendidos', dipDepth: 'Baja hasta 90° de codo',
+    extendUp: 'Extiende los brazos arriba', noKick: 'Sin impulso de piernas',
     end: Object.freeze({ manual: 'Prueba terminada', technique: 'Fin: técnica no válida', pause: 'Fin: pausa muy larga',
       position_lost: 'Fin: perdiste la posición', not_visible: 'Fin: no te veo' }),
+    endByTest: Object.freeze({   // textos de término propios de cada prueba (mandan sobre `end`)
+      pullup: Object.freeze({ position_lost: 'Fin: soltaste la barra' }),
+      dip: Object.freeze({ position_lost: 'Fin: bajaste de las paralelas' }),
+    }),
   }),
 });
 
@@ -122,10 +174,16 @@ function makeSmoother() {
 // ---- Medición: señales de cada cuadro para el lado del cuerpo elegido ------------------------------------------
 const PARTS = ['shoulder', 'elbow', 'wrist', 'hip', 'knee', 'ankle'];
 const SIGNALS = ['elbow', 'knee', 'hip', 'line', 'torso', 'tilt', 'dev', 'hipKnee', 'hipH', 'sideView'];
-const KEY_JOINTS = {
+// Las pruebas con barra agregan: handY (línea de apoyo en la barra), chinY (unidades de j2), tl (largo del tronco) y
+// handSh / hipBar / shEl (en troncos).
+const BAR_SIGNALS = [...SIGNALS, 'handY', 'chinY', 'tl', 'handSh', 'hipBar', 'shEl'];
+const BAR_TESTS = new Set(['pullup', 'dip']);
+const KEY_JOINTS = {   // partes de un lado ('shoulder' -> 'l_shoulder' | 'r_shoulder') o el punto de la cara 'nose'
   pushup: { toes: ['shoulder', 'elbow', 'wrist', 'hip', 'ankle'], knees: ['shoulder', 'elbow', 'wrist', 'hip', 'knee'] },
   squat: ['shoulder', 'hip', 'knee', 'ankle'],
   plank: ['shoulder', 'elbow', 'hip', 'knee', 'ankle'],
+  pullup: ['shoulder', 'elbow', 'wrist', 'hip', 'knee', 'nose'],   // la cara da el mentón
+  dip: ['shoulder', 'elbow', 'wrist', 'hip', 'knee'],
 };
 
 /** Visibilidad media de hombro/codo/muñeca/cadera/rodilla/tobillo de un lado ('l_' | 'r_'). */
@@ -151,7 +209,10 @@ function pickSide(j2, prev) {
  */
 function measure(jn, p, test, variant) {
   const j2 = jn.j2, j3 = jn.j3 || null, g = (n) => j2[p + n] || null;
-  const vs = (test === 'pushup' ? KEY_JOINTS.pushup[variant] : KEY_JOINTS[test]).map((n) => (g(n) ? g(n).v : 0));
+  const vs = (test === 'pushup' ? KEY_JOINTS.pushup[variant] : KEY_JOINTS[test]).map((n) => {
+    const q = n === 'nose' ? j2.nose : g(n);
+    return q ? q.v : 0;
+  });
   const good = vs.reduce((a, b) => a + b, 0) / vs.length >= CM.visMean && Math.min(...vs) >= CM.visMinJoint;
   const use3 = (...ns) => j3 && ns.every((n) => j3[p + n] && j3[p + n].v >= CM.visMean);
   const ang = (a, b, c) => {
@@ -175,7 +236,33 @@ function measure(jn, p, test, variant) {
   if (j2.l_shoulder && j2.r_shoulder && S && H && Math.hypot(S.x - H.x, S.y - H.y) > 1e-6) {
     sig.sideView = Math.hypot(j2.l_shoulder.x - j2.r_shoulder.x, j2.l_shoulder.y - j2.r_shoulder.y) / Math.hypot(S.x - H.x, S.y - H.y);
   }
+  if (BAR_TESTS.has(test)) Object.assign(sig, barSignals(j2, S, H, E, test));
   return { good, sig };
+}
+
+/**
+ * Señales de las pruebas con barra (solo j2, y hacia abajo = gravedad). La barra no se detecta: su línea es el punto de
+ * apoyo de las manos (promedio de los nudillos del índice y del meñique, si no la muñeca) promediado entre AMBAS manos,
+ * porque la mano cercana está más cerca de la cámara y una cámara bajo la barra la muestra más arriba que la lejana; su
+ * promedio queda en el plano medio, como la cara. chinY = boca + chinExtend x (boca - nariz) (solo nariz: + noseChin
+ * troncos). tl = largo del tronco (escala). handSh = (hombro - manos) / tl, + = manos sobre los hombros;
+ * hipBar = (cadera - manos).x / tl (balanceo); shEl = (hombro - codo).y / tl, + = hombro bajo el codo.
+ */
+function barSignals(j2, S, H, E, test) {
+  const ok = (q) => q && q.v >= CM.visMinJoint && finite(q.x) && finite(q.y);
+  const mean = (qs) => (qs.length ? { x: qs.reduce((a, q) => a + q.x, 0) / qs.length, y: qs.reduce((a, q) => a + q.y, 0) / qs.length } : null);
+  const handOf = (s) => mean([j2[s + 'index'], j2[s + 'pinky']].filter(ok)) ?? (ok(j2[s + 'wrist']) ? j2[s + 'wrist'] : null);
+  const hand = mean([handOf('l_'), handOf('r_')].filter(Boolean));
+  const tl = S && H && Math.hypot(S.x - H.x, S.y - H.y) > 1e-6 ? Math.hypot(S.x - H.x, S.y - H.y) : null;
+  const nose = ok(j2.nose) ? j2.nose : null, mouth = mean([j2.mouth_l, j2.mouth_r].filter(ok));
+  const c = EX_CONFIG.pullup;
+  let chinY = null;
+  if (test === 'pullup' && nose && mouth) chinY = mouth.y + c.chinExtend * (mouth.y - nose.y);
+  else if (test === 'pullup' && nose && tl) chinY = nose.y + c.noseChin * tl;
+  return { handY: hand ? hand.y : null, chinY, tl,
+    handSh: hand && S && tl ? (S.y - hand.y) / tl : null,
+    hipBar: hand && H && tl ? (H.x - hand.x) / tl : null,
+    shEl: S && E && tl ? (S.y - E.y) / tl : null };
 }
 
 // ---- Revisión de la posición inicial (la usan check() y la espera de la plancha) ------------------------------
@@ -212,7 +299,27 @@ function plankIssue(sm) {
   return sm.line < c.lineOk ? hipMsg(sm) : null;
 }
 
-const ISSUE = { pushup: pushupIssue, squat: squatIssue, plank: plankIssue };
+/** Primer problema del inicio de dominadas (colgado quieto, de lado), o null; swing = recorrido de la cadera en el último stillSec. */
+function pullupIssue(sm, variant, swing) {
+  const c = EX_CONFIG.pullup;
+  if (!needs(sm, 'elbow', 'handSh')) return MSG.notVisible;
+  if (finite(sm.sideView) && sm.sideView > CM.sideViewMax) return MSG.sideOn;
+  if (sm.handSh < c.hangMin) return MSG.pullupPos;
+  if (sm.elbow < c.topElbow) return MSG.extend;
+  return finite(swing) && swing > c.stillSwing ? MSG.noSwing : null;
+}
+
+/** Primer problema del inicio de fondos (derecho en el apoyo de las paralelas, brazos estirados, de lado), o null. */
+function dipIssue(sm) {
+  const c = EX_CONFIG.dip;
+  if (!needs(sm, 'elbow', 'handSh', 'torso')) return MSG.notVisible;
+  if (finite(sm.sideView) && sm.sideView > CM.sideViewMax) return MSG.sideOn;
+  if (sm.torso < c.startTorsoMin || sm.handSh > -c.supportMin * 0.5) return MSG.dipPos;   // no está derecho / manos no bajo los hombros
+  if (sm.elbow < c.topElbow || sm.handSh > -c.supportMin) return MSG.extend;
+  return null;
+}
+
+const ISSUE = { pushup: pushupIssue, squat: squatIssue, plank: plankIssue, pullup: pullupIssue, dip: dipIssue };
 
 // ---- Núcleo: estado común, eventos, avisos --------------------------------------------------------------------
 function createCore(test, variant) {
@@ -253,21 +360,44 @@ const REP_SPECS = {
     depth: (sm, c) => (finite(sm.hipKnee) ? sm.hipKnee >= -c.parallelTol : finite(sm.knee) && sm.knee <= c.bottomKnee),
     hipDrop: true,
     quality: () => null },
+  // Pruebas con barra (v1 de José): el reposo ("arriba" de la máquina) es el brazo extendido (colgado / apoyo); la
+  // repetición sale de ahí.
+  pullup: { sig: 'elbow', descent: 'descentElbow', attempt: 'attemptElbow', msgDepth: MSG.chinOver, msgPartial: MSG.extendDown,
+    isTop: (sm, c) => finite(sm.elbow) && sm.elbow >= c.topElbow,
+    depth: (sm, c, ctx) => finite(sm.chinY) && finite(sm.tl) && finite(ctx.bar) && (ctx.bar - sm.chinY) / sm.tl >= -c.chinTol,
+    ranges: ['hip', 'knee', 'hipBar'],
+    quality: (cyc, c) => (span(cyc, 'hip') > c.kipHipRange || span(cyc, 'knee') > c.kipKneeRange || span(cyc, 'hipBar') > c.kipSwing
+      ? MSG.noSwing : null) },
+  dip: { sig: 'elbow', descent: 'descentElbow', attempt: 'attemptElbow', msgDepth: MSG.dipDepth, msgPartial: MSG.extendUp,
+    isTop: (sm, c) => finite(sm.elbow) && sm.elbow >= c.topElbow,
+    depth: (sm, c) => (finite(sm.elbow) && sm.elbow <= c.bottomElbow) || (finite(sm.shEl) && sm.shEl >= -c.shoulderElbowTol),
+    ranges: ['knee'],
+    quality: (cyc, c) => (span(cyc, 'knee') > c.kickKneeRange ? MSG.noKick : null) },
 };
+/** Rango (máx - mín) de la señal k durante un ciclo; 0 si nunca se vio. */
+const span = (cyc, k) => (cyc.rng[k] ? cyc.rng[k][1] - cyc.rng[k][0] : 0);
 
 /**
  * Una repetición = dejar arriba (señal < descent), pasar por el fondo, volver arriba. Un ciclo completo es válido si llegó
- * a la profundidad y (flexiones) mantuvo la línea del cuerpo; una subida que vuelve a caer antes de arriba es incompleta.
+ * a la profundidad y (flexiones) mantuvo la línea del cuerpo / (barra) no hubo balanceo ni ayuda de piernas; una subida
+ * que vuelve a caer antes de arriba es incompleta. `ctx` lleva el contexto de la prueba para la regla de profundidad
+ * (barra: ctx.bar, la línea de la barra). Devuelve { voidCycle, cycle, timers, step (= cycle + timers), started, atRest }.
  */
-function repMachine(S, test) {
-  const spec = REP_SPECS[test], c = EX_CONFIG[test], m = { st: 'ready', cyc: null, lastEff: null, streak: 0, dropSince: null, topHipH: null };
+function repMachine(S, test, ctx = {}) {
+  const spec = REP_SPECS[test], c = EX_CONFIG[test];
+  const m = { st: 'ready', cyc: null, lastEff: null, streak: 0, dropSince: null, topHipH: null, started: false };
   const newCycle = (sm) => ({ min: sm[spec.sig], peak: sm[spec.sig], depthOk: false, lineSince: null, lineBad: false, dev: 0,
-    startEff: S.eff, hip0: m.topHipH, hipMin: finite(sm.hipH) ? sm.hipH : null });
+    startEff: S.eff, hip0: m.topHipH, hipMin: finite(sm.hipH) ? sm.hipH : null, rng: {} });
   const track = (cyc, sm) => {
     const v = sm[spec.sig];
     if (finite(sm.hipH)) cyc.hipMin = cyc.hipMin == null ? sm.hipH : Math.min(cyc.hipMin, sm.hipH);
     if (v < cyc.min) { cyc.min = v; cyc.peak = v; } else cyc.peak = Math.max(cyc.peak, v);
-    if (spec.depth(sm, c)) cyc.depthOk = true;
+    if (spec.depth(sm, c, ctx)) cyc.depthOk = true;
+    for (const k of spec.ranges || []) {
+      if (!finite(sm[k])) continue;
+      const r = cyc.rng[k];
+      if (r) { r[0] = Math.min(r[0], sm[k]); r[1] = Math.max(r[1], sm[k]); } else cyc.rng[k] = [sm[k], sm[k]];
+    }
     if (spec.line && finite(sm.line)) {          // sostenido, no una sola muestra ruidosa
       if (sm.line >= (S.variant === 'knees' ? c.minLineKnees : c.minLine)) cyc.lineSince = null;
       else {
@@ -296,31 +426,74 @@ function repMachine(S, test) {
       m.st = 'ready'; m.cyc = null; m.dropSince = null;
       if (m.lastEff != null) m.lastEff = S.eff;
     },
-    step(sm, t) {
+    cycle(sm, t) {
       const v = sm[spec.sig];
-      if (finite(v)) {
-        if (m.st === 'ready') { if (spec.isTop(sm, c)) { m.st = 'top'; if (finite(sm.hipH)) m.topHipH = sm.hipH; } }
-        else if (m.st === 'top') {
-          if (v < c[spec.descent]) { m.st = 'down'; m.cyc = newCycle(sm); track(m.cyc, sm); }
-          else if (finite(sm.hipH) && spec.isTop(sm, c)) m.topHipH = sm.hipH;
-        }
-        else {
-          track(m.cyc, sm);
-          if (spec.isTop(sm, c)) { finish(m.cyc, false, t); m.st = 'top'; m.dropSince = null; if (finite(sm.hipH)) m.topHipH = sm.hipH; }
-          else if (m.cyc.peak - m.cyc.min >= c.partialRise && v <= m.cyc.peak - c.partialDrop) {
-            m.dropSince ??= S.eff;
-            if (S.eff - m.dropSince >= c.partialHoldSec) {
-              finish(m.cyc, true, t);
-              m.cyc = newCycle(sm); track(m.cyc, sm); m.dropSince = null;      // la recaída es el inicio de la próxima bajada
-            }
-          } else m.dropSince = null;
-        }
+      if (!finite(v)) return;
+      if (m.st === 'ready') { if (spec.isTop(sm, c)) { m.st = 'top'; if (finite(sm.hipH)) m.topHipH = sm.hipH; } }
+      else if (m.st === 'top') {
+        if (v < c[spec.descent]) { m.st = 'down'; m.started = true; m.cyc = newCycle(sm); track(m.cyc, sm); }
+        else if (finite(sm.hipH) && spec.isTop(sm, c)) m.topHipH = sm.hipH;
       }
-      if (S.phase === 'ended') return;
+      else {
+        track(m.cyc, sm);
+        if (spec.isTop(sm, c)) { finish(m.cyc, false, t); m.st = 'top'; m.dropSince = null; if (finite(sm.hipH)) m.topHipH = sm.hipH; }
+        else if (m.cyc.peak - m.cyc.min >= c.partialRise && v <= m.cyc.peak - c.partialDrop) {
+          m.dropSince ??= S.eff;
+          if (S.eff - m.dropSince >= c.partialHoldSec) {
+            finish(m.cyc, true, t);
+            m.cyc = newCycle(sm); track(m.cyc, sm); m.dropSince = null;      // la recaída es el inicio de la próxima bajada
+          }
+        } else m.dropSince = null;
+      }
+    },
+    timers(t) {
       const since = m.lastEff ?? S.startEff, limit = m.lastEff == null ? c.firstRepSec : c.pauseSec;
       // No se permite descansar, pero una repetición lenta que sigue moviéndose no es pausa (hasta maxRepSec).
       const midRep = m.st === 'down' && m.cyc && S.eff - m.cyc.startEff <= c.maxRepSec;
       if (S.eff - since > limit && !midRep) S.end('pause', t);
+    },
+    step(sm, t) {
+      this.cycle(sm, t);
+      if (S.phase !== 'ended') this.timers(t);
+    },
+    started: () => m.started,          // ya partió al menos una repetición
+    atRest: () => m.st === 'top',      // en la posición de reposo entre repeticiones
+  };
+}
+
+// ---- Pruebas con barra (dominadas, fondos): máquina de ciclos + línea de la barra + "soltó la barra" ---------------
+/**
+ * La barra está fija en la imagen (corregida por inclinación), así que su línea es la altura de las manos en reposo: se
+ * fija en los primeros cuadros, se vuelve a fijar en cada cuadro de reposo hasta que parte la primera repetición (subirse,
+ * cambiar el agarre) y después solo puede desviarse despacio en reposo. Manos fuera de esa línea (o, en dominadas, bajo
+ * los hombros) durante lostSec = soltó / se bajó -> 'position_lost'; mientras tanto la repetición en curso queda
+ * congelada, así que soltar nunca completa una repetición. (Traída de fitgram-v1 de José, 26-nov-2026.)
+ */
+function barMachine(S, test) {
+  const c = EX_CONFIG[test], ctx = { bar: null }, rep = repMachine(S, test, ctx), m = { offSince: null, lastEff: null };
+  const rest = (sm) => finite(sm.elbow) && sm.elbow >= c.topElbow && finite(sm.handSh) && (test === 'pullup'
+    ? sm.handSh >= c.hangMin
+    : sm.handSh <= -c.supportMin && finite(sm.torso) && sm.torso >= c.startTorsoMin);
+  return {
+    voidCycle: rep.voidCycle,
+    step(sm, t) {
+      const dt = m.lastEff == null ? 0 : S.eff - m.lastEff, hy = sm.handY, tl = sm.tl;
+      m.lastEff = S.eff;
+      const scaled = finite(hy) && finite(tl) && tl > 1e-6;
+      if (scaled) {
+        if (ctx.bar == null || (!rep.started() && rest(sm))) ctx.bar = hy;
+        else if (rep.atRest() && rest(sm) && Math.abs(hy - ctx.bar) < c.offBar * tl) ctx.bar += (hy - ctx.bar) * Math.min(1, dt / c.barFollowSec);
+      }
+      const off = scaled && ((rep.started() && Math.abs(hy - ctx.bar) > c.offBar * tl) ||
+        (test === 'pullup' && finite(sm.handSh) && sm.handSh < -c.handsLow));
+      if (off) {
+        m.offSince ??= S.eff;
+        if (S.eff - m.offSince >= c.lostSec) { S.end('position_lost', t); return; }
+      } else {
+        m.offSince = null;
+        rep.cycle(sm, t);
+      }
+      if (S.phase !== 'ended') rep.timers(t);
     },
   };
 }
@@ -404,27 +577,40 @@ function plankMachine(S) {
  */
 function createAnalyzer(test, opts) {
   opts = opts ?? {};
-  if (test !== 'pushup' && test !== 'squat' && test !== 'plank') throw new Error(`createAnalyzer: unknown test "${test}"`);
+  if (!REP_SPECS[test] && test !== 'plank') throw new Error(`createAnalyzer: unknown test "${test}"`);
   const variant = test === 'pushup' && (opts.variant ?? (opts.sex === 'F' ? 'knees' : 'toes')) === 'knees' ? 'knees' : 'toes';
+  const bar = BAR_TESTS.has(test), keys = bar ? BAR_SIGNALS : SIGNALS;
   let S, machine;
-  const reset = () => { S = createCore(test, variant); machine = test === 'plank' ? plankMachine(S) : repMachine(S, test); };
+  const reset = () => {
+    S = createCore(test, variant);
+    machine = test === 'plank' ? plankMachine(S) : bar ? barMachine(S, test) : repMachine(S, test);
+  };
   reset();
   const pre = makeSmoother();
-  let preSide = null, preT = -Infinity;
-  const feed = (sm, ts, sig) => { for (const k of SIGNALS) sm.push(k, ts, sig[k]); };
-  const read = (sm) => { const o = {}; for (const k of SIGNALS) o[k] = sm.get(k); return o; };
+  let preSide = null, preT = -Infinity, preSwing = [];
+  const feed = (sm, ts, sig) => { for (const k of keys) sm.push(k, ts, sig[k]); };
+  const read = (sm) => { const o = {}; for (const k of keys) o[k] = sm.get(k); return o; };
+  /** Inicio de dominadas: recorrido de la cadera respecto de las manos en el último stillSec (null mientras no hay dato). */
+  const swingOf = (ts, sm) => {
+    if (test !== 'pullup') return null;
+    if (finite(sm.hipBar)) preSwing.push([ts, sm.hipBar]);
+    while (preSwing.length && ts - preSwing[0][0] > EX_CONFIG.pullup.stillSec) preSwing.shift();
+    if (!preSwing.length) return null;
+    const v = preSwing.map((e) => e[1]);
+    return Math.max(...v) - Math.min(...v);
+  };
   return {
     check(jn) {
       if (!jn || !jn.j2) return { ok: false, msg: MSG.notVisible };
       const ts = jn.t / 1000;
       if (!finite(ts)) return { ok: false, msg: MSG.notVisible };
-      if (ts < preT) { pre.reset(); preSide = null; }
+      if (ts < preT) { pre.reset(); preSide = null; preSwing = []; }
       preT = ts;
       preSide = pickSide(jn.j2, preSide);
       const { good, sig } = measure(jn, preSide, test, variant);
       if (!good) return { ok: false, msg: MSG.notVisible };
       feed(pre, ts, sig);
-      const issue = ISSUE[test](read(pre), variant);
+      const sm = read(pre), issue = ISSUE[test](sm, variant, swingOf(ts, sm));
       return issue ? { ok: false, msg: issue } : { ok: true, msg: MSG.ready };
     },
     start(t) {
@@ -569,8 +755,9 @@ function normalizarCodigo(src) {
  * Lo que queda fuera es lo que no cuenta nada: los textos, el dibujo, la
  * pantalla de validación, la huella misma.
  */
-const CODIGO_DE_CONTEO = Object.freeze([angleAt, makeSmoother, sideScore, pickSide, measure,
-  pushupIssue, squatIssue, plankIssue, createCore, stateOf, repMachine, plankMachine, createAnalyzer]);
+const CODIGO_DE_CONTEO = Object.freeze([angleAt, makeSmoother, sideScore, pickSide, measure, barSignals,
+  pushupIssue, squatIssue, plankIssue, pullupIssue, dipIssue, createCore, stateOf, repMachine, barMachine, plankMachine,
+  createAnalyzer]);
 
 /** Huella del código de conteo de esta copia. */
 function codigoDeConteo() {
@@ -612,15 +799,15 @@ function queFalta(jn, test, variant = 'toes') {
   if (!j2) return null;
   const claves = test === 'pushup' ? KEY_JOINTS.pushup[variant] || KEY_JOINTS.pushup.toes : KEY_JOINTS[test];
   if (!claves) return null;
-  const vis = (p, n) => (j2[p + n] && finite(j2[p + n].v) ? j2[p + n].v : 0);
+  const vis = (p, n) => { const q = n === 'nose' ? j2.nose : j2[p + n]; return q && finite(q.v) ? q.v : 0; };   // la nariz no tiene lado
   const lado = ['l_', 'r_'].map((p) => ({ p, s: claves.reduce((a, n) => a + vis(p, n), 0) }))
     .sort((a, b) => b.s - a.s)[0].p;
   const faltan = claves.filter((n) => vis(lado, n) < CM.visMean);
   if (!faltan.length) return null;
-  const NOMBRE = { shoulder: 'tus hombros', elbow: 'tus codos', wrist: 'tus muñecas', hip: 'tu cadera', knee: 'tus rodillas', ankle: 'tus tobillos' };
+  const NOMBRE = { shoulder: 'tus hombros', elbow: 'tus codos', wrist: 'tus muñecas', hip: 'tu cadera', knee: 'tus rodillas', ankle: 'tus tobillos', nose: 'tu cara' };
   const lista = faltan.map((n) => NOMBRE[n]);
   const texto = lista.length === 1 ? lista[0] : `${lista.slice(0, -1).join(', ')} ni ${lista[lista.length - 1]}`;
-  const abajo = faltan.some((n) => n === 'knee' || n === 'ankle'), arriba = faltan.some((n) => n === 'shoulder' || n === 'elbow' || n === 'wrist');
+  const abajo = faltan.some((n) => n === 'knee' || n === 'ankle'), arriba = faltan.some((n) => n === 'shoulder' || n === 'elbow' || n === 'wrist' || n === 'nose');
   const consejo = abajo && arriba ? 'aléjate de la cámara' : abajo ? 'aléjate un poco o baja el teléfono' : arriba ? 'aléjate un poco o sube el teléfono' : 'aléjate un poco de la cámara';
   return `No veo ${texto}: ${consejo}`;
 }
