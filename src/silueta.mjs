@@ -104,7 +104,16 @@ function siluetaPara(test, lm, aspect, opts = {}) {
     mira = mirada(o, test) || ideal.mira;
     sobrePersona = true;
     const tob = ['tobillo_i', 'tobillo_d'].map((n) => o[n]).filter((p) => p.ok);
-    if (tob.length) {
+    const manos = ['muneca_i', 'muneca_d'].map((n) => o[n]).filter((p) => p.ok);
+    if ((test === 'pullup' || test === 'dip') && manos.length) {
+      // Con barra, anclada en las manos (que están en la barra): los pies cuelgan o van doblados atrás y anclar ahí la
+      // dejaba corrida y grande (grabación de David en las paralelas, 26-nov).
+      const flipI = mira === ideal.mira ? 1 : -1;
+      const manoI = medio(ideal.pts.muneca_i, ideal.pts.muneca_d);
+      const mx = manos.reduce((s, p) => s + p.x, 0) / manos.length, my = manos.reduce((s, p) => s + p.y, 0) / manos.length;
+      cx = mx - manoI.x * flipI * escala;
+      cy = my - manoI.y * escala;
+    } else if (tob.length) {
       // Anclada en los pies: a la altura horizontal de los tobillos y parada en el suelo de la persona (el punto
       // visible más bajo de sus pies). Así una flexión o una plancha no se hunde bajo el suelo ni se sale de la imagen.
       const flipI = mira === ideal.mira ? 1 : -1;

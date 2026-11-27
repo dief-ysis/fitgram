@@ -74,7 +74,8 @@ const EX_CONFIG = Object.freeze({
   }),
   // Pruebas con barra, traídas de fitgram-v1 de José (26-nov-2026). Las unidades de largo son troncos (hombro-cadera).
   pullup: Object.freeze({
-    topElbow: 155,           // protocolo (Thomas 2020 / USMC): brazos completamente extendidos colgado; mitad de la banda 150-160
+    topElbow: 150,           // protocolo (Thomas 2020 / USMC): brazos completamente extendidos colgado. La v1 usaba 155 (mitad de la
+                             // banda 150-160); se baja a 150, igual que flexiones, por el ruido real del codo (27-nov, ver dip)
     descentElbow: 140,       // ingeniería: histéresis (como en flexiones), la repetición parte cuando el codo baja de esto
     attemptElbow: 130,       // ingeniería: un tirón cuyo codo nunca baja de esto (~10 cm de subida) es un encogimiento, no se juzga
     chinExtend: 1.0,         // ingeniería: mentón = boca + 1,0 x (boca - nariz) (el mentón queda bajo la boca más o menos lo que
@@ -101,7 +102,10 @@ const EX_CONFIG = Object.freeze({
                              // colgado más de 4 s rompe el protocolo de "máximo continuo"
   }),
   dip: Object.freeze({
-    topElbow: 155,           // protocolo (Thomas 2020): codos completamente extendidos arriba; mitad de la banda 150-160
+    topElbow: 150,           // protocolo (Thomas 2020): codos completamente extendidos arriba. La v1 usaba 155; en las grabaciones de
+                             // David (26-nov) el brazo estirado en el apoyo medía 140-175° (manos tapadas por las barras, cámara
+                             // cerca y baja) y la prueba nunca partía con «Extiende los brazos». 150 = el mismo umbral de
+                             // flexiones, dentro de la banda 150-160 del protocolo. Pendiente que José lo confirme.
     descentElbow: 140,       // ingeniería: histéresis (como en flexiones)
     attemptElbow: 120,       // ingeniería: un fondo que nunca baja de esto (cuarto de fondo, acomodarse en el apoyo) no se juzga;
                              // 5° bajo flexiones de margen contra el ruido de los ángulos de mundo; los fondos fallidos se quedan

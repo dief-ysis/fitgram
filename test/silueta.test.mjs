@@ -81,3 +81,13 @@ test('en el suelo (flexión sobre alguien en plancha) no se hunde bajo el suelo:
   assert.ok(Math.abs(tob - tobS) < 0.01, 'los pies de la silueta sobre los de la persona');
   for (const p of Object.values(s.puntos)) assert.ok(p.x > -0.05 && p.x < 1.05, 'no se sale de la imagen');
 });
+
+test('con barra, Victor se ancla en las manos (en la barra), no en los pies', () => {
+  for (const t of ['pullup', 'dip']) {
+    const f = synthSession(t, { noise: 0, seed: 4, reps: 1 }).frames[5];
+    const s = siluetaPara(t, f.lm, f.aspect);
+    const manoP = (f.lm[15].x + f.lm[16].x) / 2, manoS = (s.puntos.muneca_i.x + s.puntos.muneca_d.x) / 2;
+    const yP = (f.lm[15].y + f.lm[16].y) / 2, yS = (s.puntos.muneca_i.y + s.puntos.muneca_d.y) / 2;
+    assert.ok(Math.abs(manoP - manoS) < 0.01 && Math.abs(yP - yS) < 0.01, `${t}: manos sobre las manos`);
+  }
+});

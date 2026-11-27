@@ -38,8 +38,21 @@ const URLS = {
   model: (variant) => (CFG.modelBase || './models/') + `pose_landmarker_${variant}${CFG.modelExt || '.task'}`,
 };
 const STORE_KEY = 'fitgram.v0';
-const ARM_HOLD_MS = 300; // cuánto hay que estar en la posición de partida para que empiece la prueba
-const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'full', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false, mostrarJuego: true, silueta: true });
+const ARM_HOLD_MS = 300;
+/** Un cuadro malo suelto durante la espera de la posición se tolera si dura a lo más esto. */
+const ARM_GAP_MS = 250; // cuánto hay que estar en la posición de partida para que empiece la prueba
+const DEFAULT_SETTINGS = Object.freeze({ voice: true, angles: true, model: 'auto', facing: 'user', show3d: true, valid: false, tiltCorrection: true, grabarVideo: false, mostrarJuego: true, silueta: true });
+
+/** Teléfono (pantalla táctil chica) frente a tablet o computador. */
+function esTelefono() {
+  try { return matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600; } catch { return false; }
+}
+
+/** Modelo que se usa de verdad: «Automático» elige el rápido en teléfonos y el preciso en tablets y computadores. */
+function modeloEfectivo() {
+  const m = S.settings.model;
+  return m === 'lite' || m === 'full' ? m : esTelefono() ? 'lite' : 'full';
+}
 // Las tres pruebas de la evaluación base (índice, perfil, telaraña, validación).
 const ORDER = ['pushup', 'squat', 'plank'];
 // Pruebas con barra, opcionales (traídas de la v1 de José, 26-nov-2026): necesitan barra fija o paralelas.
@@ -677,9 +690,9 @@ const Runner = {
   },
 
   async ensureEngine() {
-    if (Engine.landmarker && Engine.variant === S.settings.model) return;
+    if (Engine.landmarker && Engine.variant === modeloEfectivo()) return;
     this.veil('Cargando el detector de pose', 'La primera vez descarga unos 22 MB. Todo se procesa en este teléfono.', 0);
-    await Engine.load(S.settings.model, (stage, l, t) => {
+    await Engine.load(modeloEfectivo(), (stage, l, t) => {
       if (stage === 'model') this.veil('Descargando el modelo de pose', `${num(l / 1e6, 1)} de ${t ? num(t / 1e6, 1) : '?'} MB · se procesa en este teléfono`, t ? l / t : null);
       if (stage === 'wasm') this.veil('Iniciando el motor', 'Preparando MediaPipe en este teléfono…', null);
     });
@@ -802,7 +815,7 @@ const Runner = {
       this.countdown(3, () => { this.demoT0 = performance.now(); this.beginActive(this.demo.frames[0]?.t ?? 0, true); });
       return;
     }
-    this.countdown(5, () => { this.phase = 'arming'; this.armOkSince = null; this.cue({ level: 'warn', msg: 'Ponte en posición' }); });
+    this.countdown(5, () => { this.phase = 'arming'; this.armOkSince = null; this.armBadSince = null; this.cue({ level: 'warn', msg: 'Ponte en posición' }); });
   },
 
   countdown(n, done) {
@@ -875,7 +888,7 @@ const Runner = {
       fps: seg > 1 ? Math.round((p.n / seg) * 10) / 10 : null,
       msDeteccion: ms ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null,
       msP95: ms ? Math.round(ms[Math.min(ms.length - 1, Math.floor(ms.length * 0.95))]) : null,
-      modelo: S.settings.model || 'full',
+      modelo: modeloEfectivo(),
       video: this.mode === 'video',
     };
   },
@@ -971,9 +984,10 @@ const Runner = {
     if (!fmt || !ov.width || typeof ov.captureStream !== 'function') return;
     try {
       const canvas = document.createElement('canvas');
-      const k = Math.min(1, 1280 / Math.max(ov.width, ov.height));
+      // 960 px en el lado largo y 1 Mb/s: el esqueleto se lee igual y el archivo pesa cerca de un tercio (antes 1280 y 2,5 Mb/s).
+      const k = Math.min(1, 960 / Math.max(ov.width, ov.height));
       canvas.width = Math.round(ov.width * k); canvas.height = Math.round(ov.height * k);
-      const rec = new MediaRecorder(canvas.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 2500000 });
+      const rec = new MediaRecorder(canvas.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 1000000 });
       const chunks = [];
       rec.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
       rec.start(1000);
@@ -1172,7 +1186,7 @@ const Runner = {
   async runVideo() {
     const v = $('video');
     $('btn-start').hidden = true; $('btn-stop').hidden = false;
-    this.phase = 'arming'; this.armOkSince = null;
+    this.phase = 'arming'; this.armOkSince = null; this.armBadSince = null;
     this.smoother.reset?.(); this.estab?.reiniciar(); this.estabRec?.reiniciar();
     this.level?.reset(); this.tilt = null; this.tiltLocked = false;
     this.jitter?.reset();
@@ -1286,14 +1300,20 @@ const Runner = {
     } else if (this.phase === 'arming' && this.test === 'plank') {
       this.beginActive(frame.t); // el analizador de la plancha espera solo el segundo sostenido antes de partir el reloj
     } else if (this.phase === 'arming') {
-      const c = this.analyzer.check(joints);
+      let c = this.analyzer.check(joints);
+      // Un cuadro malo suelto (el codo mal medido un instante) no reinicia la espera, si no dura más de 250 ms: con un
+      // teléfono lento y un codo que salta entre 140 y 175°, la prueba de fondos nunca partía (David, 26-nov).
+      if (!c.ok && this.armOkSince != null) {
+        this.armBadSince ??= frame.t;
+        if (frame.t - this.armBadSince <= ARM_GAP_MS) c = { ...c, ok: true, tolerado: true };
+      } else if (c.ok) this.armBadSince = null;
       this.setPos(c.ok, c.ok ? 'Posición correcta: comienza' : this.detalle(c.msg));
       if (c.ok) {
         if (this.armOkSince == null) this.armOkSince = frame.t;
         // Basta con estar en la posición de partida un momento (no 1 s quieto): quien hace las repeticiones sin pausa
         // nunca se queda 1 s arriba, y la app se perdía las primeras (video de Elías, 25-nov).
         if (frame.t - this.armOkSince >= ARM_HOLD_MS) { this.beginActive(this.armOkSince); }
-      } else this.armOkSince = null;
+      } else { this.armOkSince = null; this.armBadSince = null; }
     }
     if (this.phase === 'active') {
       this.revisarLado(joints, frame.t);
@@ -1787,7 +1807,8 @@ function setupReview(rec) {
       if (!fmt || typeof canvas.captureStream !== 'function') return Promise.resolve(null);
       return new Promise((res) => {
         let mr;
-        try { mr = new MediaRecorder(canvas.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 2000000 }); } catch { res(null); return; }
+        // 0,6 Mb/s: la animación es un fondo liso con líneas, no necesita más (antes 2 Mb/s).
+        try { mr = new MediaRecorder(canvas.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 600000 }); } catch { res(null); return; }
         const chunks = [];
         mr.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
         mr.onstop = () => res(chunks.length ? { blob: new Blob(chunks, { type: fmt.mime.split(';')[0] }), ext: fmt.ext } : null);
@@ -2523,7 +2544,11 @@ async function openCameraStream(facing) {
   if (!md?.getUserMedia) throw new Error('getUserMedia no disponible');
   return md.getUserMedia({
     audio: false,
-    video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+    // En teléfonos, 960x540: MediaPipe igual achica la imagen para detectar, y subir menos píxeles por cuadro ayuda en
+    // los que van lentos. Tablets y computadores siguen en 1280x720 (27-nov).
+    video: esTelefono()
+      ? { facingMode: facing, width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 30 } }
+      : { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
   });
 }
 
@@ -2622,7 +2647,7 @@ const Ensayo = {
       }
       // 3. Detector y velocidad
       try {
-        await Engine.load(S.settings.model, () => {});
+        await Engine.load(modeloEfectivo(), () => {});
         if (v.videoWidth) {
           const ms = [];
           for (let i = 0; i < 25; i++) {
@@ -2634,7 +2659,7 @@ const Ensayo = {
           const prom = ms.slice(5).reduce((a, b) => a + b, 0) / (ms.length - 5);
           const fps = Math.min(30, 1000 / Math.max(prom, 1));
           poner('ok', 'Detector', Engine.info());
-          poner(fps >= 15 ? 'ok' : 'warn', 'Velocidad', `unos ${Math.round(fps)} cuadros por segundo (${Math.round(prom)} ms por cuadro).${fps < 15 ? (S.settings.model === 'lite' ? ' Está bajo 15: cierra otras apps y vuelve a probar.' : ' Está bajo 15: prueba el modelo «Rápido».') : ''}`);
+          poner(fps >= 15 ? 'ok' : 'warn', 'Velocidad', `unos ${Math.round(fps)} cuadros por segundo (${Math.round(prom)} ms por cuadro).${fps < 15 ? (modeloEfectivo() === 'lite' ? ' Está bajo 15: cierra otras apps y vuelve a probar.' : ' Está bajo 15: prueba el modelo «Rápido».') : ''}`);
         } else poner('warn', 'Detector', `${Engine.info()}. Sin cámara no se pudo medir la velocidad.`);
       } catch (e) { poner('bad', 'Detector', `No cargó: ${e?.message || e}`); }
       // 4. Sensores
@@ -2766,7 +2791,7 @@ const Game = {
       await waitFor(() => v.videoWidth > 0, 4000);
       if (sid !== this.sid) return;
       this.msg('Cargando el detector…');
-      await Engine.load(S.settings.model, (stage, l, t) => {
+      await Engine.load(modeloEfectivo(), (stage, l, t) => {
         this.msg(stage === 'model'
           ? `Descargando el detector… ${num(l / 1e6, 0)} de ${t ? num(t / 1e6, 0) : '?'} MB`
           : 'Iniciando el motor…');
@@ -2996,7 +3021,7 @@ function enterStand() {
   nextPerson();
   touchStandIdle();
   standStatus('Cargando el detector…');
-  Engine.load(S.settings.model, (stage, l, t) => {
+  Engine.load(modeloEfectivo(), (stage, l, t) => {
     standStatus(stage === 'model'
       ? `Cargando el detector… ${num(l / 1e6, 0)} de ${t ? num(t / 1e6, 0) : '?'} MB`
       : 'Iniciando el motor…');
@@ -3026,11 +3051,11 @@ function renderSettings() {
   $('btn-open-valid').hidden = !S.settings.valid;
   const box = $('model-pills');
   box.innerHTML = '';
-  for (const [k, l] of [['full', 'Preciso'], ['lite', 'Rápido']]) {
+  for (const [k, l] of [['auto', esTelefono() ? 'Automático (rápido)' : 'Automático (preciso)'], ['full', 'Preciso'], ['lite', 'Rápido']]) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'pill'; b.textContent = l;
     b.setAttribute('aria-pressed', String(S.settings.model === k));
-    b.addEventListener('click', () => { S.settings.model = k; saveStore(); renderSettings(); });
+    b.addEventListener('click', () => { S.settings.model = k; S.settings.modeloElegido = true; saveStore(); renderSettings(); });
     box.appendChild(b);
   }
   $('engine-info').textContent = Engine.info();
@@ -3215,7 +3240,7 @@ function bind() {
     btn.disabled = true;
     info.textContent = 'Cargando…';
     try {
-      await Engine.load(S.settings.model, (stage, l, t) => {
+      await Engine.load(modeloEfectivo(), (stage, l, t) => {
         info.textContent = stage === 'model' ? `Descargando el modelo: ${num(l / 1e6, 1)} de ${t ? num(t / 1e6, 1) : '?'} MB` : stage === 'wasm' ? 'Iniciando el motor…' : 'Cargando la librería…';
       });
       info.textContent = `Listo. ${Engine.info()}`;
@@ -3298,6 +3323,9 @@ function boot() {
     $('error-bar').hidden = false;
     $('error-bar-msg').textContent = 'Este navegador no puede correr el detector de pose. Usa Chrome (Android o computador) o Safari 16.4 o superior (iPhone).';
   }
+  // «Preciso» era el valor por defecto: quien nunca lo cambió pasa a «Automático» (rápido en teléfonos). Quien eligió un
+  // modelo a mano lo conserva.
+  if (!S.settings.modeloElegido && S.settings.model === 'full') S.settings.model = 'auto';
   renderOnb();
   window.FITGRAM = { S, Runner, Engine, classify, URLS, Hist, Val, seedDemoHistory, openValid, renderResult, show }; // útil para depurar y para las pruebas automáticas
   // ?demo=historial abre el perfil; ?demo=pushup|squat|plank abre esa pantalla de resultado.
