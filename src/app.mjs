@@ -609,7 +609,7 @@ const Runner = {
     if (mode === 'live' && Sensors.permission !== 'denied') {
       try { this.tiltEst = createTiltEstimator({ facing: S.settings.facing }); Sensors.start(this.tiltEst, { facing: S.settings.facing }); } catch { this.tiltEst = null; }
     }
-    this.rec = []; this.lastRecT = -1e9; this.st = null; this.frame = null; this.lastRaw = null; this.phase = 'preview'; this.posOkDesde = null; this.girada = false;
+    this.rec = []; this.lastRecT = -1e9; this.st = null; this.frame = null; this.lastRaw = null; this.phase = 'preview'; this.empezo = null; this.girada = false;
     this.huboCuadro = false; this.fallosSeguidos = 0; this.fallosTotal = 0;
     this.lastCount = 0;
     this.setup3D();
@@ -1022,6 +1022,7 @@ const Runner = {
     const ss = this.sensorState();
     this.sensorLock = ss?.lastStill?.source === 'sensor' ? ss.lastStill : null;
     this.analyzer.start(t);
+    if (this.test !== 'plank') this.empezo = performance.now();   // Victor se desvanece desde aquí (la plancha, al partir el reloj)
     this.phase = 'active';
     this.startT = t;
     this.vigilarCuadros();
@@ -1131,7 +1132,6 @@ const Runner = {
   processEmpty(t) {
     this.anotarCuadro();
     this.ultimas = null;   // sin nadie a la vista no hay partes que nombrar
-    this.marcarPosicion(false);
     // Sin persona a la vista igual se informa la inclinación (los sensores la saben).
     if (!this.tiltLocked && this.tiltEst) this.tilt = fuseTilt(this.sensorState()?.lastStill ?? null, this.level.state().tilt);
     this.renderLevel();
@@ -1274,7 +1274,6 @@ const Runner = {
     if (this.phase === 'preview' || this.phase === 'countdown') {
       const c = this.analyzer.check(joints);
       this.setPos(c.ok, c.ok ? 'Posición correcta' : this.detalle(c.msg));
-      this.marcarPosicion(c.ok);
       // Si además la detección está inestable, conviene arreglarlo ahora y no
       // descubrirlo cuando el número ya salió corto. Va aparte del estado de
       // posición: la posición puede estar bien y la detección igual temblar, y
@@ -1286,7 +1285,6 @@ const Runner = {
     } else if (this.phase === 'arming') {
       const c = this.analyzer.check(joints);
       this.setPos(c.ok, c.ok ? 'Posición correcta: comienza' : this.detalle(c.msg));
-      this.marcarPosicion(c.ok);
       if (c.ok) {
         if (this.armOkSince == null) this.armOkSince = frame.t;
         // Basta con estar en la posición de partida un momento (no 1 s quieto): quien hace las repeticiones sin pausa
@@ -1359,20 +1357,17 @@ const Runner = {
     }
   },
 
-  /** Desde cuándo la persona está en la posición inicial (para desvanecer la silueta guía). */
-  marcarPosicion(ok) {
-    if (!ok) this.posOkDesde = null;
-    else if (this.posOkDesde == null) this.posOkDesde = performance.now();
-  },
-
   /**
    * Silueta guía con la posición inicial ideal, al estilo de Victor, debajo del esqueleto. Va sobre la persona (a su
-   * tamaño y mirando hacia su lado) o, si no hay nadie, al centro. Se desvanece cuando la posición es correcta y no
-   * se muestra durante la prueba, en los videos subidos ni en la demostración.
+   * tamaño y mirando hacia su lado) o, si no hay nadie, al centro. Se queda durante toda la preparación y se desvanece
+   * cuando empiezan las repeticiones (o el reloj de la plancha); no se muestra en videos subidos ni en la demostración.
    */
   dibujarSilueta(ctx, frame, project) {
     if (this.mode !== 'live' || S.settings.silueta === false || this.girada) return;
-    const alfa = opacidadSilueta(this.phase, this.posOkDesde, performance.now());
+    // En la plancha el corredor ya está «activo» mientras el analizador espera el segundo sostenido: para Victor eso
+    // sigue siendo preparación.
+    const fase = this.phase === 'active' && this.st?.phase === 'waiting' ? 'arming' : this.phase;
+    const alfa = opacidadSilueta(fase, this.empezo, performance.now());
     if (alfa <= 0) return;
     const v = $('video'), aspect = frame?.aspect || (v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 9 / 16);
     if (!project) {
@@ -1467,7 +1462,7 @@ const Runner = {
       if (ev.type === 'rep') { Sound.beep(1046, 0.08, 0.12); Voice.say(String(st.value), true); }
       else if (ev.type === 'invalid') { Sound.beep(330, 0.18, 0.15); Voice.say(ev.msg || 'No válida', true); }
       else if (ev.type === 'cue') { Voice.say(this.detalle(ev.msg), true); }
-      else if (ev.type === 'start' && this.test === 'plank') { Voice.say('Tiempo corriendo', true); }
+      else if (ev.type === 'start' && this.test === 'plank') { Voice.say('Tiempo corriendo', true); this.empezo = performance.now(); }
     }
     if (this.test === 'plank' && st.phase === 'active') {
       const s = Math.floor(st.value || 0);

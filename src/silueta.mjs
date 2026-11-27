@@ -132,16 +132,17 @@ function siluetaPara(test, lm, aspect, opts = {}) {
 }
 
 /**
- * Opacidad de la silueta según cuánto tiempo lleva la persona en posición: 1 mientras no lo está, y se desvanece en
- * `fadeMs` una vez que lo está. Durante la prueba, 0.
+ * Opacidad de la silueta: entera mientras la persona se prepara (vista previa, cuenta regresiva, esperando la posición)
+ * y se desvanece en `fadeMs` recién cuando la app dice que empiezan las repeticiones (o, en la plancha, cuando parte el
+ * reloj). Así Victor acompaña hasta el final de la preparación (pedido de David, 27-nov).
  * @param {string} fase fase del corredor ('preview' | 'countdown' | 'arming' | 'active' | ...)
- * @param {number|null} okDesdeMs instante (ms) desde el que la posición es correcta, o null
+ * @param {number|null} empezoMs instante (ms) en que empezaron las repeticiones o el reloj, o null si aún no
  * @param {number} ahoraMs
  */
-function opacidadSilueta(fase, okDesdeMs, ahoraMs, fadeMs = 600) {
-  if (fase !== 'preview' && fase !== 'countdown' && fase !== 'arming') return 0;
-  if (okDesdeMs == null) return 1;
-  return Math.max(0, 1 - (ahoraMs - okDesdeMs) / fadeMs);
+function opacidadSilueta(fase, empezoMs, ahoraMs, fadeMs = 600) {
+  if (fase === 'preview' || fase === 'countdown' || fase === 'arming') return 1;
+  if (fase !== 'active' || empezoMs == null) return 0;
+  return Math.max(0, 1 - (ahoraMs - empezoMs) / fadeMs);
 }
 
 export { TRAMOS, poseIdeal, siluetaPara, opacidadSilueta };

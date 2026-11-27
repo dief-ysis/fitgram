@@ -61,12 +61,14 @@ test('sin persona a la vista, la silueta va al centro y cabe en la imagen', () =
   }
 });
 
-test('se desvanece al estar en posición y no aparece durante la prueba', () => {
+test('Victor se queda toda la preparación y se desvanece recién cuando empiezan las repeticiones', () => {
   assert.equal(opacidadSilueta('preview', null, 1000), 1);
-  assert.equal(opacidadSilueta('countdown', 1000, 1300), 0.5);
-  assert.equal(opacidadSilueta('arming', 1000, 5000), 0);
+  assert.equal(opacidadSilueta('countdown', null, 1000), 1);
+  assert.equal(opacidadSilueta('arming', null, 99999), 1, 'aunque la persona ya esté en posición, sigue entero');
+  assert.equal(opacidadSilueta('active', 1000, 1300), 0.5, 'a media salida');
+  assert.equal(opacidadSilueta('active', 1000, 5000), 0);
   assert.equal(opacidadSilueta('active', null, 1000), 0);
-  assert.equal(opacidadSilueta('ended', null, 1000), 0);
+  assert.equal(opacidadSilueta('ended', 1000, 1100), 0);
 });
 
 test('en el suelo (flexión sobre alguien en plancha) no se hunde bajo el suelo: queda parada en sus pies', () => {
