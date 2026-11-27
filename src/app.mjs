@@ -15,6 +15,10 @@ import { ORIENT_CONFIG, createPoseLevelEstimator, createTiltEstimator, fuseTilt,
 import { Sensors } from './sensors.mjs';
 import { esqueletoParaCompartir, visor3dHtml, elegirFormatoVideo, nombreArchivo } from './compartir.mjs';
 import { esErrorDeCamara, cameraErrorMessage } from './camara-errores.mjs';
+import { URLS, Engine } from './motor.mjs';
+import { ORDER, BARRA, TODAS, COLORS, TESTS, END_TEXT } from './pruebas.mjs';
+import { $, esc, num, mmss, deg, clamp, sexLabel } from './utiles.mjs';
+import { Voice, Sound, WakeLock } from './sonido.mjs';
 /**
  * Con qué reglas cuenta esta copia de la app: los umbrales, el suavizado y el
  * código que decide qué cuenta. Va sellada en cada resultado, para que el
@@ -28,15 +32,6 @@ const REGLAS = huellaDe({ ex: EX_CONFIG, sk: SKELETON_CONFIG, cod: codigoDeConte
 import { AGE_RANGE, coversAge } from './norms.mjs';
 /* ------------------------------------------------------------------ configuración */
 
-const CFG = (typeof window !== 'undefined' && window.FITGRAM_CONFIG) || {};
-const MP_VERSION = '1.1.0';
-const MP_CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`;
-const URLS = {
-  lib: CFG.lib || `${MP_CDN}/vision_bundle.mjs`,
-  wasmLoader: CFG.wasmLoader || `${MP_CDN}/wasm/vision_wasm_internal.js`,
-  wasmBinary: CFG.wasmBinary || './wasm/vision_wasm_internal.wasm',
-  model: (variant) => (CFG.modelBase || './models/') + `pose_landmarker_${variant}${CFG.modelExt || '.task'}`,
-};
 const STORE_KEY = 'fitgram.v0';
 const ARM_HOLD_MS = 300;
 /** Un cuadro malo suelto durante la espera de la posición se tolera si dura a lo más esto. */
@@ -56,89 +51,7 @@ function modeloEfectivo() {
 
 /** Sobre este promedio de ms por cuadro (≈ 14 cuadros/s) el modelo preciso es demasiado lento para «Automático». */
 const LENTO_MS = 70;
-// Las tres pruebas de la evaluación base (índice, perfil, telaraña, validación).
-const ORDER = ['pushup', 'squat', 'plank'];
-// Pruebas con barra, opcionales (traídas de la v1 de José, 26-nov-2026): necesitan barra fija o paralelas.
-const BARRA = ['pullup', 'dip'];
-// Todas las que se pueden guardar en el historial.
-const TODAS = [...ORDER, ...BARRA];
-const COLORS = { left: '#2f9bd3', right: '#e8613c', axial: '#8a96a3', axis: '#8a96a3' };
-
-const TESTS = {
-  pushup: {
-    n: '01', name: 'Flexiones de brazos', short: 'Flexiones', measures: 'Resistencia del tren superior',
-    unit: 'rep', unitLong: 'flexiones válidas',
-    measure: 'Cómo lo mide FitGram: la bajada vale cuando el codo llega a unos 90°, y la repetición cuenta si vuelves a extender los brazos con el cuerpo en línea.',
-    landscape: true,
-    setup: [
-      'Apoya el teléfono en el suelo, en horizontal, contra una botella o una mochila. Si usas la cámara en vivo, activa la rotación de pantalla.',
-      'Ponte de lado a la cámara, a unos 2,5 a 3 metros.',
-      'Revisa en la imagen que se vea todo tu cuerpo, de las manos a los pies.',
-    ],
-  },
-  squat: {
-    n: '02', name: 'Sentadillas', short: 'Sentadillas', measures: 'Resistencia del tren inferior',
-    unit: 'rep', unitLong: 'sentadillas válidas',
-    measure: 'Cómo lo mide FitGram: la bajada vale cuando la cadera llega a la altura de la rodilla (muslos paralelos), y la repetición cuenta si vuelves a quedar de pie.',
-    setup: [
-      'Deja el teléfono en vertical, a la altura de tu cadera o en el suelo, inclinado hacia ti.',
-      'Ponte de lado a la cámara, a unos 2,5 metros.',
-      'Revisa que se vean tu cabeza y tus pies durante toda la bajada.',
-    ],
-  },
-  plank: {
-    n: '03', name: 'Plancha en antebrazos', short: 'Plancha', measures: 'Resistencia del core',
-    unit: 's', unitLong: 'sostenidos',
-    measure: 'Cómo lo mide FitGram: el reloj corre mientras hombro, cadera y tobillo forman una línea recta (unos 160° o más). Si la cadera cae o sube por más de 1 s, te avisa; dos avisos seguidos sin corregir terminan la prueba.',
-    landscape: true,
-    setup: [
-      'Apoya el teléfono en el suelo, en horizontal, contra una botella o una mochila. Si usas la cámara en vivo, activa la rotación de pantalla.',
-      'Ponte de lado a la cámara, a unos 2,5 a 3 metros.',
-      'El reloj parte solo cuando la app confirma la posición durante 1 segundo.',
-    ],
-  },
-  pullup: {
-    n: '04', name: 'Dominadas', short: 'Dominadas', measures: 'Resistencia de espalda y brazos (tracción)',
-    unit: 'rep', unitLong: 'dominadas válidas', equipment: 'Barra fija',
-    measure: 'Cómo lo mide FitGram: partes colgado con los brazos estirados. La repetición cuenta cuando el mentón sube por sobre tus manos (la barra) y vuelves a estirar los brazos por completo. Si te balanceas o te impulsas con las piernas, no cuenta. Si sueltas la barra o apoyas los pies, la prueba termina.',
-    setup: [
-      'Deja el teléfono en vertical, apoyado a la altura de la cintura.',
-      'Ponte de lado a la cámara, a unos 2,5 a 3 metros de la barra.',
-      'Revisa que se vean la barra, tus manos y tus pies durante toda la prueba.',
-    ],
-  },
-  dip: {
-    n: '05', name: 'Fondos en paralelas', short: 'Fondos', measures: 'Resistencia de pecho y tríceps (empuje)',
-    unit: 'rep', unitLong: 'fondos válidos', equipment: 'Barras paralelas',
-    measure: 'Cómo lo mide FitGram: partes con los brazos estirados sobre las paralelas. La repetición cuenta cuando el codo llega a 90° o menos y vuelves a estirar los brazos. Sin ayuda de las piernas. Si apoyas los pies o te bajas de las paralelas, la prueba termina.',
-    setup: [
-      'Deja el teléfono en vertical, apoyado a la altura de la cintura.',
-      'Ponte de lado a la cámara, a unos 2,5 a 3 metros de las paralelas.',
-      'Revisa que se vea todo tu cuerpo, de las manos a los pies, también abajo en cada fondo.',
-    ],
-  },
-};
-
-const END_TEXT = {
-  manual: 'terminaste la prueba',
-  technique: { pushup: 'dos repeticiones seguidas no válidas', squat: 'dos repeticiones seguidas no válidas', plank: 'dos avisos seguidos sin corregir la postura',
-    pullup: 'dos repeticiones seguidas no válidas', dip: 'dos repeticiones seguidas no válidas' },
-  pause: 'pausa de más de 4 s; el protocolo no permite descansar',
-  position_lost: { pushup: 'se perdió la posición', squat: 'se perdió la posición', plank: 'se perdió la posición',
-    pullup: 'soltaste la barra o apoyaste los pies', dip: 'dejaste las paralelas o apoyaste los pies' },
-  not_visible: 'la cámara dejó de verte',
-  video_end: 'terminó el video',
-};
-
 /* ------------------------------------------------------------------ utilidades */
-
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const num = (v, d = 0) => (v == null || !isFinite(v) ? '—' : Number(v).toFixed(d).replace('.', ','));
-const mmss = (sec) => { const s = Math.max(0, Math.floor(sec)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-const deg = (v) => (v == null || !isFinite(v) ? '—' : `${Math.round(v)}°`);
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const sexLabel = (s) => (s === 'F' ? 'Mujer' : 'Hombre');
 
 const VALID_KEY = 'fitgram.validation.v1'; // aparte de los resultados personales, a propósito
 const VALID_EXPORT_KEY = 'fitgram.validation.exported.v1'; // cuándo se exportó por última vez
@@ -172,171 +85,9 @@ function saveStore() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify({ profile: S.profile, results: S.results, history: S.history, settings: S.settings })); } catch { /* storage unavailable */ }
 }
 
-async function fetchBytes(url, onProgress) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`No se pudo descargar ${url} (HTTP ${res.status})`);
-  const total = Number(res.headers.get('content-length')) || 0;
-  if (!res.body || !res.body.getReader) {
-    const b = new Uint8Array(await res.arrayBuffer());
-    onProgress?.(b.length, b.length);
-    return b;
-  }
-  const reader = res.body.getReader();
-  const chunks = [];
-  let loaded = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    loaded += value.length;
-    onProgress?.(loaded, total);
-  }
-  const out = new Uint8Array(loaded);
-  let o = 0;
-  for (const c of chunks) { out.set(c, o); o += c.length; }
-  return out;
-}
-
-/** Bytes del modelo desde un archivo .task, o desde un JSON {format:'base64', data} (donde no se pueden servir .task). */
-async function fetchModel(url, onProgress) {
-  const raw = await fetchBytes(url, onProgress);
-  if (!/\.json(\?|$)/.test(url)) return raw;
-  const obj = JSON.parse(new TextDecoder().decode(raw));
-  if (obj?.format !== 'base64' || typeof obj.data !== 'string') throw new Error('Formato de modelo desconocido');
-  const bin = atob(obj.data);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
 /* ------------------------------------------------------------------ voz y sonido */
 
-const Voice = {
-  voice: null,
-  ready: false,
-  init() {
-    if (!('speechSynthesis' in window)) return;
-    const pick = () => {
-      const vs = window.speechSynthesis.getVoices() || [];
-      this.voice = vs.find((v) => /^es[-_]CL/i.test(v.lang)) || vs.find((v) => /^es[-_](419|MX|US|AR|CO)/i.test(v.lang)) || vs.find((v) => /^es/i.test(v.lang)) || null;
-    };
-    pick();
-    try { window.speechSynthesis.addEventListener('voiceschanged', pick); } catch { /* old Safari */ }
-  },
-  unlock() { // en iOS tiene que correr dentro de un toque de la persona
-    if (!('speechSynthesis' in window) || this.ready) return;
-    try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.speak(u); this.ready = true; } catch { /* ignore */ }
-  },
-  say(text, interrupt = false) {
-    if (!S.settings.voice || !('speechSynthesis' in window) || !text) return;
-    try {
-      const ss = window.speechSynthesis;
-      if (interrupt || ss.pending) ss.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = this.voice?.lang || 'es-CL';
-      if (this.voice) u.voice = this.voice;
-      u.rate = 1.15;
-      ss.speak(u);
-    } catch { /* ignore */ }
-  },
-};
-
-const Sound = {
-  ctx: null,
-  unlock() {
-    try { this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)(); if (this.ctx.state === 'suspended') this.ctx.resume(); } catch { this.ctx = null; }
-  },
-  beep(freq = 880, dur = 0.12, gain = 0.15) {
-    if (!this.ctx) return;
-    try {
-      const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
-      o.frequency.value = freq; o.type = 'sine';
-      g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + dur + 0.02);
-    } catch { /* ignore */ }
-  },
-};
-
-const WakeLock = {
-  lock: null,
-  async on() { try { this.lock = await navigator.wakeLock?.request('screen'); } catch { this.lock = null; } },
-  off() { try { this.lock?.release(); } catch { /* ignore */ } this.lock = null; },
-};
-
 /* ------------------------------------------------------------------ motor de pose (MediaPipe Tasks Vision) */
-
-const Engine = {
-  landmarker: null, variant: null, delegate: null, loading: null, lastTs: 0, vision: null, error: null,
-
-  async load(variant, onProgress) {
-    if (this.landmarker && this.variant === variant) return this.landmarker;
-    if (this.loading) { await this.loading.catch(() => {}); if (this.landmarker && this.variant === variant) return this.landmarker; }
-    this.loading = (async () => {
-      onProgress?.('lib', 0, 0);
-      const abs = (u) => { try { return new URL(u, document.baseURI).href; } catch { return u; } };
-      this.vision = this.vision || await import(abs(URLS.lib));
-      const bytes = await fetchModel(URLS.model(variant), (l, t) => onProgress?.('model', l, t));
-      onProgress?.('wasm', 0, 0);
-      const fileset = { wasmLoaderPath: abs(URLS.wasmLoader), wasmBinaryPath: abs(URLS.wasmBinary) };
-      const opts = (delegate, buf) => ({
-        baseOptions: { modelAssetBuffer: buf, delegate },
-        runningMode: 'VIDEO', numPoses: 1,
-        minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
-        outputSegmentationMasks: false,
-      });
-      let lm, delegate = 'GPU';
-      try { lm = await this.vision.PoseLandmarker.createFromOptions(fileset, opts('GPU', bytes.slice())); }
-      catch (e) { delegate = 'CPU'; lm = await this.vision.PoseLandmarker.createFromOptions(fileset, opts('CPU', bytes.slice())); }
-      this.create = () => this.vision.PoseLandmarker.createFromOptions(fileset, opts(delegate, bytes.slice()));
-      try { this.landmarker?.close(); } catch { /* ignore */ }
-      this.landmarker = lm; this.variant = variant; this.delegate = delegate; this.lastTs = 0; this.error = null; this.warm = false;
-      this.bytes = bytes;
-      return lm;
-    })();
-    try { return await this.loading; }
-    catch (e) { this.error = e; throw e; }
-    finally { this.loading = null; }
-  },
-
-  /** Rearma el detector con el modelo guardado cuando su grafo falló (un grafo de MediaPipe caído no se recupera). */
-  async rebuild() {
-    if (this.rebuilding || !this.create) return;
-    this.rebuilding = true;
-    try {
-      const fresh = await this.create();
-      try { this.landmarker?.close(); } catch { /* ignore */ }
-      this.landmarker = fresh; this.errorCount = 0; this.warm = false;
-      console.warn('FitGram: detector rebuilt after a graph error');
-    } catch (e) { console.warn('FitGram: rebuild failed', e); }
-    finally { this.rebuilding = false; }
-  },
-
-  /** Corre la detección; devuelve un PoseFrame o null. `tMs` tiene que crecer; aquí se asegura. */
-  detect(source, tMs, aspect) {
-    if (!this.landmarker || this.rebuilding || !source || !Number.isFinite(tMs)) return null;
-    if (!Number.isFinite(this.lastTs)) this.lastTs = 0;
-    const ts = Math.max(Math.round(tMs), this.lastTs + 1);
-    this.lastTs = ts;
-    let res;
-    try { res = this.landmarker.detectForVideo(source, ts); this.errorCount = 0; }
-    catch (e) {
-      this.errorCount = (this.errorCount || 0) + 1;
-      if (this.errorCount < 3) console.warn('detectForVideo', e);
-      if (this.errorCount >= 2) this.rebuild();
-      return null;
-    }
-    const lm = res?.landmarks?.[0];
-    if (!lm) return null;
-    const w = res.worldLandmarks?.[0];
-    const P = (p) => ({ x: p.x, y: p.y, z: p.z, visibility: p.visibility ?? 1 });
-    return { t: tMs, lm: lm.map(P), world: w ? w.map(P) : null, aspect };
-  },
-
-  info() {
-    if (!this.landmarker) return this.error ? `Error: ${this.error.message || this.error}` : 'Sin cargar todavía.';
-    return `MediaPipe Pose Landmarker ${MP_VERSION} · modelo ${this.variant === 'lite' ? 'liviano' : 'completo'} · ${this.delegate === 'GPU' ? 'GPU' : 'CPU'}`;
-  },
-};
 
 /* ------------------------------------------------------------------ estado */
 
@@ -3350,6 +3101,7 @@ function avisarErrorSuelto(origen, e) {
 }
 
 function boot() {
+  Voice.habilitada = () => !!S.settings.voice;
   Voice.init();
   bind();
   $('btn-error-close').addEventListener('click', () => { $('error-bar').hidden = true; erroresSueltos = 0; });

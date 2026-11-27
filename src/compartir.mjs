@@ -133,7 +133,7 @@ c.onpointermove=e=>{const o=toques.get(e.pointerId);if(!o)return;if(toques.size=
  yaw+=(e.clientX-o[0])*0.01;pitch=Math.min(1.4,Math.max(-1.4,pitch+(e.clientY-o[1])*0.01));toques.set(e.pointerId,[e.clientX,e.clientY]);};
 c.onpointerup=c.onpointercancel=e=>toques.delete(e.pointerId);
 c.onwheel=e=>{e.preventDefault();zoom=Math.min(4,Math.max(0.4,zoom*Math.exp(-e.deltaY*0.001)));};
-</script></body></html>`;
+<\/script></body></html>`;   // barra escapada: el cierre literal de script cortaría el script de index.html
 }
 
 export { ESQUELETO_SCHEMA, esqueletoParaCompartir, visor3dHtml, FORMATOS_VIDEO, elegirFormatoVideo, nombreArchivo };

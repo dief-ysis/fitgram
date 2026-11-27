@@ -10,7 +10,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { construir, modulosEnDisco } from '../build.mjs';
@@ -57,4 +57,11 @@ test('el archivo publicado no deja rastros del armado', () => {
   assert.ok(!actual.includes('<!--MODULOS-->'), 'quedo la marca de la plantilla sin reemplazar');
   assert.ok(!/^import .* from/m.test(actual), 'quedo un import sin traducir');
   assert.ok(!/^export \{/m.test(actual), 'quedo un export sin traducir');
+});
+
+test('ningún módulo lleva un «</script>» literal: cerraría el script de index.html y la app no cargaría', () => {
+  for (const f of readdirSync(new URL('../src/', import.meta.url)).filter((n) => n.endsWith('.mjs'))) {
+    const src = readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
+    assert.ok(!/<\/script/i.test(src), `${f} tiene «</script»: escríbelo «<\\/script»`);
+  }
 });
