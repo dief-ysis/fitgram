@@ -3536,6 +3536,9 @@ function uprightScore(lm) {
   return fin(d) ? d : 0;
 }
 
+/** Sentido elegido para el cuarto de vuelta de cada inclinación (objeto Tilt): se decide una vez y se reusa. */
+const sentidoCuarto = new WeakMap();
+
 function correctFrame(frame, tilt, opts = {}) {
   const copy = (arr) => (Array.isArray(arr) ? arr.map((p) => (p ? { ...p } : p)) : arr ?? null);
   if (!frame) return frame;
@@ -3543,10 +3546,17 @@ function correctFrame(frame, tilt, opts = {}) {
   if (q) {
     // Teléfono de costado: se gira la imagen por todo el roll (o solo el cuarto si la corrección está apagada).
     // No se confía en el signo del sensor (Safari cambia 90/270): decide la postura (ver uprightScore).
+    // El sentido se decide UNA vez por inclinación y se guarda: la app fija la inclinación al empezar la prueba, con la
+    // persona en la posición inicial, donde la postura no engaña. Decidirlo en cada cuadro daba vuelta la imagen en el
+    // fondo de la flexión (los codos quedan sobre los hombros) y el monito se ponía de cabeza (videos de David, 26-nov).
     const roll = opts.quarterOnly ? q : tilt.roll;
-    const a = rotateFrame(frame, roll, null, opts), b = rotateFrame(frame, -roll, null, opts);   // la convención cambiada refleja el roll
-    const out = uprightScore(b.lm) > uprightScore(a.lm) ? b : a;
-    return { ...out, tilt, corrected: true, quarter: true };
+    let signo = sentidoCuarto.get(tilt);
+    if (signo == null) {
+      const a = rotateFrame(frame, roll, null, opts), b = rotateFrame(frame, -roll, null, opts);   // la convención cambiada refleja el roll
+      signo = uprightScore(b.lm) > uprightScore(a.lm) ? -1 : 1;
+      if (tilt && typeof tilt === 'object') sentidoCuarto.set(tilt, signo);
+    }
+    return { ...rotateFrame(frame, signo * roll, null, opts), tilt, corrected: true, quarter: true };
   }
   if (opts.quarterOnly || !isCorrectable(tilt)) return { ...frame, lm: copy(frame.lm), world: copy(frame.world), tilt: tilt ?? null, corrected: false };
   return { ...rotateFrame(frame, tilt.roll, tilt.pitch, opts), tilt, corrected: true };

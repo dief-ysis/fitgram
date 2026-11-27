@@ -208,3 +208,26 @@ test('teléfono de costado con la rotación bloqueada: el cuarto de vuelta deja 
     }
   }
 });
+
+test('teléfono de costado: el sentido del giro se decide una vez y no se da vuelta en el fondo de la flexión', () => {
+  const sess = synthSession('pushup', { reps: 6 });
+  // Como en el video real: en el fondo de la flexión los codos quedan sobre los hombros y la nariz pegada al suelo, que es
+  // justo lo que engañaba a la versión anterior (decidía el sentido en cada cuadro por la postura).
+  const fondo = sess.frames.map((f) => {
+    const P = (i) => ({ x: f.lm[i].x * f.aspect, y: f.lm[i].y });
+    const u = [P(11).x - P(13).x, P(11).y - P(13).y], v = [P(15).x - P(13).x, P(15).y - P(13).y];
+    const codoDeg = Math.acos((u[0] * v[0] + u[1] * v[1]) / (Math.hypot(...u) * Math.hypot(...v))) / RAD;
+    if (codoDeg > 120) return f;                                 // arriba: brazos estirados, no se toca
+    const hombro = (f.lm[11].y + f.lm[12].y) / 2, codo = (f.lm[13].y + f.lm[14].y) / 2;
+    const lm = f.lm.map((p, i) => (i === 13 || i === 14 ? { ...p, y: hombro - 0.04 } : i === 0 ? { ...p, y: codo + 0.06 } : p));
+    return { ...f, lm };
+  });
+  assert.ok(fondo.some((f, i) => f !== sess.frames[i]), 'hay cuadros de fondo modificados');
+  const rolled = fondo.map((f) => rollFrame(f, 90));
+  const tilt = fuseTilt(sensorTiltOf(90).lastStill, null);   // inclinación fija, como la que la app guarda al empezar
+  const fixed = rolled.map((f) => correctFrame(f, tilt));
+  // La cabeza (nariz) queda siempre del mismo lado de la cadera: si el giro se diera vuelta en algún cuadro, cambiaría.
+  const lado = fixed.map((f) => Math.sign(f.lm[0].x - (f.lm[23].x + f.lm[24].x) / 2));
+  assert.equal(new Set(lado).size, 1, 'la cabeza nunca cambia de lado');
+  assert.equal(lado[0], Math.sign(sess.frames[0].lm[0].x - (sess.frames[0].lm[23].x + sess.frames[0].lm[24].x) / 2), 'y es el lado correcto');
+});
