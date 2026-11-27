@@ -2816,15 +2816,19 @@ const Game = {
     const sid = this.sid;
     const v = $('game-video');
     let last = performance.now();
+    this.ultimoTiempoVideo = null; this.ultimaPos = null;   // sin restos de la partida anterior
     const tick = () => {
       if (sid !== this.sid) return;
       this.raf = requestAnimationFrame(tick);
       const now = performance.now();
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
       last = now;
-      let wrist = null, shoulder = null;
-      if (v.videoWidth) {
-        let frame = null;
+      // Solo se detecta cuando la cámara entrega un cuadro nuevo: el bucle corre a la frecuencia de la pantalla (hasta 60
+      // por segundo) y la cámara da 30, así que la mitad de las detecciones eran sobre la misma imagen. Entre medio se
+      // reusa la última posición (27-nov, rendimiento en teléfonos lentos).
+      if (v.videoWidth && v.currentTime !== this.ultimoTiempoVideo) {
+        this.ultimoTiempoVideo = v.currentTime;
+        let frame = null, wrist = null, shoulder = null;
         try { frame = Engine.detect(v, now, v.videoWidth / v.videoHeight); } catch (e) { console.warn(e); }
         if (frame) {
           const { j2 } = toJoints(frame);
@@ -2834,8 +2838,10 @@ const Game = {
             shoulder = (ls.y + rs.y) / 2;
           }
         }
+        this.ultimaPos = { wrist, shoulder };
       }
-      this.step(dt, wrist, shoulder);
+      const pos = this.ultimaPos || { wrist: null, shoulder: null };
+      this.step(dt, pos.wrist, pos.shoulder);
       this.draw();
     };
     this.raf = requestAnimationFrame(tick);
