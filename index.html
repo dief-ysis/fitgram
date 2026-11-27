@@ -6688,8 +6688,11 @@ function esTelefono() {
 /** Modelo que se usa de verdad: «Automático» elige el rápido en teléfonos y el preciso en tablets y computadores. */
 function modeloEfectivo() {
   const m = S.settings.model;
-  return m === 'lite' || m === 'full' ? m : esTelefono() ? 'lite' : 'full';
+  return m === 'lite' || m === 'full' ? m : esTelefono() || S.settings.autoLento ? 'lite' : 'full';
 }
+
+/** Sobre este promedio de ms por cuadro (≈ 14 cuadros/s) el modelo preciso es demasiado lento para «Automático». */
+const LENTO_MS = 70;
 // Las tres pruebas de la evaluación base (índice, perfil, telaraña, validación).
 const ORDER = ['pushup', 'squat', 'plank'];
 // Pruebas con barra, opcionales (traídas de la v1 de José, 26-nov-2026): necesitan barra fija o paralelas.
@@ -7880,12 +7883,30 @@ const Runner = {
     this.detectMs.push(ms);
     if (this.perf && this.phase === 'active' && this.perf.ms.length < 20000) this.perf.ms.push(ms);
     if (this.detectMs.length > 30) this.detectMs.shift();
+    this.bajarModeloSiLento();
     if (adaptVideo && this.detectMs.length >= 10) {
       const avg = this.detectMs.reduce((a, b) => a + b, 0) / this.detectMs.length;
       const v = $('video');
       const rate = avg > 90 ? 0.35 : avg > 45 ? 0.5 : 1;
       if (Math.abs(v.playbackRate - rate) > 0.01) v.playbackRate = rate;
     }
+  },
+
+  /**
+   * Calidad adaptable (27-nov-2026): con «Automático», si el modelo preciso no alcanza ~14 cuadros/s
+   * en este equipo (p. ej. una tablet lenta), se cambia solo al rápido y se recuerda para la próxima.
+   * Solo en vivo y antes de que empiece la prueba: no se cambia el modelo a mitad de una medición.
+   */
+  bajarModeloSiLento() {
+    if (this.mode !== 'live' || this.phase !== 'preview' || S.settings.model !== 'auto' || S.settings.autoLento) return;
+    if (Engine.variant !== 'full' || Engine.loading || this.detectMs.length < 30) return;
+    const prom = this.detectMs.reduce((a, b) => a + b, 0) / this.detectMs.length;
+    if (prom <= LENTO_MS) return;
+    S.settings.autoLento = true; saveStore();
+    this.detectMs = [];
+    Engine.load('lite', () => {})
+      .then(() => { $('engine-info').textContent = Engine.info(); this.cue({ level: 'warn', msg: 'Iba lento: cambié al modelo rápido' }); })
+      .catch((e) => console.warn('FitGram: no se pudo cambiar al modelo rápido', e));
   },
 
   /**
@@ -9694,11 +9715,11 @@ function renderSettings() {
   $('btn-open-valid').hidden = !S.settings.valid;
   const box = $('model-pills');
   box.innerHTML = '';
-  for (const [k, l] of [['auto', esTelefono() ? 'Automático (rápido)' : 'Automático (preciso)'], ['full', 'Preciso'], ['lite', 'Rápido']]) {
+  for (const [k, l] of [['auto', esTelefono() || S.settings.autoLento ? 'Automático (rápido)' : 'Automático (preciso)'], ['full', 'Preciso'], ['lite', 'Rápido']]) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'pill'; b.textContent = l;
     b.setAttribute('aria-pressed', String(S.settings.model === k));
-    b.addEventListener('click', () => { S.settings.model = k; S.settings.modeloElegido = true; saveStore(); renderSettings(); });
+    b.addEventListener('click', () => { S.settings.model = k; S.settings.modeloElegido = true; S.settings.autoLento = false; saveStore(); renderSettings(); });   // elegir de nuevo vuelve a medir
     box.appendChild(b);
   }
   $('engine-info').textContent = Engine.info();
