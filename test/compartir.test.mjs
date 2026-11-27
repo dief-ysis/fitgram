@@ -36,3 +36,15 @@ test('nombre de archivo sin tildes ni espacios', () => {
   assert.equal(C.nombreArchivo('Sentadillas', 'video con esqueleto', 'mp4', new Date('2026-11-23T10:00:00Z')),
     'fitgram-sentadillas-video-con-esqueleto-2026-11-23.mp4');
 });
+
+test('visor 3D: un .html autónomo con el esqueleto adentro, que no se rompe con "<" en el título', async () => {
+  const { visor3dHtml, esqueletoParaCompartir } = await import('../src/compartir.mjs');
+  const datos = esqueletoParaCompartir([{ t: 0, p: new Array(51).fill(0.1) }, { t: 33, p: new Array(51).fill(0.2) }], { test: 'squat' });
+  const html = visor3dHtml(datos, { titulo: 'Sentadillas <b>', huesos: [[0, 1]], izq: [1], der: [] });
+  assert.match(html, /^<!doctype html>/);
+  assert.ok(!html.includes('Sentadillas <b>') && html.includes('Sentadillas &lt;b&gt;'), 'el título va escapado');
+  assert.ok(!/<script[^>]+src=/.test(html), 'sin librerías externas: funciona sin internet');
+  const js = html.slice(html.indexOf('<script>') + 8, html.indexOf('</script>'));
+  assert.ok(js.includes('"cuadros"'), 'lleva los cuadros adentro');
+  assert.doesNotThrow(() => new Function(js), 'el código es JS válido');
+});

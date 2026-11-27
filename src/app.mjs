@@ -13,7 +13,7 @@ import * as Gm from './game.mjs';
 import * as Cal from './calidad.mjs';
 import { ORIENT_CONFIG, createPoseLevelEstimator, createTiltEstimator, fuseTilt, correctFrame, describeTilt, isCorrectable, quarterTurn } from './orientation.mjs';
 import { Sensors } from './sensors.mjs';
-import { esqueletoParaCompartir, elegirFormatoVideo, nombreArchivo } from './compartir.mjs';
+import { esqueletoParaCompartir, visor3dHtml, elegirFormatoVideo, nombreArchivo } from './compartir.mjs';
 import { esErrorDeCamara, cameraErrorMessage } from './camara-errores.mjs';
 /**
  * Con qué reglas cuenta esta copia de la app: los umbrales, el suavizado y el
@@ -1869,8 +1869,9 @@ function renderGuardar() {
   if (box.hidden) return;
   $('btn-save-video').hidden = !L.video;
   $('btn-save-3d').hidden = !(L.rec?.length && Review?.disponible);
+  $('btn-save-3dhtml').hidden = !L.rec?.length;
   $('btn-share-skel').hidden = !(L.rec?.length);
-  box.hidden = $('btn-save-video').hidden && $('btn-save-3d').hidden && $('btn-share-skel').hidden;
+  box.hidden = $('btn-save-video').hidden && $('btn-save-3d').hidden && $('btn-save-3dhtml').hidden && $('btn-share-skel').hidden;
   $('res-guardar-msg').textContent = '';
 }
 
@@ -3138,6 +3139,16 @@ function bind() {
     if (!v) { guardarMsg('Este navegador no puede grabar la animación.'); return; }
     const ok = await guardarArchivo(nombreArchivo(TESTS[S.last.test].name, 'animacion 3d', v.ext), v.blob);
     guardarMsg(ok ? 'Listo: la animación quedó en tu teléfono.' : '');
+  });
+  // Animación 3D que se puede girar: un .html con el esqueleto adentro, se abre sin internet.
+  $('btn-save-3dhtml').addEventListener('click', async () => {
+    const L = S.last;
+    if (!L?.rec?.length) return;
+    const r = L.result, nombre = TESTS[L.test].name;
+    const datos = esqueletoParaCompartir(L.rec, { test: L.test, value: r.value, invalid: r.invalid, date: r.date, reglas: r.reglas, nombres: [...H36M.names] });
+    const html = visor3dHtml(datos, { titulo: `${nombre} · ${num(r.value, L.test === 'plank' ? 1 : 0)} ${TESTS[L.test].unitLong}`, huesos: H36M.bones, izq: H36M.left, der: H36M.right });
+    const ok = await guardarArchivo(nombreArchivo(nombre, 'animacion 3d', 'html'), new Blob([html], { type: 'text/html' }));
+    guardarMsg(ok ? 'Listo: ábrelo en el navegador y gíralo con el dedo.' : '');
   });
   $('btn-share-skel').addEventListener('click', async () => {
     const L = S.last;
