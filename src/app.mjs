@@ -4,6 +4,7 @@ import { NORMS, classifyPushups, classifySquats, classifyPlank, classifyPullups,
 import { createAnalyzer, huellaDe, codigoDeConteo, EX_CONFIG, vistaDeFrente, queFalta } from './exercises.mjs';
 import { siluetaPara, opacidadSilueta } from './silueta.mjs';
 import { datosTelarana, svgTelarana } from './telarana.mjs';
+import { crearEstabilizador } from './estabilizar.mjs';
 import { synthSession } from './synth.mjs';
 import { SKELETON_CONFIG, H36M, toJoints, PoseSmoother, drawSkeleton2D, View3D, createLifter } from './skeleton.mjs';
 import * as Hist from './history.mjs';
@@ -595,6 +596,8 @@ const Runner = {
     this.setPos(null, 'Preparando…');
     this.analyzer = createAnalyzer(test, { sex: S.profile.sex });
     this.smoother = new PoseSmoother();
+    // Solo para dibujar y grabar: sostiene un rato los puntos que dejan de verse (el conteo usa los cuadros tal cual).
+    this.estab = crearEstabilizador(); this.estabRec = crearEstabilizador();
     this.jitter = Cal.createJitterTracker();
     this.avisoCalidad = 0;
     this.lifter = createLifter('mediapipe');
@@ -794,7 +797,7 @@ const Runner = {
     if (this.mode === 'demo') {
       this.demoT0 = performance.now();
       this.analyzer = createAnalyzer(this.test, { sex: S.profile.sex });
-      this.smoother.reset?.();
+      this.smoother.reset?.(); this.estab?.reiniciar(); this.estabRec?.reiniciar();
       this.level?.reset(); this.tilt = null; this.tiltLocked = false;
       this.countdown(3, () => { this.demoT0 = performance.now(); this.beginActive(this.demo.frames[0]?.t ?? 0, true); });
       return;
@@ -1170,7 +1173,7 @@ const Runner = {
     const v = $('video');
     $('btn-start').hidden = true; $('btn-stop').hidden = false;
     this.phase = 'arming'; this.armOkSince = null;
-    this.smoother.reset?.();
+    this.smoother.reset?.(); this.estab?.reiniciar(); this.estabRec?.reiniciar();
     this.level?.reset(); this.tilt = null; this.tiltLocked = false;
     this.jitter?.reset();
     this.videoOffset = Engine.lastTs + 1000;
@@ -1304,9 +1307,9 @@ const Runner = {
       this.handleEvents(st);
       this.updateHud(st);
       if (st.phase === 'ended') { this.finish(st, st.endReason); return; }
-      if (frame.t - this.lastRecT >= 50) { this.record(fc); this.lastRecT = frame.t; }
+      if (frame.t - this.lastRecT >= 50) { this.record(this.estabRec.aplicar(fc)); this.lastRecT = frame.t; }
     }
-    this.draw(frame);
+    this.draw(this.estab.aplicar(frame));
   },
 
   record(frame) {
