@@ -65,3 +65,13 @@ test('ningún módulo lleva un «</script>» literal: cerraría el script de ind
     assert.ok(!/<\/script/i.test(src), `${f} tiene «</script»: escríbelo «<\\/script»`);
   }
 });
+
+test('el script armado dentro de index.html es JavaScript válido de punta a punta', () => {
+  const html = readFileSync(join(RAIZ, 'index.html'), 'utf8');
+  const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
+  const app = scripts.find((s) => s.includes('__mods'));
+  assert.ok(app, 'no encontré el script de los módulos');
+  // Solo se compila, no se ejecuta: así se detecta un script cortado o con un error de sintaxis.
+  assert.doesNotThrow(() => new Function(app), 'el script de la app no compila');
+  assert.ok(app.includes('__mods["app"]'), 'el script llega entero hasta el módulo app');
+});
