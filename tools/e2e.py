@@ -5,6 +5,7 @@ Escenarios:
   B. Cámara en vivo (cámara falsa de Chrome): aparece el aviso de inclinación. (La fuente «Sensores» no se
      puede probar aquí: ver el comentario del escenario.)
   C. Ajustes: interruptor de la inclinación y «Probar sensores» con sensores simulados.
+  V. Pantalla de validación: guardar, duplicado, recargar, exportar CSV y JSON, borrar y volver a cargar el respaldo.
   D. (opcional) Cada video que se pase como argumento: se analiza en modo video y se informa el resultado.
 Falla si hay errores en la consola. Las capturas van a SALIDA.
 
@@ -279,6 +280,48 @@ def main():
             check(vis, f'tablet {nombre}: el resultado se ve sin desplazarse')
             tp.screenshot(path=str(OUT / f'T-{nombre}-resultado.png'), full_page=True)
             tc.close()
+
+        # V. pantalla de validación del estudio (?modo=validacion)
+        vc = browser.new_context(viewport={'width': 412, 'height': 900}, accept_downloads=True, service_workers='block')
+        vp = vc.new_page()
+        vp.on('console', lambda m: m.type == 'error' and errors.append(m.text))
+        vp.on('pageerror', lambda e: errors.append(str(e)))
+        vp.goto(url)
+        vp.evaluate('localStorage.clear()')
+        vp.goto(url + '?modo=validacion')
+        vp.wait_for_selector('#scr-valid:not([hidden])')
+        n_val = lambda: vp.evaluate('window.FITGRAM.S.valid.length')
+
+        def guardar_val(part, app, r1, r2):
+            vp.fill('#v-part', part); vp.fill('#v-app', app); vp.fill('#v-r1', r1); vp.fill('#v-r2', r2)
+            vp.click('#v-save'); vp.wait_for_timeout(200)
+
+        guardar_val('P01', '20', '20', '21')
+        check(n_val() == 1 and 'Sigue Sentadillas' in (vp.text_content('#v-saved') or ''), 'validación: guarda y pasa a la prueba siguiente')
+        guardar_val('P01', '30', '30', '31')
+        check(n_val() == 2, 'validación: guarda la segunda prueba de la misma persona')
+        vp.locator('#v-test button', has_text='Flexiones').click()
+        guardar_val('P01', '22', '20', '21')
+        check(vp.is_visible('#v-dup') and n_val() == 2, 'validación: avisa el duplicado y no guarda solo')
+        vp.click('#v-dup-cancel')
+        vp.reload()
+        vp.wait_for_selector('#scr-valid:not([hidden])')
+        check(n_val() == 2, 'validación: las mediciones siguen al recargar')
+        with vp.expect_download() as d:
+            vp.click('#v-csv')
+        csv = open(d.value.path(), encoding='utf-8-sig').read()
+        check(csv.count('\n') >= 3 and 'P01' in csv, f'validación: exporta el CSV ({d.value.suggested_filename})')
+        with vp.expect_download() as d:
+            vp.click('#v-json')
+        respaldo = str(OUT / 'V-respaldo.json')
+        d.value.save_as(respaldo)
+        vp.click('#v-clear'); vp.click('#v-clear-yes')
+        check(n_val() == 0 and vp.evaluate("localStorage.getItem('fitgram.validation.v1')") is None, 'validación: borrar deja todo en cero')
+        vp.set_input_files('#v-file', respaldo)
+        vp.wait_for_selector('#v-loaded:not([hidden])')
+        check(n_val() == 2, 'validación: el respaldo JSON vuelve a cargar las 2 mediciones')
+        vp.screenshot(path=str(OUT / 'V-validacion.png'), full_page=True)
+        vc.close()
 
         browser.close()
     srv.shutdown()
